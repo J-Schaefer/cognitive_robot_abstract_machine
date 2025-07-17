@@ -16,7 +16,7 @@ from giskardpy.qp.solvers.qp_solver import QPSolver
 from giskardpy.qp.solvers.qp_solver_ids import SupportedQPSolver
 from giskardpy.utils.utils import get_all_classes_in_module
 from semantic_world.prefixed_name import PrefixedName
-
+from semantic_world.spatial_types.derivatives import DerivativeMap
 
 available_solvers: Dict[SupportedQPSolver, Type[QPSolver]] = {}
 
@@ -39,10 +39,12 @@ detect_solvers()
 
 @dataclass
 class QPControllerConfig:
-    dof_weights: Dict[PrefixedName, Dict[Derivatives, float]] = field(
-        default_factory=lambda: defaultdict(lambda: {Derivatives.velocity: 0.01,
-                                                     Derivatives.acceleration: np.inf,
-                                                     Derivatives.jerk: None}))
+    dof_weights: Dict[PrefixedName, DerivativeMap[float]] = field(
+        default_factory=lambda: defaultdict(lambda: DerivativeMap([None, 0.01, np.inf, None])))
+    dof_lower_limits_overwrite: Dict[PrefixedName, DerivativeMap[float]] = field(
+        default_factory=lambda: defaultdict(lambda: DerivativeMap([None, -1, -np.inf, None])))
+    dof_upper_limits_overwrite: Dict[PrefixedName, DerivativeMap[float]] = field(
+        default_factory=lambda: defaultdict(lambda: DerivativeMap([None, 1, np.inf, None])))
     max_derivative: Derivatives = field(default=Derivatives.jerk)
     qp_solver_id: Optional[SupportedQPSolver] = field(default=None)
     qp_solver_class: Type[QPSolver] = field(init=False)
@@ -95,27 +97,15 @@ class QPControllerConfig:
 
     def set_dof_weight(self, dof_name: PrefixedName, derivative: Derivatives, weight: float):
         """Set weight for a specific DOF derivative."""
-        if dof_name not in self.dof_weights:
-            self.dof_weights[dof_name] = {
-                Derivatives.velocity: 0.01,
-                Derivatives.acceleration: np.inf,
-                Derivatives.jerk: None
-            }
-        self.dof_weights[dof_name][derivative] = weight
+        self.dof_weights[dof_name].data[derivative] = weight
 
-    def set_dof_weights(self, dof_name: PrefixedName, weight_map: Dict[Derivatives, float]):
+    def set_dof_weights(self, dof_name: PrefixedName, weight_map: DerivativeMap[float]):
         """Set multiple weights for a DOF."""
-        if dof_name not in self.dof_weights:
-            self.dof_weights[dof_name] = {
-                Derivatives.velocity: 0.01,
-                Derivatives.acceleration: np.inf,
-                Derivatives.jerk: None
-            }
-        self.dof_weights[dof_name].update(weight_map)
+        self.dof_weights[dof_name] = weight_map
 
     def get_dof_weight(self, dof_name: PrefixedName, derivative: Derivatives) -> float:
         """Get weight for a specific DOF derivative."""
-        return self.dof_weights[dof_name][derivative]
+        return self.dof_weights[dof_name].data[derivative]
 
     def init_qp_controller(self):
         god_map.qp_controller = QPController(config=self)

@@ -21,7 +21,7 @@ from giskardpy.qp.weight_gain import QuadraticWeightGain, LinearWeightGain
 from giskardpy.utils.decorators import memoize
 from giskardpy.utils.math import mpc
 from semantic_world.degree_of_freedom import DegreeOfFreedom
-from semantic_world.spatial_types.derivatives import Derivatives
+from semantic_world.spatial_types.derivatives import Derivatives, DerivativeMap
 from semantic_world.spatial_types.symbol_manager import SymbolManager
 
 if TYPE_CHECKING:
@@ -48,7 +48,8 @@ def max_velocity_from_horizon_and_jerk_qp(prediction_horizon: int,
 
 
 @memoize
-def find_best_jerk_limit(prediction_horizon: int, dt: float, target_vel_limit: float, solver_class: Type[QPSolver], eps: float = 0.0001) -> float:
+def find_best_jerk_limit(prediction_horizon: int, dt: float, target_vel_limit: float, solver_class: Type[QPSolver],
+                         eps: float = 0.0001) -> float:
     jerk_limit = (4 * target_vel_limit) / dt ** 2
     upper_bound = jerk_limit
     lower_bound = 0
@@ -166,70 +167,66 @@ class ProblemDataPart(ABC):
 
     @profile
     def velocity_limit(self, v: DegreeOfFreedom, max_derivative: Derivatives) -> Tuple[cas.Expression, cas.Expression]:
-        current_position = v.symbols.position
-        lower_velocity_limit = v.lower_limits.velocity
-        upper_velocity_limit = v.upper_limits.velocity
-        lower_acc_limit = v.lower_limits.acceleration
-        upper_acc_limit = v.upper_limits.acceleration
-        current_vel = v.symbols.velocity
-        current_acc = v.symbols.acceleration
+        lower_limits = DerivativeMap()
+        upper_limits = DerivativeMap()
 
-        lower_jerk_limit = v.lower_limits.jerk
-        upper_jerk_limit = v.upper_limits.jerk
-        if self.config.prediction_horizon == 1:
-            return cas.Expression([lower_velocity_limit]), cas.Expression([upper_velocity_limit])
-
-        if upper_jerk_limit is None:
-            upper_jerk_limit = find_best_jerk_limit(self.config.prediction_horizon, self.config.mpc_dt,
-                                                    upper_velocity_limit, solver_class=self.config.qp_solver_class)
-            lower_jerk_limit = -upper_jerk_limit
-
+        # %% pos limits
         if not v.has_position_limits():
-            lower_limit = upper_limit = None
+            lower_limits.position = upper_limits.position = None
         else:
-            lower_limit = v.lower_limits.position
-            upper_limit = v.upper_limits.position
+            lower_limits.position = v.lower_limits.position
+            upper_limits.position = v.upper_limits.position
+
+        # %% vel limits
+        lower_limits.velocity = max(v.lower_limits.velocity, self.config.dof_lower_limits_overwrite[v.name].velocity)
+        upper_limits.velocity = min(v.upper_limits.velocity, self.config.dof_upper_limits_overwrite[v.name].velocity)
+        if self.config.prediction_horizon == 1:
+            return cas.Expression([lower_limits.velocity]), cas.Expression([upper_limits.velocity])
+
+        # %% acc limits
+        if v.lower_limits.acceleration is None:
+            lower_limits.acceleration = self.config.dof_lower_limits_overwrite[v.name].acceleration
+        else:
+            lower_limits.acceleration = max(v.lower_limits.acceleration,
+                                            self.config.dof_lower_limits_overwrite[v.name].acceleration)
+        if v.upper_limits.acceleration is None:
+            upper_limits.acceleration = self.config.dof_upper_limits_overwrite[v.name].acceleration
+        else:
+            upper_limits.acceleration = min(v.upper_limits.acceleration,
+                                            self.config.dof_upper_limits_overwrite[v.name].acceleration)
+
+        # %% jerk limits
+        if upper_limits.jerk is None:
+            upper_limits.jerk = find_best_jerk_limit(self.config.prediction_horizon, self.config.mpc_dt,
+                                                     upper_limits.velocity, solver_class=self.config.qp_solver_class)
+            lower_limits.jerk = -upper_limits.jerk
+        else:
+            upper_limits.jerk = v.upper_limits.jerk
+            lower_limits.jerk = v.lower_limits.jerk
 
         try:
-            lb, ub = b_profile(current_pos=current_position,
-                               current_vel=current_vel,
-                               current_acc=current_acc,
-                               pos_limits=(lower_limit, upper_limit),
-                               vel_limits=(lower_velocity_limit, upper_velocity_limit),
-                               acc_limits=(lower_acc_limit, upper_acc_limit),
-                               jerk_limits=(lower_jerk_limit, upper_jerk_limit),
+            lb, ub = b_profile(dof_symbols=v.symbols,
+                               lower_limits=lower_limits,
+                               upper_limits=upper_limits,
                                dt=self.config.mpc_dt,
                                ph=self.config.prediction_horizon)
         except InfeasibleException as e:
             max_reachable_vel = max_velocity_from_horizon_and_jerk_qp(
                 prediction_horizon=self.config.prediction_horizon,
                 vel_limit=100,
-                acc_limit=upper_acc_limit,
-                jerk_limit=upper_jerk_limit,
+                acc_limit=upper_limits.acceleration,
+                jerk_limit=upper_limits.jerk,
                 dt=self.config.mpc_dt,
                 max_derivative=max_derivative,
                 solver_class=self.config.qp_solver_class)[0]
-            if max_reachable_vel < upper_velocity_limit:
-                error_msg = f'Free variable "{v.name}" can\'t reach velocity limit of "{upper_velocity_limit}". ' \
+            if max_reachable_vel < upper_limits.velocity:
+                error_msg = f'Free variable "{v.name}" can\'t reach velocity limit of "{upper_limits.velocity}". ' \
                             f'Maximum reachable with prediction horizon = "{self.config.prediction_horizon}", ' \
-                            f'jerk limit = "{upper_jerk_limit}" and dt = "{self.config.mpc_dt}" is "{max_reachable_vel}".'
+                            f'jerk limit = "{upper_limits.jerk}" and dt = "{self.config.mpc_dt}" is "{max_reachable_vel}".'
                 get_middleware().logerr(error_msg)
                 raise VelocityLimitUnreachableException(error_msg)
             else:
                 raise
-        # %% set velocity limits to infinite, that can't be reached due to acc/jerk limits anyway
-        # unlimited_vel_profile = implicit_vel_profile(acc_limit=upper_acc_limit,
-        #                                              jerk_limit=upper_jerk_limit,
-        #                                              dt=self.config.mpc_dt,
-        #                                              ph=self.config.prediction_horizon)
-        # for i in range(self.config.prediction_horizon):
-        #     ub[i] = cas.if_less(ub[i], unlimited_vel_profile[i], ub[i], np.inf)
-        # unlimited_vel_profile = implicit_vel_profile(acc_limit=-lower_acc_limit,
-        #                                              jerk_limit=-lower_jerk_limit,
-        #                                              dt=self.config.mpc_dt,
-        #                                              ph=self.config.prediction_horizon)
-        # for i in range(self.config.prediction_horizon):
-        #     lb[i] = cas.if_less(-lb[i], unlimited_vel_profile[i], lb[i], -np.inf)
         return lb, ub
 
 
@@ -295,7 +292,8 @@ class Weights(ProblemDataPart):
                     if derivative == Derivatives.jerk and not self.config.qp_formulation.has_explicit_jerk_variables:
                         continue
                     normalized_weight = self.normalize_dof_weight(limit=v.upper_limits.data[derivative],
-                                                                  base_weight=self.config.get_dof_weight(v.name, derivative),
+                                                                  base_weight=self.config.get_dof_weight(v.name,
+                                                                                                         derivative),
                                                                   t=t,
                                                                   derivative=derivative,
                                                                   horizon=self.config.prediction_horizon - 3,
