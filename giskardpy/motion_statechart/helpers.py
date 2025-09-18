@@ -10,7 +10,7 @@ from line_profiler import profile
 
 from semantic_world.spatial_types.symbol_manager import symbol_manager
 
-T = TypeVar('T', bound=MotionStatechartNode)
+T = TypeVar("T", bound=MotionStatechartNode)
 
 
 class MotionGraphNodeStateManager(Generic[T]):
@@ -22,7 +22,9 @@ class MotionGraphNodeStateManager(Generic[T]):
     life_cycle_history: List[np.ndarray]
     observation_state: np.ndarray
 
-    substitution_values: Dict[str, Dict[cas.Symbol, float]]  # node name -> (old_symbol, value)
+    substitution_values: Dict[
+        str, Dict[cas.Symbol, float]
+    ]  # node name -> (old_symbol, value)
 
     def __init__(self, god_map_path: str):
         self.nodes = []
@@ -72,7 +74,7 @@ class MotionGraphNodeStateManager(Generic[T]):
 
     def append(self, node: T) -> None:
         if node.name in self.key_to_idx:
-            raise GoalInitalizationException(f'Node named {node.name} already exists.')
+            raise GoalInitalizationException(f"Node named {node.name} already exists.")
         self.nodes.append(node)
         self.key_to_idx[node.name] = len(self.nodes) - 1
 
@@ -81,7 +83,7 @@ class MotionGraphNodeStateManager(Generic[T]):
         self.observation_state = np.ones(len(self.nodes)) * ObservationState.unknown
         life_cycle_state = np.zeros(len(self.nodes))
         for node_id, node in enumerate(self.nodes):
-            if node.start_condition == 'True':
+            if node.start_condition == "True":
                 life_cycle_state[node_id] = LifeCycleState.running
             else:
                 life_cycle_state[node_id] = LifeCycleState.not_started
@@ -96,8 +98,9 @@ class MotionGraphNodeStateManager(Generic[T]):
         return {key: self.life_cycle_state[idx] for key, idx in self.key_to_idx.items()}
 
     @profile
-    def register_expression_updater(self, node: MotionStatechartNode, expression: cas.AnyCasType) \
-            -> cas.AnyCasType:
+    def register_expression_updater(
+        self, node: MotionStatechartNode, expression: cas.GenericSymbolicType
+    ) -> cas.GenericSymbolicType:
         """
         Expression is updated when all monitors are 1 at the same time, but only once.
         """
@@ -111,22 +114,36 @@ class MotionGraphNodeStateManager(Generic[T]):
         return new_expression
 
     @profile
-    def update_substitution_values(self, node_name: str, keys: Optional[List[cas.Symbol]] = None) -> None:
+    def update_substitution_values(
+        self, node_name: str, keys: Optional[List[cas.Symbol]] = None
+    ) -> None:
         if keys is None:
             keys = list(self.substitution_values[node_name].keys())
         values = symbol_manager.resolve_symbols([keys])[0]
-        self.substitution_values[node_name] = {key: value for key, value in zip(keys, values)}
+        self.substitution_values[node_name] = {
+            key: value for key, value in zip(keys, values)
+        }
 
     @profile
-    def get_substitution_key(self, node_name: str, original_symbol: cas.Symbol) -> cas.Symbol:
-        return symbol_manager.register_symbol_provider(name=f'subs {node_name} {original_symbol}',
-                                                       provider=lambda :self.substitution_values[node_name][original_symbol])
+    def get_substitution_key(
+        self, node_name: str, original_symbol: cas.Symbol
+    ) -> cas.Symbol:
+        return symbol_manager.register_symbol_provider(
+            name=f"subs {node_name} {original_symbol}",
+            provider=lambda: self.substitution_values[node_name][original_symbol],
+        )
 
     def trigger_update_triggers(self):
         prev_life_cycle_state = self.life_cycle_history[-2]
         life_cycle_state = self.life_cycle_history[-1]
-        condition = (prev_life_cycle_state == LifeCycleState.not_started) & (life_cycle_state == LifeCycleState.running)
-        indices = [i for i in np.flatnonzero(condition) if self.nodes[i].name in self.substitution_values]
+        condition = (prev_life_cycle_state == LifeCycleState.not_started) & (
+            life_cycle_state == LifeCycleState.running
+        )
+        indices = [
+            i
+            for i in np.flatnonzero(condition)
+            if self.nodes[i].name in self.substitution_values
+        ]
         for idx in indices:
             self.update_substitution_values(node_name=self.nodes[idx].name)
 
@@ -136,7 +153,9 @@ class MotionGraphNodeStateManager(Generic[T]):
 
 
 @profile
-def compile_graph_node_state_updater(node_state: MotionGraphNodeStateManager) -> cas.Expression:
+def compile_graph_node_state_updater(
+    node_state: MotionGraphNodeStateManager,
+) -> cas.Expression:
     """
     Implements the state transition logic for motion statechart nodes
     """
@@ -145,28 +164,61 @@ def compile_graph_node_state_updater(node_state: MotionGraphNodeStateManager) ->
     for node in node_state.nodes:
         state_symbol = node.life_cycle_state_symbol
 
-        not_started_transitions = cas.if_else(condition=cas.is_true3(node.logic3_start_condition),
-                                              if_result=LifeCycleState.running,
-                                              else_result=LifeCycleState.not_started)
+        not_started_transitions = cas.if_else(
+            condition=cas.is_ternary_true(node.logic3_start_condition),
+            if_result=LifeCycleState.running,
+            else_result=LifeCycleState.not_started,
+        )
         running_transitions = cas.if_cases(
-            cases=[(cas.is_true3(node.logic3_reset_condition), LifeCycleState.not_started),
-                   (cas.is_true3(node.logic3_end_condition), LifeCycleState.succeeded),
-                   (cas.is_true3(node.logic3_pause_condition), LifeCycleState.paused)],
-            else_result=LifeCycleState.running)
-        pause_transitions = cas.if_cases(cases=[(cas.is_true3(node.logic3_reset_condition), LifeCycleState.not_started),
-                                                (cas.is_true3(node.logic3_end_condition), LifeCycleState.succeeded),
-                                                (cas.is_false3(node.logic3_pause_condition), LifeCycleState.running)],
-                                         else_result=LifeCycleState.paused)
-        ended_transitions = cas.if_else(condition=cas.is_true3(node.logic3_reset_condition),
-                                        if_result=LifeCycleState.not_started,
-                                        else_result=LifeCycleState.succeeded)
+            cases=[
+                (
+                    cas.is_ternary_true(node.logic3_reset_condition),
+                    LifeCycleState.not_started,
+                ),
+                (
+                    cas.is_ternary_true(node.logic3_end_condition),
+                    LifeCycleState.succeeded,
+                ),
+                (
+                    cas.is_ternary_true(node.logic3_pause_condition),
+                    LifeCycleState.paused,
+                ),
+            ],
+            else_result=LifeCycleState.running,
+        )
+        pause_transitions = cas.if_cases(
+            cases=[
+                (
+                    cas.is_ternary_true(node.logic3_reset_condition),
+                    LifeCycleState.not_started,
+                ),
+                (
+                    cas.is_ternary_true(node.logic3_end_condition),
+                    LifeCycleState.succeeded,
+                ),
+                (
+                    cas.is_ternary_false(node.logic3_pause_condition),
+                    LifeCycleState.running,
+                ),
+            ],
+            else_result=LifeCycleState.paused,
+        )
+        ended_transitions = cas.if_else(
+            condition=cas.is_ternary_true(node.logic3_reset_condition),
+            if_result=LifeCycleState.not_started,
+            else_result=LifeCycleState.succeeded,
+        )
 
-        state_machine = cas.if_eq_cases(a=state_symbol,
-                                        b_result_cases=[(LifeCycleState.not_started, not_started_transitions),
-                                                        (LifeCycleState.running, running_transitions),
-                                                        (LifeCycleState.paused, pause_transitions),
-                                                        (LifeCycleState.succeeded, ended_transitions)],
-                                        else_result=state_symbol)
+        state_machine = cas.if_eq_cases(
+            a=state_symbol,
+            b_result_cases=[
+                (LifeCycleState.not_started, not_started_transitions),
+                (LifeCycleState.running, running_transitions),
+                (LifeCycleState.paused, pause_transitions),
+                (LifeCycleState.succeeded, ended_transitions),
+            ],
+            else_result=state_symbol,
+        )
         state_updater.append(state_machine)
     state_updater = cas.Expression(state_updater)
     return state_updater
