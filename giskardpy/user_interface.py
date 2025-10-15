@@ -33,7 +33,7 @@ from giskardpy.qp.constraint import (
     DerivativeInequalityConstraint,
 )
 from semantic_world.datastructures.prefixed_name import PrefixedName
-from semantic_world.robots import AbstractRobot
+from semantic_world.robots.abstract_robot import AbstractRobot
 from semantic_world.spatial_types.symbol_manager import symbol_manager
 from giskardpy.motion_statechart.monitors.monitors import EndMotion
 

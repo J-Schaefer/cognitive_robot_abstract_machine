@@ -16,7 +16,7 @@ from semantic_world.collision_checking.collision_detector import (
     CollisionDetector,
     CollisionCheck,
 )
-from semantic_world.robots import AbstractRobot
+from semantic_world.robots.abstract_robot import AbstractRobot
 from semantic_world.spatial_types.symbol_manager import symbol_manager
 from semantic_world.world import World
 from semantic_world.world_description.world_entity import Body

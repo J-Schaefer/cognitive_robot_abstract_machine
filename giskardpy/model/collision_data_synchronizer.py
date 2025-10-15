@@ -31,7 +31,7 @@ from giskardpy.model.collision_detector import CollisionDetector
 from giskardpy.model.collision_matrix_manager import CollisionMatrixManager
 from giskardpy.qp.free_variable import FreeVariable
 from semantic_world.world_description.connections import ActiveConnection
-from semantic_world.robots import AbstractRobot
+from semantic_world.robots.abstract_robot import AbstractRobot
 from semantic_world.spatial_types.derivatives import Derivatives
 from semantic_world.spatial_types.symbol_manager import symbol_manager
 from semantic_world.utils import copy_lru_cache

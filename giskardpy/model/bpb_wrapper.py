@@ -20,7 +20,7 @@ from semantic_world.world_description.geometry import (
     Mesh,
     Scale,
 )
-from semantic_world.robots import AbstractRobot
+from semantic_world.robots.abstract_robot import AbstractRobot
 from semantic_world.world import World
 from semantic_world.world_description.world_entity import Body
 

@@ -21,7 +21,7 @@ from semantic_world.world_description.connections import (
 )
 from semantic_world.world_description.geometry import Box, Scale, Color
 from semantic_world.datastructures.prefixed_name import PrefixedName
-from semantic_world.robots import AbstractRobot, Manipulator
+from semantic_world.robots.abstract_robot import AbstractRobot, Manipulator
 from semantic_world.world import World
 from semantic_world.world_description.world_entity import Body
 

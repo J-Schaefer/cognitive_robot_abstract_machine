@@ -13,7 +13,7 @@ from giskardpy.motion_statechart.tasks.task import (
 from giskardpy.god_map import god_map
 from semantic_world.world_description.connections import ActiveConnection
 from semantic_world.datastructures.prefixed_name import PrefixedName
-from semantic_world.robots import AbstractRobot
+from semantic_world.robots.abstract_robot import AbstractRobot
 from semantic_world.spatial_types.symbol_manager import symbol_manager
 from giskardpy.middleware import get_middleware
 from line_profiler import profile
