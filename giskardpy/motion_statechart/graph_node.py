@@ -273,7 +273,7 @@ class Goal(MotionStatechartNode):
 
     def apply_pause_condition_to_node(self, node: MotionStatechartNode):
         if cas.is_trinary_false_symbol(node.pause_condition):
-            node.pause_condition = node.pause_condition
+            node.pause_condition = self.pause_condition
         elif not cas.is_trinary_false_symbol(node.pause_condition):
             node.pause_condition = cas.trinary_logic_or(
                 node.pause_condition, node.pause_condition
@@ -289,7 +289,7 @@ class Goal(MotionStatechartNode):
 
     def apply_reset_condition_to_node(self, node: MotionStatechartNode):
         if cas.is_trinary_false_symbol(node.reset_condition):
-            node.reset_condition = node.reset_condition
+            node.reset_condition = self.reset_condition
         elif not cas.is_trinary_false_symbol(node.pause_condition):
             node.reset_condition = cas.trinary_logic_or(
                 node.reset_condition, node.reset_condition
