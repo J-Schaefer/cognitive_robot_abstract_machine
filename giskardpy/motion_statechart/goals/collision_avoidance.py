@@ -9,7 +9,6 @@ from giskardpy.god_map import god_map
 from giskardpy.middleware import get_middleware
 from giskardpy.model.collision_matrix_manager import CollisionViewRequest
 from giskardpy.motion_statechart.graph_node import Goal
-from giskardpy.motion_statechart.monitors.monitors import Monitor
 from giskardpy.motion_statechart.tasks.task import (
     WEIGHT_ABOVE_CA,
     WEIGHT_COLLISION_AVOIDANCE,
@@ -146,7 +145,9 @@ class ExternalCA(Goal):
         weight = cas.Expression(data=WEIGHT_COLLISION_AVOIDANCE).safe_division(
             cas.min(number_of_external_collisions, self.max_avoided_bodies)
         )
-        distance_monitor = Monitor(name=f"collision distance {self.name}", _plot=False)
+        distance_monitor = MotionStatechartNode(
+            name=f"collision distance {self.name}", _plot=False
+        )
         distance_monitor.observation_expression = actual_distance > 50
         self.add_monitor(distance_monitor)
         task = Task(name=self.name + "/task", _plot=False)
@@ -258,7 +259,9 @@ class SelfCA(Goal):
         weight = cas.Expression(data=WEIGHT_COLLISION_AVOIDANCE).safe_division(
             cas.min(number_of_self_collisions, self.max_avoided_bodies)
         )
-        distance_monitor = Monitor(name=f"collision distance {self.name}", _plot=False)
+        distance_monitor = MotionStatechartNode(
+            name=f"collision distance {self.name}", _plot=False
+        )
         distance_monitor.observation_expression = actual_distance > 50
         self.add_monitor(distance_monitor)
         task = Task(name=self.name + "/task", _plot=False)

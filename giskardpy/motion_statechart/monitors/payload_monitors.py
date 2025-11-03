@@ -5,13 +5,13 @@ import numpy as np
 from line_profiler import profile
 
 from giskardpy.god_map import god_map
-from giskardpy.motion_statechart.graph_node import Monitor, MotionStatechartNode
+from giskardpy.motion_statechart.graph_node import MotionStatechartNode
 from giskardpy.motion_statechart.motion_statechart import ObservationState
 from giskardpy.utils.decorators import validated_dataclass
 
 
 @validated_dataclass
-class CheckMaxTrajectoryLength(Monitor):
+class CheckMaxTrajectoryLength(MotionStatechartNode):
     length: float
 
     def __post_init__(self):

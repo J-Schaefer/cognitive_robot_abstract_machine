@@ -3,13 +3,13 @@ from typing import Union
 
 import semantic_digital_twin.spatial_types.spatial_types as cas
 from giskardpy.god_map import god_map
-from giskardpy.motion_statechart.monitors.monitors import Monitor
+from giskardpy.motion_statechart.graph_node import MotionStatechartNode
 from giskardpy.utils.decorators import validated_dataclass
 from semantic_digital_twin.world_description.world_entity import Body
 
 
 @validated_dataclass
-class FeatureMonitor(Monitor):
+class FeatureMonitor(MotionStatechartNode):
     tip_link: Body
     root_link: Body
     reference_feature: Union[cas.Point3, cas.Vector3] = field(init=False)
@@ -49,7 +49,9 @@ class HeightMonitor(FeatureMonitor):
         self.controlled_feature = self.tip_point
         super().__post_init__()
 
-        distance = (self.root_P_controlled_feature - self.root_P_reference_feature) @ cas.Vector3.Z()
+        distance = (
+            self.root_P_controlled_feature - self.root_P_reference_feature
+        ) @ cas.Vector3.Z()
         expr = cas.logic_and(
             distance >= self.lower_limit,
             distance <= self.upper_limit,

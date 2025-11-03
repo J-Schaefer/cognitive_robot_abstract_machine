@@ -3,7 +3,7 @@ from typing import Dict
 
 import semantic_digital_twin.spatial_types.spatial_types as cas
 from giskardpy.data_types.exceptions import GoalInitalizationException
-from giskardpy.motion_statechart.monitors.monitors import Monitor
+from giskardpy.motion_statechart.graph_node import MotionStatechartNode
 from giskardpy.utils.decorators import validated_dataclass
 from semantic_digital_twin.world_description.connections import (
     RevoluteConnection,
@@ -13,7 +13,7 @@ from semantic_digital_twin.world_description.connections import (
 
 
 @validated_dataclass
-class JointGoalReached(Monitor):
+class JointGoalReached(MotionStatechartNode):
     goal_state: Dict[ActiveConnection1DOF, float] = field(kw_only=True)
     threshold: float = 0.01
 
@@ -34,7 +34,7 @@ class JointGoalReached(Monitor):
 
 
 @validated_dataclass
-class JointPositionAbove(Monitor):
+class JointPositionAbove(MotionStatechartNode):
     connection: ActiveConnection = field(kw_only=True)
     threshold: float = field(kw_only=True)
 

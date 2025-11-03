@@ -2,14 +2,13 @@ from typing import List
 
 import semantic_digital_twin.spatial_types.spatial_types as cas
 from giskardpy.god_map import god_map
-from giskardpy.motion_statechart.monitors.monitors import Monitor
 from giskardpy.utils.decorators import validated_dataclass
 from semantic_digital_twin.world_description.connections import OmniDrive
 from semantic_digital_twin.world_description.world_entity import Body
 
 
 @validated_dataclass
-class InWorldSpace(Monitor):
+class InWorldSpace(MotionStatechartNode):
     tip_link: Body
     xyz: List[float]
 
@@ -41,7 +40,7 @@ class InWorldSpace(Monitor):
 
 
 @validated_dataclass
-class PoseReached(Monitor):
+class PoseReached(MotionStatechartNode):
     root_link: Body
     tip_link: Body
     goal_pose: cas.TransformationMatrix
@@ -83,7 +82,7 @@ class PoseReached(Monitor):
 
 
 @validated_dataclass
-class PositionReached(Monitor):
+class PositionReached(MotionStatechartNode):
     root_link: Body
     tip_link: Body
     goal_point: cas.Point3
@@ -110,7 +109,7 @@ class PositionReached(Monitor):
 
 
 @validated_dataclass
-class OrientationReached(Monitor):
+class OrientationReached(MotionStatechartNode):
     root_link: Body
     tip_link: Body
     goal_orientation: cas.RotationMatrix
@@ -137,7 +136,7 @@ class OrientationReached(Monitor):
 
 
 @validated_dataclass
-class PointingAt(Monitor):
+class PointingAt(MotionStatechartNode):
     tip_link: Body
     goal_point: cas.Point3
     root_link: Body
@@ -169,7 +168,7 @@ class PointingAt(Monitor):
 
 
 @validated_dataclass
-class VectorsAligned(Monitor):
+class VectorsAligned(MotionStatechartNode):
     root_link: Body
     tip_link: Body
     goal_normal: cas.Vector3
@@ -197,7 +196,7 @@ class VectorsAligned(Monitor):
 
 
 @validated_dataclass
-class DistanceToLine(Monitor):
+class DistanceToLine(MotionStatechartNode):
     root_link: Body
     tip_link: Body
     center_point: cas.Point3

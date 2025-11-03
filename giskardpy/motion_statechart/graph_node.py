@@ -332,10 +332,6 @@ GenericMotionStatechartNode = TypeVar(
 
 
 @dataclass(eq=False, repr=False)
-class Monitor(MotionStatechartNode): ...
-
-
-@dataclass(eq=False, repr=False)
 class Goal(MotionStatechartNode):
     nodes: List[MotionStatechartNode] = field(default_factory=list)
     _plot_style: str = field(default="filled", kw_only=True)

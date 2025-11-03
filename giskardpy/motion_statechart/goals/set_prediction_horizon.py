@@ -1,13 +1,12 @@
 from typing import Union
 
 from giskardpy.god_map import god_map
-from giskardpy.motion_statechart.monitors.monitors import PayloadMonitor
-from giskardpy.qp.solvers.qp_solver_ids import SupportedQPSolver
+from giskardpy.motion_statechart.graph_node import MotionStatechartNode
 from giskardpy.utils.decorators import validated_dataclass
 
 
 @validated_dataclass
-class SetQPSolver(PayloadMonitor):
+class SetQPSolver(MotionStatechartNode):
     qp_solver_id: Union[SupportedQPSolver, int]
 
     def __post_init__(self):

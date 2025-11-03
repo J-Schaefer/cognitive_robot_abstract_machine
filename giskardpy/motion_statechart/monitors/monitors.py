@@ -7,14 +7,12 @@ from dataclasses import field
 import semantic_digital_twin.spatial_types.spatial_types as cas
 from giskardpy.god_map import god_map
 from giskardpy.motion_statechart.data_types import ObservationState
-from giskardpy.motion_statechart.graph_node import (
-    Monitor,
-)
+from giskardpy.motion_statechart.graph_node import MotionStatechartNode
 from giskardpy.utils.decorators import dataclass
 
 
 @dataclass
-class ThreadedPayloadMonitor(Monitor, ABC):
+class ThreadedPayloadMonitor(MotionStatechartNode, ABC):
     """
     A monitor which executes its __call__ function when start_condition becomes True.
     Subclass this and implement __init__.py and __call__. The __call__ method should change self.state to True when
@@ -30,7 +28,7 @@ class ThreadedPayloadMonitor(Monitor, ABC):
 
 
 @dataclass
-class LocalMinimumReached(Monitor):
+class LocalMinimumReached(MotionStatechartNode):
     min_cut_off: float = 0.01
     max_cut_off: float = 0.06
     joint_convergence_threshold: float = 0.01
@@ -57,7 +55,7 @@ class LocalMinimumReached(Monitor):
 
 
 @dataclass
-class TimeAbove(Monitor):
+class TimeAbove(MotionStatechartNode):
     threshold: float = field(kw_only=True)
 
     def __post_init__(self):
@@ -67,7 +65,7 @@ class TimeAbove(Monitor):
 
 
 @dataclass
-class Alternator(Monitor):
+class Alternator(MotionStatechartNode):
     mod: int = 2
 
     def __post_init__(self):
@@ -77,12 +75,12 @@ class Alternator(Monitor):
 
 
 @dataclass(eq=False, repr=False)
-class TrueMonitor(Monitor):
+class TrueMonitor(MotionStatechartNode):
     def create_observation_expression(self) -> cas.Expression:
         return cas.TrinaryTrue
 
 
 @dataclass(eq=False, repr=False)
-class FalseMonitor(Monitor):
+class FalseMonitor(MotionStatechartNode):
     def create_observation_expression(self) -> cas.Expression:
         return cas.TrinaryFalse
