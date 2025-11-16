@@ -49,11 +49,11 @@ class AlignPlanes(Task):
             weight=self.weight,
         )
         root_V_tip_normal.vis_frame = self.tip_link
-        god_map.debug_expression_manager.add_debug_expression(
+        god_map.context.add_debug_expression(
             f"{self.name}/current_normal", root_V_tip_normal, color=Color(1, 0, 0, 1)
         )
         self.root_V_root_normal.vis_frame = self.tip_link
-        god_map.debug_expression_manager.add_debug_expression(
+        god_map.context.add_debug_expression(
             f"{self.name}/goal_normal", self.root_V_root_normal, color=Color(0, 0, 1, 1)
         )
 

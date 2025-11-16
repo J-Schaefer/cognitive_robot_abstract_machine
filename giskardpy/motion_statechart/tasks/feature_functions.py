@@ -36,7 +36,7 @@ class FeatureFunctionGoal(Task):
         )
         if isinstance(self.controlled_feature, cas.Point3):
             self.root_P_controlled_feature = root_T_tip @ tip_controlled_feature
-            god_map.debug_expression_manager.add_debug_expression(
+            god_map.context.add_debug_expression(
                 "root_P_controlled_feature",
                 self.root_P_controlled_feature,
                 color=Color(1, 0, 0, 1),
@@ -44,7 +44,7 @@ class FeatureFunctionGoal(Task):
         elif isinstance(self.controlled_feature, cas.Vector3):
             self.root_V_controlled_feature = root_T_tip @ tip_controlled_feature
             self.root_V_controlled_feature.vis_frame = self.controlled_feature.vis_frame
-            god_map.debug_expression_manager.add_debug_expression(
+            god_map.context.add_debug_expression(
                 "root_V_controlled_feature",
                 self.root_V_controlled_feature,
                 color=Color(1, 0, 0, 1),
@@ -52,7 +52,7 @@ class FeatureFunctionGoal(Task):
 
         if isinstance(self.reference_feature, cas.Point3):
             self.root_P_reference_feature = root_reference_feature
-            god_map.debug_expression_manager.add_debug_expression(
+            god_map.context.add_debug_expression(
                 "root_P_reference_feature",
                 self.root_P_reference_feature,
                 color=Color(0, 1, 0, 1),
@@ -60,7 +60,7 @@ class FeatureFunctionGoal(Task):
         if isinstance(self.reference_feature, cas.Vector3):
             self.root_V_reference_feature = root_reference_feature
             self.root_V_reference_feature.vis_frame = self.controlled_feature.vis_frame
-            god_map.debug_expression_manager.add_debug_expression(
+            god_map.context.add_debug_expression(
                 "root_V_reference_feature",
                 self.root_V_reference_feature,
                 color=Color(0, 1, 0, 1),

@@ -132,16 +132,12 @@ class WiggleInsert(Task):
             weight=self.weight + 1,
         )
 
-        god_map.debug_expression_manager.add_debug_expression(
-            name="r_P_g", expression=r_P_g
-        )
-        god_map.debug_expression_manager.add_debug_expression(
-            name="r_P_g_rand", expression=r_P_g_rand
-        )
-        god_map.debug_expression_manager.add_debug_expression(
+        god_map.context.add_debug_expression(name="r_P_g", expression=r_P_g)
+        god_map.context.add_debug_expression(name="r_P_g_rand", expression=r_P_g_rand)
+        god_map.context.add_debug_expression(
             name="root_R_hole_normal", expression=root_R_hole_normal
         )
-        god_map.debug_expression_manager.add_debug_expression(
+        god_map.context.add_debug_expression(
             name="tip_R_hole_normal", expression=tip_R_hole_normal
         )
 

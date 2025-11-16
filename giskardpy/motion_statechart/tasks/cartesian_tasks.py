@@ -136,12 +136,6 @@ class CartesianPositionStraight(Task):
             task_expression=expr_p[:3],
             names=["line/x", "line/y", "line/z"],
         )
-        god_map.debug_expression_manager.add_debug_expression(
-            f"{self.name}/current_point", root_P_tip, color=Color(1, 0, 0, 1)
-        )
-        god_map.debug_expression_manager.add_debug_expression(
-            f"{self.name}/goal_point", root_P_goal, color=Color(0, 0, 1, 1)
-        )
         self.observation_expression = dist < self.threshold
 
 
@@ -419,23 +413,6 @@ class CartesianPositionVelocityTarget(Task):
         r_P_c = context.world.compose_forward_kinematics_expression(
             self.root_link, self.tip_link
         ).to_position()
-        god_map.debug_expression_manager.add_debug_expression(
-            f"{self.name}/target",
-            cas.Expression(self.y_vel),
-            derivative=Derivatives.velocity,
-            derivatives_to_plot=[
-                # Derivatives.position,
-                Derivatives.velocity
-            ],
-        )
-        god_map.debug_expression_manager.add_debug_expression(
-            f"{self.name}/current",
-            r_P_c.y,
-            derivative=Derivatives.position,
-            derivatives_to_plot=Derivatives.range(
-                Derivatives.position, Derivatives.jerk
-            ),
-        )
         self.add_velocity_eq_constraint_vector(
             velocity_goals=cas.Expression([self.x_vel, self.y_vel, self.z_vel]),
             task_expression=r_P_c,
@@ -481,13 +458,10 @@ class JustinTorsoLimitCart(Task):
         )
         # distance = cas.distance_point_to_line(torso_root_P_torso_tip, cas.Point3((0, 0, 0)), torso_root_V_up)
 
-        # god_map.debug_expression_manager.add_debug_expression(f'{self.name}/torso_root_V_up',
+        # god_map.context.add_debug_expression(f'{self.name}/torso_root_V_up',
         #                                                       expression=torso_root_V_up)
-        # god_map.debug_expression_manager.add_debug_expression(f'{self.name}/torso_root_P_torso_tip',
+        # god_map.context.add_debug_expression(f'{self.name}/torso_root_P_torso_tip',
         #                                                       expression=torso_root_P_torso_tip)
-        god_map.debug_expression_manager.add_debug_expression(
-            f"{self.name}/distance", expression=distance
-        )
 
         self.add_inequality_constraint(
             reference_velocity=CartesianPosition.default_reference_velocity,

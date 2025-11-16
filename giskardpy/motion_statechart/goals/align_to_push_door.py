@@ -83,14 +83,14 @@ class AlignToPushDoor(Goal):
         minimum_angle_to_push_door = joint_limit[1] / 4
 
         if object_joint_angle >= minimum_angle_to_push_door:
-            god_map.debug_expression_manager.add_debug_expression(
+            context.context.add_debug_expression(
                 "goal_point", root_P_top, color=Color(0, 0.5, 0.5, 1)
             )
 
-            god_map.debug_expression_manager.add_debug_expression(
+            context.context.add_debug_expression(
                 "root_V_grasp_axis", root_V_tip_grasp_axis
             )
-            god_map.debug_expression_manager.add_debug_expression(
+            context.context.add_debug_expression(
                 "root_V_object_axis", root_V_object_rotation_axis
             )
             align_to_push_task = Task(name="align_to_push_door")

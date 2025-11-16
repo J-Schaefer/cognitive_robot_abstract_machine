@@ -177,8 +177,8 @@ from semantic_digital_twin.world_description.world_entity import Body
 #             cas.abs(final_rotation_error), eps
 #         )
 #
-#         god_map.debug_expression_manager.add_debug_expression("distance", distance)
-#         # god_map.debug_expression_manager.add_debug_expression('final_orientation.observation_expression', final_orientation.observation_expression)
+#         god_map.context.add_debug_expression("distance", distance)
+#         # god_map.context.add_debug_expression('final_orientation.observation_expression', final_orientation.observation_expression)
 #
 #         orient_to_goal.end_condition = orient_to_goal
 #         drive_to_goal.start_condition = orient_to_goal

@@ -64,7 +64,7 @@ class PrePushDoor(Goal):
             root_T_door
         ) @ cas.Point3.from_iterable(door_P_nearest)
 
-        god_map.debug_expression_manager.add_debug_expression(
+        context.context.add_debug_expression(
             "goal_point_on_plane",
             cas.Point3.from_iterable(root_P_nearest_in_rotated_door),
         )

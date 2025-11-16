@@ -63,23 +63,19 @@ class BaseArmWeightScaling(Task):
                     gains[Derivatives.jerk][v] = v_gain
             list_gains.append(gains)
 
-        god_map.debug_expression_manager.add_debug_expression(
+        god_map.context.add_debug_expression(
             "base_scaling",
             self.gain
             * cas.Expression(1).safe_division(
                 (scaling_exp / base_v.upper_limits.velocity).norm()
             ),
         )
-        god_map.debug_expression_manager.add_debug_expression(
+        god_map.context.add_debug_expression(
             "arm_scaling",
             self.gain * (scaling_exp / arm_v.upper_limits.velocity).norm(),
         )
-        god_map.debug_expression_manager.add_debug_expression(
-            "norm", scaling_exp.norm()
-        )
-        god_map.debug_expression_manager.add_debug_expression(
-            "division", 1 / scaling_exp.norm()
-        )
+        god_map.context.add_debug_expression("norm", scaling_exp.norm())
+        god_map.context.add_debug_expression("division", 1 / scaling_exp.norm())
         self.add_quadratic_weight_gain("baseToArmScaling", gains=list_gains)
 
 
@@ -114,10 +110,10 @@ class MaxManipulability(Task):
             name=self.name,
         )
 
-        god_map.debug_expression_manager.add_debug_expression(
+        god_map.context.add_debug_expression(
             f"mIndex {self.tip_link.name.name}", m, derivatives_to_plot=[0, 1]
         )
-        god_map.debug_expression_manager.add_debug_expression(
+        god_map.context.add_debug_expression(
             f"mIndex {self.tip_link.name.name} threshold",
             self.m_threshold,
             derivatives_to_plot=[0, 1],

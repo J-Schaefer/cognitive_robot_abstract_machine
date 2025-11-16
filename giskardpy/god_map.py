@@ -27,8 +27,6 @@ if TYPE_CHECKING:
 
 
 class GodMap:
-    # %% managers
-    debug_expression_manager: DebugExpressionManager
 
     # %% controller datatypes
     trajectory: Trajectory
@@ -40,15 +38,6 @@ class GodMap:
     tmp_folder: str
 
     def __getattr__(self, item):
-        # automatically initialize certain attributes
-        if item == "world":
-            from semantic_digital_twin.world import World
-
-            self.world = World()
-        elif item == "debug_expression_manager":
-            from giskardpy.debug_expression_manager import DebugExpressionManager
-
-            self.debug_expression_manager = DebugExpressionManager()
         return super().__getattribute__(item)
 
     def to_tmp_path(self, file_name: str) -> str:

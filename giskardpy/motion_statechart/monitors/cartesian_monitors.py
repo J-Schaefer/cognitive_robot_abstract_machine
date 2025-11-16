@@ -31,9 +31,7 @@ class InWorldSpace(MotionStatechartNode):
 
         error = map_T_tip.to_position() - map_T_drive.to_position()
         error.vis_frame = self.drive_link
-        god_map.debug_expression_manager.add_debug_expression(
-            f"{self.name}/error", error
-        )
+        context.context.add_debug_expression(f"{self.name}/error", error)
         self.observation_expression = cas.logic_and(
             cas.abs(error.x) <= self.xyz[0],
             cas.abs(error.y) <= self.xyz[1],

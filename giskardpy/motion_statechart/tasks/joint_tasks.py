@@ -281,19 +281,15 @@ class JustinTorsoLimit(Task):
             lower_error = self.lower_limit - current
             upper_error = self.upper_limit - current
 
-        god_map.debug_expression_manager.add_debug_expression("torso 4 joint", current)
-        god_map.debug_expression_manager.add_debug_expression(
+        god_map.context.add_debug_expression("torso 4 joint", current)
+        god_map.context.add_debug_expression(
             "torso 2 joint", joint.q1.get_symbol(Derivatives.position)
         )
-        god_map.debug_expression_manager.add_debug_expression(
+        god_map.context.add_debug_expression(
             "torso 3 joint", joint.q2.get_symbol(Derivatives.position)
         )
-        god_map.debug_expression_manager.add_debug_expression(
-            "lower_limit", self.lower_limit
-        )
-        god_map.debug_expression_manager.add_debug_expression(
-            "upper_limit", self.upper_limit
-        )
+        god_map.context.add_debug_expression("lower_limit", self.lower_limit)
+        god_map.context.add_debug_expression("upper_limit", self.upper_limit)
 
         self.add_inequality_constraint(
             name=self.name,

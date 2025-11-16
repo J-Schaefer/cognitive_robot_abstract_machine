@@ -124,10 +124,10 @@ class PointingCone(Task):
         root_V_pointing_axis = root_T_tip.dot(tip_V_pointing_axis)
         root_V_pointing_axis.vis_frame = self.tip_link
         root_V_goal_axis.vis_frame = self.tip_link
-        god_map.debug_expression_manager.add_debug_expression(
+        god_map.context.add_debug_expression(
             "root_V_pointing_axis", root_V_pointing_axis, color=Color(1, 0, 0, 1)
         )
-        god_map.debug_expression_manager.add_debug_expression(
+        god_map.context.add_debug_expression(
             "goal_point", root_P_goal_point, color=Color(0, 0, 1, 1)
         )
 
@@ -135,10 +135,10 @@ class PointingCone(Task):
             root_V_goal_axis, self.cone_theta
         )
         root_V_goal_axis_proj.vis_frame = self.tip_link
-        god_map.debug_expression_manager.add_debug_expression(
+        god_map.context.add_debug_expression(
             "cone_axis", root_V_goal_axis, color=Color(1, 1, 0, 1)
         )
-        god_map.debug_expression_manager.add_debug_expression(
+        god_map.context.add_debug_expression(
             "projected_axis", root_V_goal_axis_proj, color=Color(1, 1, 0, 1)
         )
 

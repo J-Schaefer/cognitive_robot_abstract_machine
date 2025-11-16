@@ -87,7 +87,7 @@ class QPControllerDebugger:
                 self.p_A,
                 self.p_lbA,
                 self.p_ubA,
-                god_map.debug_expression_manager.to_pandas(),
+                None,
                 self.p_xdot,
             ],
             ["weights", "b", "E", "bE", "A", "lbA", "ubA", "debug"],
@@ -286,9 +286,6 @@ class QPControllerDebugger:
         else:
             self.p_Ex = pd.DataFrame()
 
-    def _update_debug_expressions(self):
-        self.p_debug = god_map.debug_expression_manager.to_pandas()
-
     @property
     def qp_data(self):
         return self.qp_controller.qp_adapter.qp_data_raw
@@ -315,7 +312,6 @@ class QPControllerDebugger:
         self._update_equality_matrix()
         self._update_inequality_matrix()
         self._update_xdot(new_xdot_full)
-        self._update_debug_expressions()
 
     def _print_iis(self):
         import pandas as pd
