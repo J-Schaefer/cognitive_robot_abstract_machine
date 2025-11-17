@@ -184,15 +184,11 @@ class CollisionMatrixManager:
             if collision_request.any_view1():
                 view_1_bodies = self.world.bodies_with_enabled_collision
             else:
-                view_1_bodies = (
-                    collision_request.semantic_annotation1.bodies_with_enabled_collision
-                )
+                view_1_bodies = collision_request.body_group1
             if collision_request.any_view2():
                 view2_bodies = self.world.bodies_with_enabled_collision
             else:
-                view2_bodies = (
-                    collision_request.semantic_annotation2.bodies_with_enabled_collision
-                )
+                view2_bodies = collision_request.body_group2
             disabled_pairs = self.world._collision_pair_manager.disabled_collision_pairs
             for body1 in view_1_bodies:
                 for body2 in view2_bodies:

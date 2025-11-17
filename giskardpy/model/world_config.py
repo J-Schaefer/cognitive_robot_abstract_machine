@@ -3,21 +3,22 @@ from __future__ import annotations
 import abc
 from abc import ABC
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 
-from giskardpy.model.utils import robot_name_from_urdf_string
 from semantic_digital_twin.adapters.urdf import URDFParser
-from semantic_digital_twin.world_description.connections import (
-    Connection6DoF,
-    OmniDrive,
-)
-from semantic_digital_twin.world_description.geometry import Color
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.spatial_types.derivatives import Derivatives
 from semantic_digital_twin.world import World
-from semantic_digital_twin.world_description.world_entity import Body
+from semantic_digital_twin.world_description.connections import (
+    Connection6DoF,
+    OmniDrive,
+    FixedConnection,
+)
+from semantic_digital_twin.world_description.world_entity import (
+    Body,
+    KinematicStructureEntity,
+)
 
 
 @dataclass
@@ -49,24 +50,22 @@ class EmptyWorld(WorldConfig):
         self.add_empty_link(PrefixedName("map"))
 
 
+@dataclass
 class WorldWithFixedRobot(WorldConfig):
-    def __init__(self, urdf: str, map_name: str = "map"):
-        super().__init__()
-        self.urdf = urdf
-        self.map_name = PrefixedName(map_name)
+    urdf: str = field(kw_only=True)
+    root_name: PrefixedName = field(default=PrefixedName("map"))
+    robot_name: PrefixedName = field(default=PrefixedName("robot"))
+    robot_root: KinematicStructureEntity = field(init=False)
 
-    def setup_world(self, robot_name: Optional[str] = None) -> None:
-        self.set_default_limits(
-            {
-                Derivatives.velocity: 1,
-                Derivatives.acceleration: np.inf,
-                Derivatives.jerk: None,
-            }
-        )
-        self.add_empty_link(self.map_name)
-        self.add_robot_urdf(self.urdf, robot_name)
-        root_link_name = self.get_root_link_of_group(self.robot_group_name)
-        self.add_fixed_joint(parent_link=self.map_name, child_link=root_link_name)
+    def setup_world(self):
+        map = Body(name=self.root_name)
+
+        urdf_parser = URDFParser(urdf=self.urdf)
+        world_with_robot = urdf_parser.parse()
+        self.robot_root = world_with_robot.root
+        map_C_robot = FixedConnection(parent=map, child=self.robot_root)
+
+        self.world.merge_world(world_with_robot, map_C_robot)
 
 
 @dataclass
