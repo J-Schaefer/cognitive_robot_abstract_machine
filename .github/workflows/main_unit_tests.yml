@@ -34,8 +34,24 @@ jobs:
       packages: write
 
     uses: ./.github/workflows/publish_dockerfiles.yml
-  test:
+
+  # GitHub Repository-Owners can have uppercase letters.
+  # Container Registry URLs need to be lowercase.
+  # This job emits a lowercase repo string for container image resolution.
+  to-lowercase:
     needs: docker
+    runs-on: ubuntu-latest
+    outputs:
+      repo_lowercase: ${{ steps.lowercase.outputs.repository }}
+    steps:
+      - id: lowercase
+        name: Write lowercase repository output
+        run: |
+          # Portable lowercase: convert GITHUB_REPOSITORY to lower case and expose as job output
+          echo "repository=$(echo \"$GITHUB_REPOSITORY\" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+  test:
+    needs: to-lowercase
     strategy:
       # Lets all tests finish, even if one test fails
       fail-fast: false
@@ -45,7 +61,7 @@ jobs:
         qp_solver: [ qpSWIFT ]
     runs-on: ubuntu-latest
     container: # Login and start specified container image. Ubuntu20.04 isn't supported on GitHub-Workflow as of 04.2025
-      image: ghcr.io/${{ toLower(github.repository) }}:${{ matrix.ubuntu_version }}
+      image: ghcr.io/${{ needs.to-lowercase.outputs.repo_lowercase }}:${{ matrix.ubuntu_version }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
