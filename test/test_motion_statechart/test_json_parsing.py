@@ -2,7 +2,6 @@ import json
 
 import numpy as np
 
-from conftest import mini_world
 from giskardpy.executor import Executor
 from giskardpy.model.collision_matrix_manager import (
     CollisionRequest,

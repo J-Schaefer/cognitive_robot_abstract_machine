@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 
 import semantic_digital_twin.spatial_types.spatial_types as cas
-from conftest import box_bot_world
 from giskardpy.executor import Executor
 from giskardpy.model.collision_matrix_manager import CollisionRequest
 from giskardpy.model.collision_world_syncer import CollisionCheckerLib

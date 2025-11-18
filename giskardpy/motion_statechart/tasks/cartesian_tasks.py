@@ -205,7 +205,7 @@ class CartesianPose(Task):
     """The goal pose"""
 
     reference_linear_velocity: float = field(
-        default=CartesianPosition.default_reference_velocity
+        default=CartesianPosition.default_reference_velocity, kw_only=True
     )
     """
     Unit: m/s
@@ -213,14 +213,14 @@ class CartesianPose(Task):
     """
 
     reference_angular_velocity: float = field(
-        default=CartesianOrientation.default_reference_velocity
+        default=CartesianOrientation.default_reference_velocity, kw_only=True
     )
     """
     Unit: rad/s
     This is used for normalization, for real limits use CartesianVelocityLimit.
     """
 
-    threshold: float = field(default=0.01)
+    threshold: float = field(default=0.01, kw_only=True)
     """
     If the error falls below this threshold, the goal is achieved.
     This is used for both position and orientation.
@@ -233,7 +233,7 @@ class CartesianPose(Task):
     """Describes when the goal is computed. See GoalBindingPolicy for more information."""
     _fk_binding: ForwardKinematicsBinding = field(kw_only=True, init=False)
 
-    weight: float = field(default=DefaultWeights.WEIGHT_BELOW_CA)
+    weight: float = field(default=DefaultWeights.WEIGHT_BELOW_CA, kw_only=True)
 
     def build(self, context: BuildContext) -> NodeArtifacts:
         artifacts = NodeArtifacts()

@@ -7,8 +7,8 @@ on:
     branches:
       - giskard_library
   pull_request:
-    branches:
-      - giskard_library
+#    branches:
+#      - giskard_library
 #      - master
 #      - devel
   workflow_dispatch:
@@ -52,7 +52,7 @@ jobs:
       # Lets all tests finish, even if one test fails
       fail-fast: false
       matrix:
-        tests: [ "test_cas_wrapper", "test_symbol_manager", "test_giskard_library"]
+        tests: [ "test/test_motion_statechart"]
         ubuntu_version: [ "20.04", "24.04"]
         qp_solver: [ qpSWIFT ]
     runs-on: ubuntu-latest
@@ -74,7 +74,7 @@ jobs:
       - name: test
         run: |
           cd giskardpy/test
-          python3 -m pytest -s ${{ matrix.tests }}.py
+          python3 -m pytest -s ${{ matrix.tests }}
   #    - name: Setup upterm session
   ##      if: always()
   #      if: failure()
