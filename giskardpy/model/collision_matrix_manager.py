@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional, Set, Dict, Any, Self
 
-from krrood.adapters.json_serializer import SubclassJSONSerializer
+from krrood.adapters.json_serializer import SubclassJSONSerializer, to_json, from_json
 
 from giskardpy.utils.utils import JsonSerializableEnum
 from semantic_digital_twin.adapters.world_entity_kwargs_tracker import (
@@ -40,24 +40,20 @@ class CollisionRequest(SubclassJSONSerializer):
             **super().to_json(),
             "type_": self.type_.to_json(),
             "distance": self.distance,
-            "body_group1_names": [body.name.to_json() for body in self.body_group1],
-            "body_group2_names": [body.name.to_json() for body in self.body_group2],
+            "body_group1_ids": [to_json(body.id) for body in self.body_group1],
+            "body_group2_ids": [to_json(body.id) for body in self.body_group2],
         }
 
     @classmethod
     def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
         tracker = KinematicStructureEntityKwargsTracker.from_kwargs(kwargs)
         body_group1 = [
-            tracker.get_kinematic_structure_entity(
-                PrefixedName.from_json(name, **kwargs)
-            )
-            for name in data["body_group1_names"]
+            tracker.get_kinematic_structure_entity(from_json(id_))
+            for id_ in data["body_group1_ids"]
         ]
         body_group2 = [
-            tracker.get_kinematic_structure_entity(
-                PrefixedName.from_json(name, **kwargs)
-            )
-            for name in data["body_group2_names"]
+            tracker.get_kinematic_structure_entity(from_json(id_))
+            for id_ in data["body_group2_ids"]
         ]
         return cls(
             type_=CollisionAvoidanceTypes.from_json(data["type_"], **kwargs),
