@@ -105,7 +105,7 @@ class NonPositiveLimitValue(UsageError):
 
     def __post_init__(self):
         self.message = (
-            f"Quantifier limit value must be a non positive integer (i.e., greater than 0),"
+            f"Quantifier limit value must be a positive integer (i.e., greater than 0),"
             f" instead got {self.wrong_limit_value}"
         )
         super().__post_init__()
