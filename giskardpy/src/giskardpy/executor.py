@@ -35,9 +35,9 @@ class Pacer(ABC):
     Tries to achieve a specific frequency by adjusting the sleep time between calls.
     """
 
-    hz: float
+    target_frequency: float
     """
-    Frequency of the loop.
+    Frequency of the loop in hertz.
     """
 
     @abstractmethod
@@ -49,7 +49,7 @@ class Pacer(ABC):
 
 @dataclass
 class SimulationPacer(Pacer):
-    hz: float = field(init=False)
+    target_frequency: float = field(init=False)
     """
     How long a cycle should take in seconds with real_time_factor=1.0.
     """
@@ -73,7 +73,7 @@ class SimulationPacer(Pacer):
             return
         if self.real_time_factor <= 0:
             return
-        dt = self.real_time_factor / self.hz
+        dt = 1 / (self.target_frequency * self.real_time_factor)
         now = time.monotonic()
         if self._next_target_time is None:
             self._next_target_time = now + dt
@@ -148,7 +148,7 @@ class Executor:
             robots=self.world.get_semantic_annotations_by_type(AbstractRobot),
             collision_detector=collision_detector,
         )
-        self.pacer.hz = self.controller_config.hz
+        self.pacer.target_frequency = self.controller_config.target_frequency
 
     def _create_control_cycles_variable(self):
         self._control_cycles_variable = (

@@ -54,7 +54,7 @@ class QPControllerConfig:
         4. If Giskard cannot keep up with the frequency, reduce hz and go back to step 2.
     """
 
-    hz: float
+    target_frequency: float
     """
     Target frequency of the control loop in Hz.
     A higher value will result in a more responsive and thus smoother control signal, 
@@ -153,9 +153,9 @@ class QPControllerConfig:
     """
 
     def __post_init__(self):
-        if self.hz < 20:
+        if self.target_frequency < 20:
             logging.warning(
-                f"Hertz ({self.hz}) is below 20Hz. This might cause instability."
+                f"Hertz ({self.target_frequency}) is below 20Hz. This might cause instability."
             )
         self.mpc_dt = self.control_dt
         if not self.qp_formulation.is_mpc:
@@ -171,12 +171,12 @@ class QPControllerConfig:
         """
         Time step of the control loop in seconds.
         """
-        return 1 / self.hz
+        return 1 / self.target_frequency
 
     @classmethod
     def create_with_simulation_defaults(cls):
         return cls(
-            hz=20,
+            target_frequency=20,
             prediction_horizon=7,
         )
 

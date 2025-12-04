@@ -12,7 +12,7 @@ from semantic_digital_twin.world import World
 
 def test_simulation_pacer_timing_real_time(monkeypatch):
     pacer = SimulationPacer(real_time_factor=1.0)
-    pacer.hz = 50
+    pacer.target_frequency = 50
     start_time = perf_counter()
     for i in range(50):
         pacer.sleep()
@@ -21,16 +21,17 @@ def test_simulation_pacer_timing_real_time(monkeypatch):
 
 def test_simulation_pacer_timing_2x(monkeypatch):
     pacer = SimulationPacer(real_time_factor=2.0)
-    pacer.hz = 50
+    pacer.target_frequency = 50
     start_time = perf_counter()
     for i in range(50):
         pacer.sleep()
-    assert np.isclose(perf_counter() - start_time, 0.5, rtol=0.01)
+    actual = perf_counter() - start_time
+    assert np.isclose(actual, 0.5, rtol=0.01)
 
 
 def test_simulation_pacer_timing_halfx(monkeypatch):
     pacer = SimulationPacer(real_time_factor=0.5)
-    pacer.hz = 50
+    pacer.target_frequency = 50
     start_time = perf_counter()
     for i in range(50):
         pacer.sleep()
@@ -39,7 +40,7 @@ def test_simulation_pacer_timing_halfx(monkeypatch):
 
 def test_simulation_pacer_timing_inf(monkeypatch):
     pacer = SimulationPacer(real_time_factor=None)
-    pacer.hz = 50
+    pacer.target_frequency = 50
     start_time = perf_counter()
     for i in range(50):
         pacer.sleep()
