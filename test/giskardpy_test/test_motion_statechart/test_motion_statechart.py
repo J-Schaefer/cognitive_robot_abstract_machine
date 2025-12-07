@@ -1645,7 +1645,7 @@ class TestOpenClose:
         factory = DoorFactory(
             name=PrefixedName("door"),
             handle_factory=HandleFactory(name=PrefixedName("handle")),
-            semantic_position=SemanticPositionDescription(
+            semantic_handle_position=SemanticPositionDescription(
                 horizontal_direction_chain=[
                     HorizontalSemanticDirection.RIGHT,
                     HorizontalSemanticDirection.FULLY_CENTER,

@@ -6,7 +6,10 @@ import rclpy
 from semantic_digital_twin.adapters.viz_marker import VizMarkerPublisher
 from semantic_digital_twin.world_description.geometry import Scale
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
-from semantic_digital_twin.spatial_types.spatial_types import TransformationMatrix, Vector3
+from semantic_digital_twin.spatial_types.spatial_types import (
+    TransformationMatrix,
+    Vector3,
+)
 from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Handle,
     Door,
@@ -55,7 +58,7 @@ class TestFactories(unittest.TestCase):
         factory = DoorFactory(
             name=PrefixedName("door"),
             handle_factory=HandleFactory(name=PrefixedName("handle")),
-            semantic_position=SemanticPositionDescription(
+            semantic_handle_position=SemanticPositionDescription(
                 horizontal_direction_chain=[
                     HorizontalSemanticDirection.RIGHT,
                     HorizontalSemanticDirection.FULLY_CENTER,
@@ -75,7 +78,7 @@ class TestFactories(unittest.TestCase):
         door_factory = DoorFactory(
             name=PrefixedName("door"),
             handle_factory=HandleFactory(name=PrefixedName("handle")),
-            semantic_position=SemanticPositionDescription(
+            semantic_handle_position=SemanticPositionDescription(
                 horizontal_direction_chain=[
                     HorizontalSemanticDirection.RIGHT,
                     HorizontalSemanticDirection.FULLY_CENTER,
@@ -88,7 +91,7 @@ class TestFactories(unittest.TestCase):
         door_factory2 = DoorFactory(
             name=PrefixedName("door2"),
             handle_factory=HandleFactory(name=PrefixedName("handle2")),
-            semantic_position=SemanticPositionDescription(
+            semantic_handle_position=SemanticPositionDescription(
                 horizontal_direction_chain=[
                     HorizontalSemanticDirection.LEFT,
                     HorizontalSemanticDirection.FULLY_CENTER,
@@ -137,7 +140,7 @@ class TestFactories(unittest.TestCase):
             name=PrefixedName("drawer"),
             container_factory=ContainerFactory(name=PrefixedName("container")),
             handle_factory=HandleFactory(name=PrefixedName("handle")),
-            semantic_position=SemanticPositionDescription(
+            semantic_handle_position=SemanticPositionDescription(
                 horizontal_direction_chain=[
                     HorizontalSemanticDirection.FULLY_CENTER,
                 ],
@@ -156,7 +159,7 @@ class TestFactories(unittest.TestCase):
             name=PrefixedName("drawer"),
             container_factory=ContainerFactory(name=PrefixedName("drawer_container")),
             handle_factory=HandleFactory(name=PrefixedName("drawer_handle")),
-            semantic_position=SemanticPositionDescription(
+            semantic_handle_position=SemanticPositionDescription(
                 horizontal_direction_chain=[
                     HorizontalSemanticDirection.FULLY_CENTER,
                 ],
@@ -169,12 +172,15 @@ class TestFactories(unittest.TestCase):
             name=PrefixedName("door"),
             handle_factory=HandleFactory(name=PrefixedName("door_handle")),
             scale=Scale(0.03, 1, 1.0),
-            semantic_position=SemanticPositionDescription(
+            semantic_handle_position=SemanticPositionDescription(
                 horizontal_direction_chain=[
-                    HorizontalSemanticDirection.RIGHT,
+                    HorizontalSemanticDirection.LEFT,
                     HorizontalSemanticDirection.FULLY_CENTER,
                 ],
-                vertical_direction_chain=[VerticalSemanticDirection.FULLY_CENTER],
+                vertical_direction_chain=[
+                    # VerticalSemanticDirection.TOP,
+                    VerticalSemanticDirection.FULLY_CENTER,
+                ],
             ),
         )
 
@@ -188,7 +194,7 @@ class TestFactories(unittest.TestCase):
             # drawers_factories=[drawer_factory],
             door_transforms=[door_transform],
             door_factories=[door_factory],
-            door_opening_axes=[Vector3.Y()],
+            door_opening_axes=[Vector3.Z()],
             container_factory=container_factory,
         )
 
@@ -215,7 +221,7 @@ class TestFactories(unittest.TestCase):
         door_factory = DoorFactory(
             name=PrefixedName("door"),
             handle_factory=HandleFactory(name=PrefixedName("handle")),
-            semantic_position=SemanticPositionDescription(
+            semantic_handle_position=SemanticPositionDescription(
                 horizontal_direction_chain=[
                     HorizontalSemanticDirection.RIGHT,
                     HorizontalSemanticDirection.FULLY_CENTER,
@@ -228,7 +234,7 @@ class TestFactories(unittest.TestCase):
         door_factory2 = DoorFactory(
             name=PrefixedName("door2"),
             handle_factory=HandleFactory(name=PrefixedName("handle2")),
-            semantic_position=SemanticPositionDescription(
+            semantic_handle_position=SemanticPositionDescription(
                 horizontal_direction_chain=[
                     HorizontalSemanticDirection.LEFT,
                     HorizontalSemanticDirection.FULLY_CENTER,
@@ -251,7 +257,7 @@ class TestFactories(unittest.TestCase):
         single_door_factory = DoorFactory(
             name=PrefixedName("single_door"),
             handle_factory=HandleFactory(name=PrefixedName("single_door_handle")),
-            semantic_position=SemanticPositionDescription(
+            semantic_handle_position=SemanticPositionDescription(
                 horizontal_direction_chain=[
                     HorizontalSemanticDirection.RIGHT,
                     HorizontalSemanticDirection.FULLY_CENTER,

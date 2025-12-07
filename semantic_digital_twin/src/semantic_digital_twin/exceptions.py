@@ -26,6 +26,7 @@ if TYPE_CHECKING:
         KinematicStructureEntity,
     )
     from .spatial_types.spatial_types import FloatVariable, SymbolicType
+    from .spatial_types import Vector3
 
 
 @dataclass
@@ -97,6 +98,15 @@ class UsageError(LogicalError):
     """
     An exception raised when an incorrect usage of the API is encountered.
     """
+
+
+@dataclass
+class InvalidAxisError(UsageError):
+    axis: Vector3
+
+    def __post_init__(self):
+        msg = f"Invalid axis {self.axis}."
+        super().__init__(msg)
 
 
 @dataclass

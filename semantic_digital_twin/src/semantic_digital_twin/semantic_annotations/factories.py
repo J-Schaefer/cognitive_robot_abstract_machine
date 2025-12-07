@@ -25,6 +25,7 @@ from typing_extensions import Generic, TypeVar
 
 from ..datastructures.prefixed_name import PrefixedName
 from ..datastructures.variables import SpatialVariables
+from ..exceptions import InvalidAxisError
 from ..spatial_types.derivatives import DerivativeMap
 from ..spatial_types.spatial_types import (
     TransformationMatrix,
@@ -94,17 +95,31 @@ class HasDoorLikeFactories(ABC):
     """
 
     def _create_door_upper_lower_limits(
-        self, parent_T_hinge: TransformationMatrix
+        self, parent_T_hinge: TransformationMatrix, opening_axis: Vector3
     ) -> Tuple[DerivativeMap[float], DerivativeMap[float]]:
         """
         Return the upper and lower limits for the door's degree of freedom.
 
         :param parent_T_hinge: The transformation matrix defining the door's pivot point relative to the parent world.
+        :param opening_axis: The axis around which the door opens.
+
+        :return: The upper and lower limits for the door's degree of freedom.
         """
-        sign = np.sign(parent_T_hinge.to_position().to_np()[1])
 
         # upper and lower limit need to be chosen based on the pivot point of the door
-        lower_limit_position, upper_limit_position =  (-np.pi / 2, 0) if sign < 0 else (0, np.pi / 2)
+        match opening_axis.to_np().tolist():
+            case [0, 1, 0, 0]:
+                sign = np.sign(parent_T_hinge.to_position().to_np()[2])
+                lower_limit_position, upper_limit_position = (
+                    (-np.pi / 2, 0) if sign > 0 else (0, np.pi / 2)
+                )
+            case [0, 0, 1, 0]:
+                sign = np.sign(parent_T_hinge.to_position().to_np()[1])
+                lower_limit_position, upper_limit_position = (
+                    (-np.pi / 2, 0) if sign < 0 else (0, np.pi / 2)
+                )
+            case _:
+                raise InvalidAxisError(axis=opening_axis)
 
         lower_limits = DerivativeMap[float]()
         upper_limits = DerivativeMap[float]()
@@ -114,12 +129,16 @@ class HasDoorLikeFactories(ABC):
         return upper_limits, lower_limits
 
     def _add_hinge_to_door(
-        self, door_factory: DoorFactory, parent_T_door: TransformationMatrix
+        self,
+        door_factory: DoorFactory,
+        parent_T_door: TransformationMatrix,
+        opening_axis: Vector3,
     ):
         """
         Adds a hinge to the door. The hinge's pivot point is on the opposite side of the handle.
         :param door_factory: The factory used to create the door.
         :param parent_T_door: The transformation matrix defining the door's position and orientation relative
+        :param opening_axis: The axis around which the door opens.
         """
         door_world = door_factory.create()
         root = door_world.root
@@ -131,7 +150,7 @@ class HasDoorLikeFactories(ABC):
             name=PrefixedName(f"{root.name.name}_door_hinge", root.name.prefix)
         )
         parent_T_hinge = self._calculate_door_pivot_point(
-            semantic_door_annotation, parent_T_door, door_factory.scale
+            semantic_door_annotation, parent_T_door, door_factory.scale, opening_axis
         )
         hinge_T_door = parent_T_hinge.inverse() @ parent_T_door
 
@@ -160,11 +179,11 @@ class HasDoorLikeFactories(ABC):
         """
         with parent_world.modify_world():
             door_world, parent_T_hinge = self._add_hinge_to_door(
-                door_factory, parent_T_door
+                door_factory, parent_T_door, opening_axis
             )
 
             upper_limits, lower_limits = self._create_door_upper_lower_limits(
-                parent_T_hinge
+                parent_T_hinge, opening_axis
             )
 
             root = door_world.root
@@ -216,6 +235,7 @@ class HasDoorLikeFactories(ABC):
         semantic_door_annotation: Door,
         parent_T_door: TransformationMatrix,
         scale: Scale,
+        opening_axis: Vector3,
     ) -> TransformationMatrix:
         """
         Calculate the door pivot point based on the handle position and the door scale. The pivot point is on the opposite
@@ -224,6 +244,7 @@ class HasDoorLikeFactories(ABC):
         :param semantic_door_annotation: The door semantic annotation containing the handle.
         :param parent_T_door: The transformation matrix defining the door's position and orientation.
         :param scale: The scale of the door.
+        :param opening_axis: The axis along which the door is open.
 
         :return: The transformation matrix defining the door's pivot point.
         """
@@ -232,9 +253,17 @@ class HasDoorLikeFactories(ABC):
             connection.origin_expression.to_position().to_np()
         )
 
-        sign = np.sign(-1*door_P_handle[1]) if door_P_handle[1] != 0 else 1
-        offset = sign * (scale.y / 2)
-        parent_P_hinge = parent_T_door.to_np()[:3, 3] + np.array([0, offset, 0])
+        match opening_axis.to_np().tolist():
+            case [0, 1, 0, 0]:
+                sign = np.sign(-1 * door_P_handle[2]) if door_P_handle[2] != 0 else 1
+                offset = sign * (scale.z / 2)
+                parent_P_hinge = parent_T_door.to_np()[:3, 3] + np.array([0, 0, offset])
+            case [0, 0, 1, 0]:
+                sign = np.sign(-1 * door_P_handle[1]) if door_P_handle[1] != 0 else 1
+                offset = sign * (scale.y / 2)
+                parent_P_hinge = parent_T_door.to_np()[:3, 3] + np.array([0, offset, 0])
+            case _:
+                raise InvalidAxisError(axis=opening_axis)
 
         parent_T_hinge = TransformationMatrix.from_point_rotation_matrix(
             Point3(*parent_P_hinge)
@@ -476,12 +505,12 @@ class VerticalSemanticDirection(SimpleInterval, SemanticDirection):
     Semantic directions for vertical positioning.
     """
 
-    FULLY_TOP = IntervalConstants.ZERO_DIRAC
-    TOP = IntervalConstants.ZERO_TO_ONE_THIRD
+    FULLY_BOTTOM = IntervalConstants.ZERO_DIRAC
+    BOTTOM = IntervalConstants.ZERO_TO_ONE_THIRD
     CENTER = IntervalConstants.ONE_THIRD_TO_TWO_THIRD
     FULLY_CENTER = IntervalConstants.HALF_DIRAC
-    BOTTOM = IntervalConstants.TWO_THIRD_TO_ONE
-    FULLY_BOTTOM = IntervalConstants.ONE_DIRAC
+    TOP = IntervalConstants.TWO_THIRD_TO_ONE
+    FULLY_TOP = IntervalConstants.ONE_DIRAC
 
 
 @dataclass
@@ -588,7 +617,9 @@ class HasHandleFactory(ABC):
     The factory used to create the handle of the door.
     """
 
-    semantic_position: Optional[SemanticPositionDescription] = field(default=None)
+    semantic_handle_position: Optional[SemanticPositionDescription] = field(
+        default=None
+    )
     """
     The direction on the door in which the handle positioned.
     """
@@ -600,9 +631,13 @@ class HasHandleFactory(ABC):
 
     def __post_init__(self):
         assert (
-            self.parent_T_handle is not None or self.semantic_position is not None
+            self.parent_T_handle is not None
+            or self.semantic_handle_position is not None
         ), "Either parent_T_handle or semantic_position must be set."
-        if self.parent_T_handle is not None and self.semantic_position is not None:
+        if (
+            self.parent_T_handle is not None
+            and self.semantic_handle_position is not None
+        ):
             logging.warning(
                 f"During the creation of a factory, both parent_T_handle and semantic_position were set. Prioritizing parent_T_handle."
             )
@@ -614,8 +649,8 @@ class HasHandleFactory(ABC):
         Return a transformation matrix that defines the position and orientation of the handle relative to its parent.
         :raises: NotImplementedError if the handle direction is Z or NEGATIVE_Z.
         """
-        assert self.semantic_position is not None
-        sampled_2d_point = self.semantic_position.sample_point_from_event(
+        assert self.semantic_handle_position is not None
+        sampled_2d_point = self.semantic_handle_position.sample_point_from_event(
             scale.simple_event.as_composite_set().marginal(SpatialVariables.yz)
         )
 
@@ -990,6 +1025,8 @@ class DoorFactory(DoorLikeFactory[Door], HasHandleFactory):
         body.visual = collision
 
         world.add_kinematic_structure_entity(body)
+
+        self.create_parent_T_handle_from_parent_scale(self.scale)
 
         door_T_handle = (
             self.parent_T_handle
