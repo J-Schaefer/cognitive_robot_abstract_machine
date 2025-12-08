@@ -4260,7 +4260,7 @@ class ClothDAO(
 class ContainerDAO(
     HasBodyDAO,
     DataAccessObject[
-        semantic_digital_twin.semantic_annotations.semantic_annotations.Container
+        semantic_digital_twin.semantic_annotations.semantic_annotations.Corpus
     ],
 ):
 

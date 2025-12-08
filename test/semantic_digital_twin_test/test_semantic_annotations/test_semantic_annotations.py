@@ -148,7 +148,7 @@ def test_handle_semantic_annotation_eql(apartment_world):
     "semantic_annotation_type, update_existing_semantic_annotations, scenario",
     [
         (Handle, False, None),
-        (Container, False, None),
+        (Corpus, False, None),
         (Drawer, False, None),
         (Cabinet, False, None),
         (Door, False, None),
@@ -174,7 +174,7 @@ def test_generated_semantic_annotations(kitchen_world):
         "semantic_annotations"
     ]
     drawer_container_names = [
-        v.body.name.name for v in found_semantic_annotations if isinstance(v, Container)
+        v.body.name.name for v in found_semantic_annotations if isinstance(v, Corpus)
     ]
     assert len(drawer_container_names) == 14
 
@@ -183,14 +183,14 @@ def test_generated_semantic_annotations(kitchen_world):
 def test_apartment_semantic_annotations(apartment_world):
     world_reasoner = WorldReasoner(apartment_world)
     world_reasoner.fit_semantic_annotations(
-        [Handle, Container, Drawer, Cabinet],
+        [Handle, Corpus, Drawer, Cabinet],
         world_factory=lambda: apartment_world,
         scenario=None,
     )
 
     found_semantic_annotations = world_reasoner.infer_semantic_annotations()
     drawer_container_names = [
-        v.body.name.name for v in found_semantic_annotations if isinstance(v, Container)
+        v.body.name.name for v in found_semantic_annotations if isinstance(v, Corpus)
     ]
     assert len(drawer_container_names) == 19
 

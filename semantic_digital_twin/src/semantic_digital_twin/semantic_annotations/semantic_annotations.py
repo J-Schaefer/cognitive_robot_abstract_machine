@@ -1,21 +1,24 @@
 from __future__ import annotations
 
+from abc import ABC
 from dataclasses import dataclass, field
-from typing import Set, Iterable, Optional
+from typing import Iterable, Optional, Self
 
 import numpy as np
-from krrood.entity_query_language.entity import entity, let
-from krrood.entity_query_language.quantify_entity import an
 from probabilistic_model.probabilistic_circuit.rx.helper import uniform_measure_of_event
 from typing_extensions import List
 
+from krrood.entity_query_language.entity import entity, let
+from krrood.entity_query_language.quantify_entity import an
 from .mixins import (
     HasBody,
     HasSupportingSurface,
-    Furniture,
     HasRegion,
     HasDrawers,
     HasDoors,
+    HasHandle,
+    Direction,
+    HasCorpus,
 )
 from ..datastructures.variables import SpatialVariables
 from ..reasoning.predicates import InsideOf
@@ -44,21 +47,61 @@ class Handle(HasBody): ...
 
 
 @dataclass(eq=False)
-class Container(HasBody): ...
-
-
-@dataclass(eq=False)
-class Fridge(SemanticAnnotation):
+class Fridge(
+    HasCorpus,
+    HasDoors,
+):
     """
     A semantic annotation representing a fridge that has a door and a body.
     """
 
-    container: Container
-    door: Door
+    @property
+    def opening_direction(self) -> Direction:
+        return Direction.NEGATIVE_X
 
 
 @dataclass(eq=False)
-class Table(Furniture, HasBody):
+class Aperture(HasRegion):
+    """
+    A semantic annotation that represents an opening in a physical entity.
+    An example is like a hole in a wall that can be used to enter a room.
+    """
+
+
+@dataclass(eq=False)
+class Door(HasBody, HasHandle):
+    """
+    A door is a physical entity that has covers an opening, has a movable body and a handle.
+    """
+
+    @classmethod
+    def create_with_geometry(cls, *args, **kwargs) -> Self:
+        pass
+
+
+@dataclass(eq=False)
+class DoubleDoor(SemanticAnnotation):
+    left_door: Door
+    right_door: Door
+
+
+@dataclass(eq=False)
+class Drawer(HasCorpus, HasHandle):
+
+    @property
+    def opening_direction(self) -> Direction:
+        return Direction.Z
+
+
+############################### subclasses to Furniture
+
+
+@dataclass(eq=False)
+class Furniture(SemanticAnnotation, ABC): ...
+
+
+@dataclass(eq=False)
+class Table(Furniture):
     """
     A semantic annotation that represents a table.
     """
@@ -83,56 +126,31 @@ class Table(Furniture, HasBody):
 
 
 @dataclass(eq=False)
-class Aperture(HasRegion):
-    """
-    A semantic annotation that represents an opening in a physical entity.
-    An example is like a hole in a wall that can be used to enter a room.
-    """
+class Cabinet(HasCorpus, Furniture, HasDrawers, HasDoors):
+    @property
+    def opening_direction(self) -> Direction:
+        return Direction.NEGATIVE_X
 
 
 @dataclass(eq=False)
-class Door(HasBody):
-    """
-    A door is a physical entity that has covers an opening, has a movable body and a handle.
-    """
-
-    handle: Handle
-    """
-    The handle of the door.
-    """
+class Dresser(HasCorpus, Furniture, HasDrawers, HasDoors):
+    @property
+    def opening_direction(self) -> Direction:
+        return Direction.NEGATIVE_X
 
 
 @dataclass(eq=False)
-class DoubleDoor(SemanticAnnotation):
-    left_door: Door
-    right_door: Door
+class Cupboard(HasCorpus, Furniture, HasDoors):
+    @property
+    def opening_direction(self) -> Direction:
+        return Direction.NEGATIVE_X
 
 
 @dataclass(eq=False)
-class Drawer(SemanticAnnotation):
-    container: Container
-    handle: Handle
-
-
-############################### subclasses to Furniture
-@dataclass(eq=False)
-class Cabinet(Furniture, HasDrawers, HasDoors):
-    container: Container
-
-
-@dataclass(eq=False)
-class Dresser(Furniture, HasDrawers, HasDoors):
-    container: Container = field(kw_only=True)
-
-
-@dataclass(eq=False)
-class Cupboard(Furniture, HasDoors):
-    container: Container = field(kw_only=True)
-
-
-@dataclass(eq=False)
-class Wardrobe(Furniture, HasDrawers, HasDoors):
-    container: Container = field(kw_only=True)
+class Wardrobe(HasCorpus, Furniture, HasDrawers, HasDoors):
+    @property
+    def opening_direction(self) -> Direction:
+        return Direction.NEGATIVE_X
 
 
 class Floor(HasSupportingSurface): ...

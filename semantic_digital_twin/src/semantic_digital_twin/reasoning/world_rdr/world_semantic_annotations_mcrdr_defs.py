@@ -2,7 +2,7 @@ from typing_extensions import List, Union
 
 from ...semantic_annotations.semantic_annotations import (
     Cabinet,
-    Container,
+    Corpus,
     Door,
     Drawer,
     Fridge,
@@ -50,8 +50,8 @@ def conditions_14920098271685635920637692283091167284(case) -> bool:
     return has_handles_and_fixed_and_prismatic_connections(case)
 
 
-def conclusion_14920098271685635920637692283091167284(case) -> List[Container]:
-    def get_containers(case: World) -> Union[set, Container, list]:
+def conclusion_14920098271685635920637692283091167284(case) -> List[Corpus]:
+    def get_containers(case: World) -> Union[set, Corpus, list]:
         """Get possible value(s) for World.semantic_annotations of types list/set of Container"""
         prismatic_connections = [
             c for c in case.connections if isinstance(c, PrismaticConnection)
@@ -67,7 +67,7 @@ def conclusion_14920098271685635920637692283091167284(case) -> List[Container]:
         drawer_containers = set(children_of_prismatic_connections).intersection(
             set([fc.parent for fc in fixed_connections_with_handle_child])
         )
-        return [Container(body=b) for b in drawer_containers]
+        return [Corpus(body=b) for b in drawer_containers]
 
     return get_containers(case)
 
@@ -76,7 +76,7 @@ def conditions_331345798360792447350644865254855982739(case) -> bool:
     def has_handles_and_containers(case: World) -> bool:
         """Get conditions on whether it's possible to conclude a value for World.semantic_annotations  of type Drawer."""
         return any(v for v in case.semantic_annotations if type(v) is Handle) and any(
-            v for v in case.semantic_annotations if type(v) is Container
+            v for v in case.semantic_annotations if type(v) is Corpus
         )
 
     return has_handles_and_containers(case)
@@ -86,7 +86,7 @@ def conclusion_331345798360792447350644865254855982739(case) -> List[Drawer]:
     def get_drawers(case: World) -> Union[set, list, Drawer]:
         """Get possible value(s) for World.semantic_annotations of types list/set of Drawer"""
         handles = [v for v in case.semantic_annotations if type(v) is Handle]
-        containers = [v for v in case.semantic_annotations if type(v) is Container]
+        containers = [v for v in case.semantic_annotations if type(v) is Corpus]
         fixed_connections = [
             c
             for c in case.connections
@@ -151,7 +151,7 @@ def conclusion_35528769484583703815352905256802298589(case) -> List[Cabinet]:
                 for d in drawers
                 if d.container.body in cabinet_drawer_container_bodies
             ]
-            cabinets.append(Cabinet(Container(body=ccb), drawers=cabinet_drawers))
+            cabinets.append(Cabinet(Corpus(body=ccb), drawers=cabinet_drawers))
 
         return cabinets
 

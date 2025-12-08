@@ -3,7 +3,7 @@ import os
 from semantic_digital_twin.adapters.mesh import STLParser
 from semantic_digital_twin.reasoning.world_reasoner import WorldReasoner
 from semantic_digital_twin.robots.pr2 import PR2
-from semantic_digital_twin.semantic_annotations.semantic_annotations import Container
+from semantic_digital_twin.semantic_annotations.semantic_annotations import Corpus
 from semantic_digital_twin.adapters.procthor.procthor_semantic_annotations import (
     Milk,
     Bowl,

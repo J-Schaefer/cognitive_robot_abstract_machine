@@ -9,7 +9,7 @@ from typing_extensions import List
 
 from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Table,
-    Container,
+    Corpus,
     IsPerceivable,
 )
 from semantic_digital_twin.semantic_annotations.mixins import (
@@ -69,7 +69,7 @@ class ProcthorResolver:
 
 
 @dataclass(eq=False)
-class Bottle(Container):
+class Bottle(Corpus):
     """
     Abstract class for bottles.
     """
@@ -101,7 +101,7 @@ class MustardBottle(Bottle):
 
 
 @dataclass(eq=False)
-class DrinkingContainer(Container, HasBody): ...
+class DrinkingContainer(Corpus, HasBody): ...
 
 
 @dataclass(eq=False)
@@ -119,7 +119,7 @@ class Mug(DrinkingContainer):
 
 
 @dataclass(eq=False)
-class CookingContainer(Container, HasBody): ...
+class CookingContainer(Corpus, HasBody): ...
 
 
 @dataclass(eq=False)
@@ -382,7 +382,7 @@ class Potato(Produce): ...
 
 
 @dataclass(eq=False)
-class GarbageBin(Container):
+class GarbageBin(Corpus):
     """
     A garbage bin.
     """
@@ -393,7 +393,7 @@ class Drone(HasBody): ...
 
 
 @dataclass(eq=False)
-class ProcthorBox(Container): ...
+class ProcthorBox(Corpus): ...
 
 
 @dataclass(eq=False)

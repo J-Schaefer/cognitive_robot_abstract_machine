@@ -7,7 +7,7 @@ from .world_semantic_annotations_mcrdr_defs import *
 attribute_name = "semantic_annotations"
 conclusion_type = (
     Drawer,
-    Container,
+    Corpus,
     Handle,
     Door,
     Fridge,
@@ -21,7 +21,7 @@ case_name = "World"
 
 def classify(
     case: World, **kwargs
-) -> Set[Union[Drawer, Container, Handle, Door, Fridge, Cabinet]]:
+) -> Set[Union[Drawer, Corpus, Handle, Door, Fridge, Cabinet]]:
     if not isinstance(case, Case):
         case = create_case(case, max_recursion_idx=3)
     conclusions = set()

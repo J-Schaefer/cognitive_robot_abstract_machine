@@ -19,7 +19,7 @@ from semantic_digital_twin.semantic_annotations.factories import (
 from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Handle,
     Door,
-    Container,
+    Corpus,
     Drawer,
     Dresser,
     Wall,
@@ -133,12 +133,10 @@ class TestFactories(unittest.TestCase):
     def test_container_factory(self):
         factory = ContainerFactory(name=PrefixedName("container"))
         world = factory.create()
-        semantic_container_annotations = world.get_semantic_annotations_by_type(
-            Container
-        )
+        semantic_container_annotations = world.get_semantic_annotations_by_type(Corpus)
         self.assertEqual(len(semantic_container_annotations), 1)
 
-        container: Container = semantic_container_annotations[0]
+        container: Corpus = semantic_container_annotations[0]
         self.assertEqual(world.root, container.body)
 
     def test_drawer_factory(self):
