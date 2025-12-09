@@ -64,11 +64,13 @@ def cas_pose_to_list(pose: TransformationMatrix) -> List[float]:
     :param pose: The CAS TransformationMatrix to convert.
     :return: A list of 7 floats ([px, py, pz, qw, qx, qy, qz]) representing the position and quaternion.
     """
-    pos = pose.to_position()
-    quat = pose.to_quaternion()
-    px, py, pz, _ = pos.evaluate().tolist()
-    qx, qy, qz, qw = quat.evaluate().tolist()
-    return [px, py, pz, qw, qx, qy, qz]
+    pose = pose.evaluate()
+    pos = pose[:3, 3]
+    rotation_matrix = pose[:3, :3]
+    if numpy.linalg.det(rotation_matrix) < 0:
+        rotation_matrix[:, 2] *= -1
+    quat = Rotation.from_matrix(rotation_matrix).as_quat(scalar_first=True)
+    return [pos[0], pos[1], pos[2], quat[0], quat[1], quat[2], quat[3]]
 
 
 class GeomVisibilityAndCollisionType(IntEnum):
@@ -1243,10 +1245,13 @@ class MujocoBuilder(MultiSimBuilder):
             raise MujocoEntityNotFoundError(
                 entity_name=parent_body_name, entity_type=mujoco.mjtObj.mjOBJ_BODY
             )
-        if geom_props["type"] == mujoco.mjtGeom.mjGEOM_MESH and not self._parse_geom(
-            geom_props=geom_props
-        ):
-            return
+        if geom_props["type"] == mujoco.mjtGeom.mjGEOM_MESH:
+            if not self._parse_geom(geom_props=geom_props):
+                raise MujocoEntityNotFoundError(
+                    entity_name=geom_props["name"],
+                    entity_type=mujoco.mjtObj.mjOBJ_MESH,
+                    action="parse",
+                )
         geom_spec = parent_body_spec.add_geom(**geom_props)
         if geom_spec.type == mujoco.mjtGeom.mjGEOM_BOX and geom_spec.size[2] == 0:
             geom_spec.type = mujoco.mjtGeom.mjGEOM_PLANE
@@ -1280,15 +1285,20 @@ class MujocoBuilder(MultiSimBuilder):
         if mesh_ext == ".dae":
             print(f"Cannot use .dae files in Mujoco. Skipping mesh {mesh_file_path}.")
             return False
-        mesh_name = os.path.splitext(os.path.basename(mesh_file_path))[0]
+        mesh_name = mesh_entity.name
         if mesh_name not in [mesh.name for mesh in self.spec.meshes]:
             mesh = self.spec.add_mesh(name=mesh_name)
             mesh.file = mesh_file_path
-            mesh.scale[:] = (
-                mesh_entity.scale.x,
-                mesh_entity.scale.y,
-                mesh_entity.scale.z,
-            )
+            mesh_transform = mesh_entity.origin.to_np()
+            mesh_rotation_matrix = mesh_transform[:3, :3]
+            if numpy.linalg.det(mesh_rotation_matrix) < 0:
+                mesh_rotation_matrix = -mesh_rotation_matrix
+            mesh_rotation = Rotation.from_matrix(mesh_rotation_matrix)
+            mesh_scale = numpy.linalg.norm(mesh_rotation_matrix, axis=0)
+            mesh.scale = mesh_rotation.apply(mesh_scale)
+            mesh.scale[0] *= mesh_entity.scale.x
+            mesh.scale[1] *= mesh_entity.scale.y
+            mesh.scale[2] *= mesh_entity.scale.z
         geom_props["meshname"] = mesh_name
         texture_file_path = geom_props.pop("texture_file_path", None)
         if isinstance(texture_file_path, str):

@@ -126,6 +126,8 @@ class Shape(ABC, SubclassJSONSerializer):
     Base class for all shapes in the world.
     """
 
+    name: Optional[str] = None
+
     origin: TransformationMatrix = field(default_factory=TransformationMatrix)
 
     color: Color = field(default_factory=Color)
@@ -148,6 +150,7 @@ class Shape(ABC, SubclassJSONSerializer):
     def to_json(self) -> Dict[str, Any]:
         return {
             **super().to_json(),
+            "name": self.name,
             "origin": self.origin.to_json(),
             "color": self.color.to_json(),
         }

@@ -257,6 +257,7 @@ class MJCFParser:
                 mujoco_material: mujoco.MjsMaterial = self.spec.material(
                     mujoco_geom.material
                 )
+                meshname = mujoco_mesh.name
                 meshscale = mujoco_mesh.scale
                 if not numpy.allclose(meshscale, 1.0):
                     scale_mat = numpy.eye(4)
@@ -267,14 +268,21 @@ class MJCFParser:
                     origin_transform = origin_transform @ scale_transform
                 if mujoco_material is None:
                     return FileMesh(
-                        filename=filename, origin=origin_transform, color=color
+                        name=meshname,
+                        filename=filename,
+                        origin=origin_transform,
+                        color=color,
                     )
                 else:
                     texture_name = mujoco_material.textures[1]
                     mujoco_texture: mujoco.MjsTexture = self.spec.texture(texture_name)
                     if mujoco_texture is None:
+                        color = Color(*mujoco_material.rgba)
                         return FileMesh(
-                            filename=filename, origin=origin_transform, color=color
+                            name=meshname,
+                            filename=filename,
+                            origin=origin_transform,
+                            color=color,
                         )
                     texturedir = os.path.join(
                         os.path.dirname(self.file_path), self.spec.texturedir
@@ -282,6 +290,7 @@ class MJCFParser:
                     texture_file_path = os.path.join(texturedir, mujoco_texture.file)
                     if os.path.isfile(texture_file_path):
                         return FileMesh.from_file(
+                            name=meshname,
                             file_path=filename,
                             origin=origin_transform,
                             color=color,
@@ -289,7 +298,10 @@ class MJCFParser:
                         )
                     else:
                         return FileMesh(
-                            filename=filename, origin=origin_transform, color=color
+                            name=meshname,
+                            filename=filename,
+                            origin=origin_transform,
+                            color=color,
                         )
 
         raise NotImplementedError(f"Geometry type {mujoco_geom.type} not implemented.")
