@@ -30,6 +30,10 @@ from .symbolic import (
     SymbolicExpression,
     OperationResult,
     Literal,
+    SetOf,
+    Entity,
+    Exists,
+    DomainType
 )
 from .utils import is_iterable, T
 
