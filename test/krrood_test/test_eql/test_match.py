@@ -105,8 +105,8 @@ def test_select_where(handles_and_containers_world):
 
     answers = container_and_handle.evaluate()
     assert isinstance(answers, UnificationDict)
-    assert answers[container].name == "Container1"
-    assert answers[handle].name == "Handle1"
+    assert answers[container].name == "Container3"
+    assert answers[handle].name == "Handle3"
 
 
 @pytest.fixture
