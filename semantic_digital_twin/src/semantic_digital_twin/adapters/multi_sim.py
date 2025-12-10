@@ -70,10 +70,6 @@ def cas_pose_to_list(pose: TransformationMatrix) -> List[float]:
     pose = pose.evaluate()
     pos = pose[:3, 3]
     rotation_matrix = pose[:3, :3]
-    if (
-        numpy.linalg.det(rotation_matrix) < 0
-    ):  # Check if the rotation matrix is left-handed
-        rotation_matrix[:, 2] *= -1  # Convert to right-handed
     quat = Rotation.from_matrix(rotation_matrix).as_quat(scalar_first=True)
     return [pos[0], pos[1], pos[2], quat[0], quat[1], quat[2], quat[3]]
 
@@ -1331,21 +1327,14 @@ class MujocoBuilder(MultiSimBuilder):
                 f"Cannot use .dae files in Mujoco. Skipping mesh {mesh_file_path}."
             )
             return False
-        mesh_name = mesh_entity.name
+        mesh_name = os.path.splitext(os.path.basename(mesh_file_path))[0]
+        mesh_scale = mesh_entity.scale.tolist()
+        if not numpy.allclose(mesh_scale, [1.0, 1.0, 1.0]):
+            mesh_name += f"_{'_'.join(map(str, mesh_scale))}"
         if mesh_name not in [mesh.name for mesh in self.spec.meshes]:
             mesh = self.spec.add_mesh(name=mesh_name)
             mesh.file = mesh_file_path
-            mesh_transform = mesh_entity.origin.to_np()
-            mesh_rotation_matrix = mesh_transform[:3, :3]
-            if numpy.linalg.det(mesh_rotation_matrix) < 0:
-                mesh_rotation_matrix = -mesh_rotation_matrix
-            mesh.scale = numpy.linalg.norm(mesh_rotation_matrix, axis=0)
-            if not numpy.allclose(mesh.scale, 1.0):
-                mesh_rotation = Rotation.from_matrix(mesh_rotation_matrix)
-                mesh.scale = mesh_rotation.apply(mesh.scale)
-            mesh.scale[0] *= mesh_entity.scale.x
-            mesh.scale[1] *= mesh_entity.scale.y
-            mesh.scale[2] *= mesh_entity.scale.z
+            mesh.scale = mesh_scale
         geom_props["meshname"] = mesh_name
         texture_file_path = geom_props.pop("texture_file_path", None)
         if isinstance(texture_file_path, str):

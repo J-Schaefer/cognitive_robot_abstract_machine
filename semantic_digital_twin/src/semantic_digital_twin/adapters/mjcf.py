@@ -272,21 +272,13 @@ class MJCFParser:
                 mujoco_material: mujoco.MjsMaterial = self.spec.material(
                     mujoco_geom.material
                 )
-                meshname = mujoco_mesh.name
                 meshscale = mujoco_mesh.scale
-                if not numpy.allclose(meshscale, 1.0):
-                    scale_mat = numpy.eye(4)
-                    scale_mat[0, 0] = meshscale[0]
-                    scale_mat[1, 1] = meshscale[1]
-                    scale_mat[2, 2] = meshscale[2]
-                    scale_transform = TransformationMatrix(data=scale_mat)
-                    origin_transform = origin_transform @ scale_transform
                 if mujoco_material is None:
                     return FileMesh(
-                        name=meshname,
                         filename=filename,
                         origin=origin_transform,
                         color=color,
+                        scale=meshscale,
                     )
                 else:
                     texture_name = mujoco_material.textures[1]
@@ -294,10 +286,10 @@ class MJCFParser:
                     if mujoco_texture is None:
                         color = Color(*mujoco_material.rgba)
                         return FileMesh(
-                            name=meshname,
                             filename=filename,
                             origin=origin_transform,
                             color=color,
+                            scale=meshscale,
                         )
                     texturedir = os.path.join(
                         os.path.dirname(self.file_path), self.spec.texturedir
@@ -305,18 +297,18 @@ class MJCFParser:
                     texture_file_path = os.path.join(texturedir, mujoco_texture.file)
                     if os.path.isfile(texture_file_path):
                         return FileMesh.from_file(
-                            name=meshname,
                             file_path=filename,
                             origin=origin_transform,
                             color=color,
                             texture_file_path=texture_file_path,
+                            scale=meshscale,
                         )
                     else:
                         return FileMesh(
-                            name=meshname,
                             filename=filename,
                             origin=origin_transform,
                             color=color,
+                            scale=meshscale,
                         )
 
         raise NotImplementedError(f"Geometry type {mujoco_geom.type} not implemented.")
