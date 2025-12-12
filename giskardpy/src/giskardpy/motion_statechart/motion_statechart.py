@@ -114,53 +114,99 @@ class LifeCycleState(State):
     _compiled_updater: sm.CompiledFunction = field(init=False)
 
     def compile(self):
+        def create_condition(
+            start_from: MotionStatechartNode,
+            condition_getter: Callable[[MotionStatechartNode], cas.Expression],
+            expected_value: cas.Expression,
+            combine_func: Callable[[cas.Expression, cas.Expression], cas.Expression],
+        ) -> cas.Expression:
+            """
+            Create a combined condition by traversing up the parent nodes starting from `start_from`.
+            The combined condition is created by applying `combine_func` on the conditions of each parent node.
+            :param start_from: The node to start traversing from.
+            :param condition_getter: A function that takes a node and returns the condition to combine.
+            :param expected_value: The expected value of the condition to consider it as True.
+            :param combine_func: A function that takes two conditions and combines them.
+            :return: The combined condition.
+            """
+            current_node = start_from
+            condition = condition_getter(current_node) == expected_value
+            while current_node.parent_node is not None:
+                parent_cond = condition_getter(current_node.parent_node)
+                cond_expr = parent_cond == expected_value
+                condition = (
+                    cond_expr
+                    if condition is None
+                    else combine_func(condition, cond_expr)
+                )
+                current_node = current_node.parent_node
+            return condition
+
         state_updater = []
         for node in self.motion_statechart.nodes:
             state_symbol = node.life_cycle_variable
 
-            not_started_transitions = sm.if_else(
-                condition=node.start_condition == sm.Scalar.const_true(),
-                if_result=sm.Scalar(LifeCycleValues.RUNNING),
-                else_result=sm.Scalar(LifeCycleValues.NOT_STARTED),
+            reset_or_chain = create_condition(
+                node, lambda p: p.reset_condition, cas.TrinaryTrue, cas.trinary_logic_or
+            )
+            end_or_chain = create_condition(
+                node, lambda p: p.end_condition, cas.TrinaryTrue, cas.trinary_logic_or
+            )
+            pause_or_chain = create_condition(
+                node, lambda p: p.pause_condition, cas.TrinaryTrue, cas.trinary_logic_or
+            )
+            pause_and_chain_false = create_condition(
+                node,
+                lambda p: p.pause_condition,
+                cas.TrinaryFalse,
+                cas.trinary_logic_and,
+            )
+
+            not_started_condition = node.start_condition == cas.TrinaryTrue
+            current = node
+            while current.parent_node is not None:
+                parent = current.parent_node
+                not_started_condition = cas.trinary_logic_and(
+                    not_started_condition,
+                    cas.trinary_logic_not(parent.end_condition),
+                    parent.start_condition == cas.TrinaryTrue,
+                )
+                current = parent
+
+            not_started_transitions = cas.if_else(
+                condition=not_started_condition,
+                if_result=cas.Expression(LifeCycleValues.RUNNING),
+                else_result=cas.Expression(LifeCycleValues.NOT_STARTED),
             )
             running_transitions = sm.if_cases(
                 cases=[
                     (
-                        node.reset_condition == sm.Scalar.const_true(),
-                        sm.Scalar(LifeCycleValues.NOT_STARTED),
+                        reset_or_chain,
+                        cas.Expression(LifeCycleValues.NOT_STARTED),
                     ),
-                    (
-                        node.end_condition == sm.Scalar.const_true(),
-                        sm.Scalar(LifeCycleValues.DONE),
-                    ),
-                    (
-                        node.pause_condition == sm.Scalar.const_true(),
-                        sm.Scalar(LifeCycleValues.PAUSED),
-                    ),
+                    (end_or_chain, cas.Expression(LifeCycleValues.DONE)),
+                    (pause_or_chain, cas.Expression(LifeCycleValues.PAUSED)),
                 ],
                 else_result=sm.Scalar(LifeCycleValues.RUNNING),
             )
             pause_transitions = sm.if_cases(
                 cases=[
                     (
-                        node.reset_condition == sm.Scalar.const_true(),
-                        sm.Scalar(LifeCycleValues.NOT_STARTED),
+                        reset_or_chain,
+                        cas.Expression(LifeCycleValues.NOT_STARTED),
                     ),
+                    (end_or_chain, cas.Expression(LifeCycleValues.DONE)),
                     (
-                        node.end_condition == sm.Scalar.const_true(),
-                        sm.Scalar(LifeCycleValues.DONE),
-                    ),
-                    (
-                        node.pause_condition == sm.Scalar.const_false(),
-                        sm.Scalar(LifeCycleValues.RUNNING),
+                        pause_and_chain_false,
+                        cas.Expression(LifeCycleValues.RUNNING),
                     ),
                 ],
                 else_result=sm.Scalar(LifeCycleValues.PAUSED),
             )
-            ended_transitions = sm.if_else(
-                condition=node.reset_condition == sm.Scalar.const_true(),
-                if_result=sm.Scalar(LifeCycleValues.NOT_STARTED),
-                else_result=sm.Scalar(LifeCycleValues.DONE),
+            ended_transitions = cas.if_else(
+                condition=reset_or_chain,
+                if_result=cas.Expression(LifeCycleValues.NOT_STARTED),
+                else_result=cas.Expression(LifeCycleValues.DONE),
             )
 
             state_machine = sm.if_eq_cases(
@@ -490,10 +536,6 @@ class MotionStatechart(SubclassJSONSerializer):
             node._observation_expression = artifacts.observation
         node._debug_expressions = artifacts.debug_expressions
 
-    def _apply_goal_conditions_to_their_children(self):
-        for goal in self.get_nodes_by_type(Goal):
-            goal._apply_goal_conditions_to_children()
-
     def compile(self, context: BuildContext):
         """
         Compiles all components of the motion statechart given the provided context.
@@ -503,7 +545,6 @@ class MotionStatechart(SubclassJSONSerializer):
         """
         self.sanity_check()
         self._expand_goals(context=context)
-        self._apply_goal_conditions_to_their_children()
         self._build_nodes(context=context)
         self._add_transitions()
         self.observation_state.compile(context=context)
