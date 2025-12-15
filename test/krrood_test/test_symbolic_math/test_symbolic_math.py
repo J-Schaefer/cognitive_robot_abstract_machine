@@ -1187,3 +1187,8 @@ class TestMatrix:
             assert (
                 result.shape == expected.shape
             ), f"{op.__name__} result shape is wrong"
+
+    def test_matmul(self):
+        m = cas.Matrix(np.random.rand(3, 3))
+        v = cas.Vector(np.random.rand(3))
+        assert np.allclose(m @ v, m.to_np() @ v.to_np())

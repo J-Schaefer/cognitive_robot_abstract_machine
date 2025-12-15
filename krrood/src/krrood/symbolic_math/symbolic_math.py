@@ -1144,7 +1144,9 @@ class Matrix(Expression):
         return Matrix.from_casadi_sx(result)
 
     def dot(self, other: GenericSymbolicType) -> GenericSymbolicType:
-        return _create_return_type(other)(_ca.mtimes(to_sx(self), to_sx(other)))
+        return _create_return_type(other).from_casadi_sx(
+            _ca.mtimes(to_sx(self), to_sx(other))
+        )
 
     def __matmul__(self, other: GenericSymbolicType) -> GenericSymbolicType:
         return self.dot(other)
