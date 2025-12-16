@@ -54,6 +54,7 @@ if TYPE_CHECKING:
         Door,
         Handle,
         Hinge,
+        Slider,
     )
 
 
@@ -275,19 +276,31 @@ class HasActiveConnection(ABC):
         cls, *args, **kwargs
     ) -> Tuple[DerivativeMap, DerivativeMap]: ...
 
-    @staticmethod
-    def _create_drawer_upper_lower_limits(
-        drawer_factory: DrawerFactory,
-    ) -> Tuple[DerivativeMap[float], DerivativeMap[float]]:
+
+@dataclass(eq=False)
+class HasPrismaticConnection(HasActiveConnection):
+
+    @classmethod
+    def create_default_upper_lower_limits(
+        cls, self_scale: Scale, axis: Vector3
+    ) -> Tuple[DerivativeMap, DerivativeMap]:
         """
         Return the upper and lower limits for the drawer's degree of freedom.
         """
+
+        # upper and lower limit need to be chosen based on the pivot point of the door
+        match axis.to_np().tolist():
+            case [1, 0, 0, 0]:
+                lower_limit_position = 0.0
+                upper_limit_position = self_scale.x * 0.75
+
+            case _:
+                raise InvalidAxisError(axis=axis)
+
         lower_limits = DerivativeMap[float]()
         upper_limits = DerivativeMap[float]()
-        lower_limits.position = 0.0
-        upper_limits.position = (
-            drawer_factory.container_factory_config.factory_instance.scale.x * 0.75
-        )
+        lower_limits.position = lower_limit_position
+        upper_limits.position = upper_limit_position
 
         return upper_limits, lower_limits
 
@@ -366,7 +379,7 @@ class HasHinge(HasRevoluteConnection, SemanticAssociation, ABC):
     def add_hinge(
         self: HasBody | Self,
         hinge: Hinge,
-        opening_axis: Vector3 = Vector3.Z(),
+        rotation_axis: Vector3 = Vector3.Z(),
         connection_limits: Optional[
             Tuple[DerivativeMap[float], DerivativeMap[float]]
         ] = None,
@@ -394,7 +407,7 @@ class HasHinge(HasRevoluteConnection, SemanticAssociation, ABC):
                 raise ValueError("Upper limit must be greater than lower limit.")
         else:
             connection_limits = self.create_default_upper_lower_limits(
-                hinge_T_self, opening_axis
+                hinge_T_self, rotation_axis
             )
 
         with world.modify_world():
@@ -428,11 +441,94 @@ class HasHinge(HasRevoluteConnection, SemanticAssociation, ABC):
                     parent_T_connection_expression=new_parent_T_hinge,
                     multiplier=connection_multiplier,
                     offset=connection_offset,
-                    axis=opening_axis,
+                    axis=rotation_axis,
                     dof_id=dof.id,
                 )
                 world.add_connection(parent_C_hinge)
             self.hinge = hinge
+
+
+@dataclass(eq=False)
+class HasSlider(HasPrismaticConnection, SemanticAssociation, ABC):
+    """
+    A mixin class for semantic annotations that have hinge joints.
+    """
+
+    slider: Optional[Slider] = field(init=False, default=None)
+
+    def add_slider(
+        self: HasBody | Self,
+        slider: Slider,
+        translation_axis: Vector3 = Vector3.X(),
+        connection_limits: Optional[
+            Tuple[DerivativeMap[float], DerivativeMap[float]]
+        ] = None,
+        connection_multiplier: float = 1.0,
+        connection_offset: float = 0.0,
+    ):
+        """
+        Adds a door to the parent world using a new door hinge body with a revolute connection.
+
+        :param door_factory: The factory used to create the door.
+        :param parent_T_hinge: The transformation matrix defining the door's position and orientation relative
+        to the parent world.
+        :param parent_world: The world to which the door will be added.
+        """
+        if slider._world != self._world:
+            raise ValueError("Hinge must be part of the same world as the door.")
+
+        world = self._world
+        slider_body = slider.body
+        slider_T_self = self.get_new_parent_T_self(slider)
+        new_slider_parent = self.resolve_grandparent(slider)
+
+        if connection_limits is not None:
+            if connection_limits[0].position <= connection_limits[1].position:
+                raise ValueError("Upper limit must be greater than lower limit.")
+        else:
+            bounding_box = self.body.collision.as_bounding_box_collection_in_frame(
+                self.body
+            ).bounding_box()
+            connection_limits = self.create_default_upper_lower_limits(
+                bounding_box.scale, translation_axis
+            )
+
+        with world.modify_world():
+            parent_C_self = self.body.parent_connection
+            world.remove_connection(parent_C_self)
+
+            hinge_C_self = FixedConnection(
+                parent=slider_body,
+                child=self.body,
+                parent_T_connection_expression=slider_T_self,
+            )
+            world.add_connection(hinge_C_self)
+            new_parent_T_slider = world._forward_kinematic_manager.compute(
+                new_slider_parent, slider_body
+            )
+
+            parent_C_slider = slider_body.parent_connection
+            if not isinstance(parent_C_slider, PrismaticConnection):
+                world.remove_connection(parent_C_slider)
+
+                dof = DegreeOfFreedom(
+                    name=PrefixedName(f"{self.name.name}_slider_dof", self.name.prefix),
+                    upper_limits=connection_limits[0],
+                    lower_limits=connection_limits[1],
+                )
+                world.add_degree_of_freedom(dof)
+
+                parent_C_slider = PrismaticConnection(
+                    parent=new_slider_parent,
+                    child=slider_body,
+                    parent_T_connection_expression=new_parent_T_slider,
+                    multiplier=connection_multiplier,
+                    offset=connection_offset,
+                    axis=translation_axis,
+                    dof_id=dof.id,
+                )
+                world.add_connection(parent_C_slider)
+            self.slider = slider
 
 
 @dataclass(eq=False)

@@ -25,6 +25,7 @@ from .mixins import (
     HasActiveConnection,
     HasRevoluteConnection,
     HasLeftRightDoor,
+    HasSlider,
 )
 from ..datastructures.prefixed_name import PrefixedName
 from ..datastructures.variables import SpatialVariables
@@ -193,7 +194,7 @@ class DoubleDoor(SemanticAnnotation, HasLeftRightDoor):
 
 
 @dataclass(eq=False)
-class Drawer(HasCase, HasHandle):
+class Drawer(HasCase, HasHandle, HasSlider):
 
     @property
     def opening_direction(self) -> Direction:

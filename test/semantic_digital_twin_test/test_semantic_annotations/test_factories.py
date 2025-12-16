@@ -24,7 +24,10 @@ from semantic_digital_twin.spatial_types.spatial_types import (
     Vector3,
 )
 from semantic_digital_twin.world import World
-from semantic_digital_twin.world_description.connections import RevoluteConnection
+from semantic_digital_twin.world_description.connections import (
+    RevoluteConnection,
+    PrismaticConnection,
+)
 from semantic_digital_twin.world_description.geometry import Scale
 from semantic_digital_twin.world_description.world_entity import Body
 
@@ -237,44 +240,47 @@ class TestFactories(unittest.TestCase):
         semantic_drawer_annotations = world.get_semantic_annotations_by_type(Drawer)
         self.assertEqual(len(semantic_drawer_annotations), 1)
 
-    # def test_has_slider_factory(self):
-    #     world = World()
-    #     root = Body(name=PrefixedName("root"))
-    #     drawer = Drawer.create_with_new_body_in_world(
-    #         name=PrefixedName("drawer"),
-    #         world=world,
-    #         parent=root,
-    #         scale=Scale(0.2, 0.3, 0.2),
-    #     )
-    #     hinge = Hinge.create_with_new_body_in_world(
-    #         name=PrefixedName("hinge"), world=world, parent=root
-    #     )
-    #     assert len(world.kinematic_structure_entities) == 3
-    #
-    #     door.add_hinge(hinge)
-    #
-    #     assert door.body.parent_kinematic_structure_entity == hinge.body
-    #     assert isinstance(hinge.body.parent_connection, RevoluteConnection)
-    #     assert door.hinge == hinge
-    #
-    # def test_reverse_has_slider_factory(self):
-    #     world = World()
-    #     root = Body(name=PrefixedName("root"))
-    #     with world.modify_world():
-    #         world.add_body(root)
-    #     door = Door.create_with_new_body_in_world(
-    #         name=PrefixedName("door"), scale=Scale(0.03, 1, 2), world=world, parent=root
-    #     )
-    #     hinge = Hinge.create_with_new_body_in_world(
-    #         name=PrefixedName("hinge"), world=world, parent=door.body
-    #     )
-    #     assert len(world.kinematic_structure_entities) == 3
-    #
-    #     door.add_hinge(hinge)
-    #
-    #     assert door.body.parent_kinematic_structure_entity == hinge.body
-    #     assert isinstance(hinge.body.parent_connection, RevoluteConnection)
-    #     assert door.hinge == hinge
+    def test_has_slider_factory(self):
+        world = World()
+        root = Body(name=PrefixedName("root"))
+        drawer = Drawer.create_with_new_body_in_world(
+            name=PrefixedName("drawer"),
+            world=world,
+            parent=root,
+            scale=Scale(0.2, 0.3, 0.2),
+        )
+        slider = Slider.create_with_new_body_in_world(
+            name=PrefixedName("slider"), world=world, parent=root
+        )
+        assert len(world.kinematic_structure_entities) == 3
+
+        drawer.add_slider(slider)
+
+        assert drawer.body.parent_kinematic_structure_entity == slider.body
+        assert isinstance(slider.body.parent_connection, PrismaticConnection)
+        assert drawer.slider == slider
+
+    def test_reverse_has_slider_factory(self):
+        world = World()
+        root = Body(name=PrefixedName("root"))
+        with world.modify_world():
+            world.add_body(root)
+        drawer = Drawer.create_with_new_body_in_world(
+            name=PrefixedName("drawer"),
+            scale=Scale(0.2, 0.3, 0.2),
+            world=world,
+            parent=root,
+        )
+        slider = Slider.create_with_new_body_in_world(
+            name=PrefixedName("slider"), world=world, parent=drawer.body
+        )
+        assert len(world.kinematic_structure_entities) == 3
+
+        drawer.add_slider(slider)
+
+        assert drawer.body.parent_kinematic_structure_entity == slider.body
+        assert isinstance(slider.body.parent_connection, PrismaticConnection)
+        assert drawer.slider == slider
 
     # def test_wall_factory(self):
     #     handle_factory = HandleFactory(name=PrefixedName("handle"))

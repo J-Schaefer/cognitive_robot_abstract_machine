@@ -416,6 +416,27 @@ class HasDrawersDAO(
     }
 
 
+class HasPrismaticConnectionDAO(
+    HasActiveConnectionDAO,
+    DataAccessObject[
+        semantic_digital_twin.semantic_annotations.mixins.HasPrismaticConnection
+    ],
+):
+
+    __tablename__ = "HasPrismaticConnectionDAO"
+
+    database_id: Mapped[builtins.int] = mapped_column(
+        ForeignKey(HasActiveConnectionDAO.database_id),
+        primary_key=True,
+        use_existing_column=True,
+    )
+
+    __mapper_args__ = {
+        "polymorphic_identity": "HasPrismaticConnectionDAO",
+        "inherit_condition": database_id == HasActiveConnectionDAO.database_id,
+    }
+
+
 class HasRevoluteConnectionDAO(
     HasActiveConnectionDAO,
     DataAccessObject[
@@ -815,6 +836,35 @@ class HasHingeDAO(
     __mapper_args__ = {
         "polymorphic_identity": "HasHingeDAO",
         "inherit_condition": database_id == HasRevoluteConnectionDAO.database_id,
+    }
+
+
+class HasSliderDAO(
+    HasPrismaticConnectionDAO,
+    DataAccessObject[semantic_digital_twin.semantic_annotations.mixins.HasSlider],
+):
+
+    __tablename__ = "HasSliderDAO"
+
+    database_id: Mapped[builtins.int] = mapped_column(
+        ForeignKey(HasPrismaticConnectionDAO.database_id),
+        primary_key=True,
+        use_existing_column=True,
+    )
+
+    slider_id: Mapped[typing.Optional[builtins.int]] = mapped_column(
+        ForeignKey("SliderDAO.database_id", use_alter=True),
+        nullable=True,
+        use_existing_column=True,
+    )
+
+    slider: Mapped[SliderDAO] = relationship(
+        "SliderDAO", uselist=False, foreign_keys=[slider_id], post_update=True
+    )
+
+    __mapper_args__ = {
+        "polymorphic_identity": "HasSliderDAO",
+        "inherit_condition": database_id == HasPrismaticConnectionDAO.database_id,
     }
 
 
@@ -2987,12 +3037,20 @@ class DrawerDAO(
         ForeignKey(HasCaseDAO.database_id), primary_key=True, use_existing_column=True
     )
 
+    slider_id: Mapped[typing.Optional[builtins.int]] = mapped_column(
+        ForeignKey("SliderDAO.database_id", use_alter=True),
+        nullable=True,
+        use_existing_column=True,
+    )
     handle_id: Mapped[typing.Optional[builtins.int]] = mapped_column(
         ForeignKey("HandleDAO.database_id", use_alter=True),
         nullable=True,
         use_existing_column=True,
     )
 
+    slider: Mapped[SliderDAO] = relationship(
+        "SliderDAO", uselist=False, foreign_keys=[slider_id], post_update=True
+    )
     handle: Mapped[HandleDAO] = relationship(
         "HandleDAO", uselist=False, foreign_keys=[handle_id], post_update=True
     )
