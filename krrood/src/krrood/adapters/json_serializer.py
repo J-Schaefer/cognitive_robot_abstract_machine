@@ -160,7 +160,7 @@ def to_json(obj: Union[SubclassJSONSerializer, Any]) -> JSON_RETURN_TYPE:
     """
     Serialize an object to a JSON dict.
 
-    :param obj: The object to to_json
+    :param obj: The object to convert to json
     :return: The JSON string
     """
 
