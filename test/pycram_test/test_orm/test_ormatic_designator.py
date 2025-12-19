@@ -21,7 +21,7 @@ from pycram.datastructures.enums import (
     GripperState,
 )
 from pycram.datastructures.grasp import GraspDescription
-from pycram.datastructures.pose import Pose, PoseStamped
+from pycram.datastructures.pose import PyCramPose, PoseStamped
 from pycram.designator import NamedObject
 from pycram.language import SequentialPlan, ParallelPlan
 from pycram.orm.ormatic_interface import *
@@ -156,7 +156,7 @@ class PoseTestCases(ORMaticBaseTestCaseMixin):
         self.assertEqual(pose_stamped_result[0].pose_id, pose_result[0].database_id)
 
     def test_pose_creation(self):
-        pose = Pose()
+        pose = PyCramPose()
         pose.position.x = 1.0
         pose.position.y = 2.0
         pose.position.z = 3.0
@@ -363,8 +363,11 @@ class ORMActionDesignatorTestCase(ORMaticBaseTestCaseMixin):
         # self.assertEqual(close_result[0].object.name, "handle_cab10_t")
 
     def test_parallel_plan(self):
-        plan = ParallelPlan(self.context, ParkArmsActionDescription(Arms.BOTH),
-                            MoveTorsoActionDescription(TorsoState.HIGH))
+        plan = ParallelPlan(
+            self.context,
+            ParkArmsActionDescription(Arms.BOTH),
+            MoveTorsoActionDescription(TorsoState.HIGH),
+        )
 
         with simulated_robot:
             plan.perform()
@@ -378,8 +381,6 @@ class ORMActionDesignatorTestCase(ORMaticBaseTestCaseMixin):
 
         self.assertTrue(park_result is not None)
         self.assertTrue(move_torso_result is not None)
-
-
 
 
 class ExecDataTest(ORMaticBaseTestCaseMixin):
@@ -410,9 +411,7 @@ class ExecDataTest(ORMaticBaseTestCaseMixin):
                 MoveTorsoActionDescription(TorsoState.HIGH),
                 PlaceActionDescription(
                     test_world.get_body_by_name("milk.stl"),
-                    PoseStamped.from_list(
-                        [2.3, 2.5, 1], [0, 0, 0, 1], test_world.root
-                    ),
+                    PoseStamped.from_list([2.3, 2.5, 1], [0, 0, 0, 1], test_world.root),
                     Arms.LEFT,
                 ),
             )
@@ -464,11 +463,15 @@ class ExecDataTest(ORMaticBaseTestCaseMixin):
                 exec_data.execution_start_pose.pose.position.z,
             ],
         )
-        np.testing.assert_almost_equal([0.6, 0.4, 0], [
+        np.testing.assert_almost_equal(
+            [0.6, 0.4, 0],
+            [
                 exec_data.execution_end_pose.pose.position.x,
                 exec_data.execution_end_pose.pose.position.y,
                 exec_data.execution_end_pose.pose.position.z,
-            ], decimal=1)
+            ],
+            decimal=1,
+        )
 
     def test_manipulated_body_pose(self):
         test_world = deepcopy(self.world)
@@ -503,13 +506,17 @@ class ExecDataTest(ORMaticBaseTestCaseMixin):
         )
 
         # self.assertListEqual([2.37, 2, 1.05], start_pose_pick.position.to_list())
-        np.testing.assert_almost_equal([2.37, 2, 1.05], end_pose_pick.position.to_list(), decimal=1)
+        np.testing.assert_almost_equal(
+            [2.37, 2, 1.05], end_pose_pick.position.to_list(), decimal=1
+        )
         # Check that the end_pose of pick_up and start pose of place are not equal because of navigate in between
         for pick, place in zip(
             end_pose_pick.position.to_list(), start_pose_place.position.to_list()
         ):
             self.assertNotEqual(pick, place)
-        np.testing.assert_almost_equal([2.3, 2.5, 1], end_pose_place.position.to_list(), decimal=1)
+        np.testing.assert_almost_equal(
+            [2.3, 2.5, 1], end_pose_place.position.to_list(), decimal=1
+        )
 
     def test_manipulated_body(self):
         test_world = deepcopy(self.world)
@@ -569,9 +576,7 @@ class RelationalAlgebraTestCase(ORMaticBaseTestCaseMixin):
                 ),
                 PlaceActionDescription(
                     self.world.get_body_by_name("milk.stl"),
-                    PoseStamped.from_list(
-                        [2.3, 2.5, 1], [0, 0, 0, 1], self.world.root
-                    ),
+                    PoseStamped.from_list([2.3, 2.5, 1], [0, 0, 0, 1], self.world.root),
                     Arms.LEFT,
                 ),
             )

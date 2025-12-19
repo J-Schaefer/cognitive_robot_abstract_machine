@@ -304,7 +304,7 @@ class Quaternion(HasParameters):
 
 @has_parameters
 @dataclass
-class Pose(HasParameters):
+class PyCramPose(HasParameters):
     """
     A pose in 3D space.
     """
@@ -362,7 +362,7 @@ class Pose(HasParameters):
 
     def almost_equal(
         self,
-        other: Pose,
+        other: PyCramPose,
         position_tolerance: float = 1e-6,
         orientation_tolerance: float = 1e-5,
     ) -> bool:
@@ -508,7 +508,7 @@ class PoseStamped(HasParameters):
     A pose in 3D space with a timestamp.
     """
 
-    pose: Pose = field(default_factory=Pose)
+    pose: PyCramPose = field(default_factory=PyCramPose)
     header: Header = field(default_factory=Header)
 
     @property
@@ -574,7 +574,7 @@ class PoseStamped(HasParameters):
             z=message.pose.orientation.z,
             w=message.pose.orientation.w,
         )
-        return cls(pose=Pose(position=position, orientation=orientation), header=header)
+        return cls(pose=PyCramPose(position=position, orientation=orientation), header=header)
 
     @classmethod
     def from_list(
@@ -600,7 +600,7 @@ class PoseStamped(HasParameters):
         position = position or [0.0, 0.0, 0.0]
         orientation = orientation or [0.0, 0.0, 0.0, 1.0]
         return cls(
-            pose=Pose.from_list(position, orientation),
+            pose=PyCramPose.from_list(position, orientation),
             header=Header(frame_id=frame, stamp=datetime.datetime.now()),
         )
 
@@ -613,7 +613,7 @@ class PoseStamped(HasParameters):
         :param frame: The frame in which the pose is defined.
         :return: A PoseStamped object created from the matrix and frame.
         """
-        pose = Pose.from_matrix(matrix)
+        pose = PyCramPose.from_matrix(matrix)
         return cls(
             pose=pose, header=Header(frame_id=frame, stamp=datetime.datetime.now())
         )
@@ -750,7 +750,7 @@ class PoseStamped(HasParameters):
 
 
 @dataclass
-class Transform(Pose):
+class Transform(PyCramPose):
     @property
     def translation(self):
         return self.position
@@ -793,7 +793,7 @@ class Transform(Pose):
         return Transform.from_matrix(multiplication)
 
     @classmethod
-    def from_pose(cls, pose: Pose) -> Self:
+    def from_pose(cls, pose: PyCramPose) -> Self:
         """
         Create a Transform from a Pose object.
 
@@ -823,7 +823,7 @@ class TransformStamped(PoseStamped):
     """
     Target frame id of the transform.
     """
-    pose: Transform = field(default_factory=Pose)
+    pose: Transform = field(default_factory=PyCramPose)
     """
     The transform of the transform.
     """
@@ -926,7 +926,7 @@ class TransformStamped(PoseStamped):
 
         :return: A PoseStamped object created from the TransformStamped.
         """
-        p = Pose(self.pose.position, self.pose.orientation)
+        p = PyCramPose(self.pose.position, self.pose.orientation)
         return PoseStamped(p, self.header)
 
     def to_spatial_type(self) -> SpatialTransformationMatrix:
