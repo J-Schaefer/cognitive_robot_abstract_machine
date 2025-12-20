@@ -855,7 +855,16 @@ class Scalar(SymbolicMathType):
     def __float__(self):
         if not self.is_constant():
             raise HasFreeVariablesError(self.free_variables())
-        return float(self.to_np())
+        value = self.to_np()
+        if isinstance(value, np.ndarray):
+            if value.shape == ():
+                return float(value)  # 0-D array
+            if value.size == 1:
+                return float(value.item())  # 1 element array
+            raise TypeError(
+                "only 0-dimensional arrays can be converted to Python scalars"
+            )
+        return float(value)
 
     def hessian(self, variables: Iterable[FloatVariable]) -> Matrix:
         """
