@@ -1090,6 +1090,16 @@ class TestMatrix:
         expected = e_np[filter_]
         assert np.allclose(actual, expected)
 
+    def test_reshape(self):
+        np_arr = np.arange(16)
+        mat = sm.Matrix(np_arr).reshape((4, 4))
+        assert mat.shape == (4, 4)
+        assert np.allclose(mat.to_np(), np_arr.reshape((4, 4)))
+
+        mat = sm.Matrix(np_arr).reshape((2, 8))
+        assert mat.shape == (2, 8)
+        assert np.allclose(mat.to_np(), np_arr.reshape((2, 8)))
+
     def test_trace(self):
         m = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
         actual = sm.Matrix(m).trace()

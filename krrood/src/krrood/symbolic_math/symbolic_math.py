@@ -1392,7 +1392,11 @@ class Matrix(SymbolicMathType):
         """
         See numpy.reshape.
         """
-        return Matrix.from_casadi_sx(self.casadi_sx.reshape(new_shape))
+        rows, cols = new_shape
+        # CasADi uses column-major ordering for reshape, whereas NumPy use row-major ordering. To emulate NumPy's
+        # behavior, we transpose before and after reshaping with swapped dims.
+        reshaped = ca.reshape(self.casadi_sx.T, cols, rows).T
+        return Matrix.from_casadi_sx(reshaped)
 
     def inverse(self) -> Matrix:
         """
