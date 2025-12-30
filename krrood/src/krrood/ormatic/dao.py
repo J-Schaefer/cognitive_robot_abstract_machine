@@ -89,7 +89,7 @@ class DataAccessObjectState(Generic[WorkItemT], abc.ABC):
     @abc.abstractmethod
     def push_work_item(self, *args: Any, **kwargs: Any) -> None:
         """
-        Add a new work item to the processing work_items.
+        Add a new work item to the processing queue.
 
         :param args: Positional arguments for the work item.
         :param kwargs: Keyword arguments for the work item.
