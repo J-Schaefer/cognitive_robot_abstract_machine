@@ -41,7 +41,7 @@ _repr_thread_local = threading.local()
 
 T = TypeVar("T")
 _DAO = TypeVar("_DAO", bound="DataAccessObject")
-_WorkItemT = TypeVar("_WorkItemT", bound="DataAccessObjectWorkItem")
+WorkItemT = TypeVar("WorkItemT", bound="DataAccessObjectWorkItem")
 
 InstanceDict = Dict[int, Any]  # Dictionary that maps object ids to objects
 InProgressDict = Dict[int, bool]
@@ -71,7 +71,7 @@ class DataAccessObjectWorkItem(abc.ABC):
 
 
 @dataclass
-class DataAccessObjectState(Generic[_WorkItemT], abc.ABC):
+class DataAccessObjectState(Generic[WorkItemT], abc.ABC):
     """
     Abstract base class for conversion states.
     """
@@ -81,7 +81,7 @@ class DataAccessObjectState(Generic[_WorkItemT], abc.ABC):
     Cache for converted objects to prevent duplicates and handle circular references.
     """
 
-    work_items: deque[_WorkItemT] = field(default_factory=deque)
+    work_items: deque[WorkItemT] = field(default_factory=deque)
     """
     Deque of work items to be processed.
     """
@@ -378,7 +378,7 @@ class DataAccessObject(HasGeneric[T]):
     If a circular dependency is detected during Phase 2 of ``from_dao`` (i.e., a
     required dependency is not yet initialized), the converter identifies the
     cycle and applies a fix-up step after the parent's ``__init__`` has been called,
-    using :meth:`_apply_circular_fixes`.
+    using :meth:`DataAccessObject._apply_circular_fixes`.
 
     Alternative Mappings
     --------------------
@@ -422,9 +422,12 @@ class DataAccessObject(HasGeneric[T]):
                 return {
                     column.name: value for column, value in zip(data_columns, arguments)
                 }
-        except Exception:
+        except (sqlalchemy.exc.NoInspectionAvailable, AttributeError, TypeError) as e:
             # If inspection fails or mapping is not aligned, fall back
-            pass
+            logger.debug(
+                f"Positional argument mapping failed for {type(self).__name__}: {e}. "
+                f"Falling back to default initialization."
+            )
         return None
 
     @classmethod
