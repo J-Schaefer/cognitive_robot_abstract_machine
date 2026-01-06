@@ -594,8 +594,8 @@ class MotionStatechart(SubclassJSONSerializer):
 
     def plot_gantt_chart(self, context=None, second_length_in_cm: float = 2.0):
         HistoryGanttChartPlotter(
-            self, second_length_in_cm=second_length_in_cm
-        ).plot_gantt_chart("./ganttchart.pdf", context=context)
+            self, second_width_in_cm=second_length_in_cm, context=context
+        ).plot_gantt_chart("./ganttchart.pdf")
 
     def to_json(self) -> Dict[str, Any]:
         self._add_transitions()

@@ -36,11 +36,57 @@ class HistoryGanttChartPlotter:
     """
 
     motion_statechart: MotionStatechart
-    second_length_in_cm: float = 2.0
+    context: ExecutionContext | None = None
+    second_width_in_cm: float = 2.0
 
-    def plot_gantt_chart(
-        self, file_name: str, context: ExecutionContext | None = None
-    ) -> None:
+    final_block_buffer: float = 1
+    final_block_size: float = 2
+
+    @property
+    def x_width_per_control_cycle(self) -> float:
+        if self.context is None:
+            return 1
+        return self.context.dt
+
+    @property
+    def total_control_cycles(self) -> int:
+        return self.motion_statechart.history.history[-1].control_cycle
+
+    @property
+    def x_max(self) -> float:
+        return (
+            self.total_control_cycles + self.final_block_buffer + self.final_block_size
+        )
+
+    @property
+    def num_bars(self) -> int:
+        return len(self.motion_statechart.history.history[0].life_cycle_state)
+
+    @property
+    def use_seconds_for_x_axis(self) -> bool:
+        return self.x_width_per_control_cycle != 1.0
+
+    @property
+    def figure_height(self) -> float:
+        return 0.7 + self.num_bars * 0.25
+
+    @property
+    def figure_width(self) -> float:
+        if not self.use_seconds_for_x_axis:
+            return 0.5 * float((self.total_control_cycles or 0) + 1)
+        # 1 inch = 2.54 cm; map seconds to figure width via second_length_in_cm
+        inches_per_second = self.second_width_in_cm / 2.54
+        return inches_per_second * self.time_span_seconds
+
+    @property
+    def time_span_seconds(self) -> float | None:
+        return (
+            self.total_control_cycles * self.x_width_per_control_cycle
+            if self.x_width_per_control_cycle
+            else None
+        )
+
+    def plot_gantt_chart(self, file_name: str) -> None:
         """
         Render the Gantt chart and save it.
 
@@ -60,30 +106,16 @@ class HistoryGanttChartPlotter:
             get_middleware().logwarn("Gantt chart skipped: empty StateHistory.")
             return
 
-        ordered = self._sort_nodes_by_parents()
+        ordered_nodes = self._sort_nodes_by_parents()
 
-        seconds_per_cycle = None
-        if context is not None:
-            seconds_per_cycle = float(context.dt)
-        # time span based on number of history items
-        total_cycles = self.motion_statechart.history.history[-1].control_cycle
-        time_span_seconds = (
-            total_cycles * seconds_per_cycle if seconds_per_cycle else None
-        )
-        num_bars = len(self.motion_statechart.history.history[0].life_cycle_state)
-        figure_width, figure_height = self._compute_figure_size(
-            num_bars, time_span_seconds, total_cycles
-        )
-
-        # store for drawing
-        self._seconds_per_cycle = seconds_per_cycle if seconds_per_cycle else 1.0
-
-        plt.figure(figsize=(figure_width, figure_height))
+        plt.figure(figsize=(self.figure_width, self.figure_height))
         plt.grid(True, axis="x", zorder=-1)
 
-        self._iterate_history_and_draw(ordered_nodes=ordered)
+        for node_idx, node in enumerate(ordered_nodes):
+            self._plot_lifecycle_bar(node=node, node_idx=node_idx)
+            self._plot_observation_bar(node=node, node_idx=node_idx)
 
-        self._format_axes(ordered_nodes=ordered)
+        self._format_axes(ordered_nodes=ordered_nodes)
         self._save_figure(file_name=file_name)
 
     def _sort_nodes_by_parents(self) -> List[MotionStatechartNode]:
@@ -99,27 +131,6 @@ class HistoryGanttChartPlotter:
             ordered_.extend(list(return_children_in_order(root)))
         # reverse list because plt plots bars bottom to top
         return list(reversed(ordered_))
-
-    def _compute_figure_size(
-        self, num_bars: int, time_span_seconds: float | None, cycles_span: int | None
-    ) -> tuple[float, float]:
-        figure_height = 0.7 + num_bars * 0.25
-        if time_span_seconds is not None:
-            # 1 inch = 2.54 cm; map seconds to figure width via second_length_in_cm
-            inches_per_second = self.second_length_in_cm / 2.54
-            figure_width = inches_per_second * time_span_seconds
-        else:
-            # fallback to cycles scaling
-            figure_width = 0.5 * float((cycles_span or 0) + 1)
-        return figure_width, figure_height
-
-    def _iterate_history_and_draw(
-        self,
-        ordered_nodes: List[MotionStatechartNode],
-    ) -> None:
-        for node_idx, node in enumerate(ordered_nodes):
-            self._plot_lifecycle_bar(node=node, node_idx=node_idx)
-            self._plot_observation_bar(node=node, node_idx=node_idx)
 
     def _plot_lifecycle_bar(
         self,
@@ -171,22 +182,43 @@ class HistoryGanttChartPlotter:
         start_idx = 0
         for idx, next_state in zip(control_cycle_indices[1:], history[1:]):
             if current_state != next_state:
-                life_cycle_width = (idx - start_idx) * self._seconds_per_cycle
+                life_cycle_width = (idx - start_idx) * self.x_width_per_control_cycle
                 self._draw_block(
                     node_idx=node_idx,
-                    block_start=start_idx * self._seconds_per_cycle,
+                    block_start=start_idx * self.x_width_per_control_cycle,
                     block_width=life_cycle_width,
                     color=color_map[current_state],
                     top=top,
                 )
                 start_idx = idx
                 current_state = next_state
+        # plot last tick
         last_idx = control_cycle_indices[-1]
-        life_cycle_width = (last_idx - start_idx) * self._seconds_per_cycle
+        life_cycle_width = (last_idx - start_idx) * self.x_width_per_control_cycle
         self._draw_block(
             node_idx=node_idx,
-            block_start=start_idx * self._seconds_per_cycle,
+            block_start=start_idx * self.x_width_per_control_cycle,
             block_width=life_cycle_width,
+            color=color_map[current_state],
+            top=top,
+        )
+        block_start = start_idx * self.x_width_per_control_cycle + life_cycle_width
+
+        # plot white buffer block
+        self._draw_block(
+            node_idx=node_idx,
+            block_start=block_start,
+            block_width=self.final_block_buffer,
+            color="white",
+            top=top,
+        )
+        block_start += self.final_block_buffer
+
+        # plot last tick
+        self._draw_block(
+            node_idx=node_idx,
+            block_start=block_start,
+            block_width=self.final_block_size,
             color=color_map[current_state],
             top=top,
         )
@@ -217,23 +249,28 @@ class HistoryGanttChartPlotter:
         self,
         ordered_nodes: List[MotionStatechartNode],
     ) -> None:
-        total_cycles = self.motion_statechart.history.history[-1].control_cycle
-        total_seconds = total_cycles * self._seconds_per_cycle
-        if self._seconds_per_cycle != 1.0:
+        if self.use_seconds_for_x_axis:
+            #     total_seconds = self.x_max * self.x_width_per_control_cycle
             plt.xlabel("Time [s]")
-            plt.xlim(0, total_seconds)
-            ticks = np.arange(0.0, total_seconds + 1e-9, 0.5)
-            plt.xticks(ticks)
+            #     plt.xlim(0, total_seconds)
+            base_ticks = np.arange(0.0, self.time_span_seconds + 1e-9, 0.5).tolist()
+        #     plt.xticks(ticks)
         else:
             plt.xlabel("Control cycle")
-            plt.xlim(0, total_cycles)
-            plt.xticks(
-                np.arange(
-                    0,
-                    total_cycles + 1,
-                    max(1, (total_cycles + 1) // 10),
-                )
-            )
+            step = self.x_width_per_control_cycle
+            base_ticks = list(range(0, self.total_control_cycles + 1, step))
+
+        blank_pos = self.time_span_seconds + self.final_block_buffer
+        final_pos = blank_pos + self.final_block_size // 2
+        final_blank_pose = final_pos + self.final_block_size // 2
+
+        plt.xlim(0, final_blank_pose)
+
+        tick_positions = base_ticks + [final_pos]
+        tick_labels = [str(t) for t in base_ticks] + ["final"]
+
+        plt.xticks(tick_positions, tick_labels)
+
         plt.ylabel("Nodes")
         num_bars = len(self.motion_statechart.history.history[0].life_cycle_state)
         plt.ylim(-0.8, num_bars - 1 + 0.8)
@@ -258,8 +295,8 @@ class HistoryGanttChartPlotter:
         if diff > 0:
             return (
                 "│  " * (depth - diff)
-                + "└─"
-                * (diff - 1)  # no space because the formatting is weird otherwise
+                + "└─"  # no space because the formatting is weird otherwise
+                * (diff - 1)
                 + "└─ "
                 + node.unique_name
             )
