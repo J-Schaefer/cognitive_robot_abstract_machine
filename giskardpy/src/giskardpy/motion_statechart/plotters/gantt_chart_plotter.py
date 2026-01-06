@@ -238,33 +238,33 @@ class HistoryGanttChartPlotter:
         num_bars = len(self.motion_statechart.history.history[0].life_cycle_state)
         plt.ylim(-0.8, num_bars - 1 + 0.8)
 
-        def make_label(node: MotionStatechartNode, prev_depth: int) -> str:
-            depth = node.depth
-            if depth == 0:
-                return node.unique_name
-            diff = depth - prev_depth
-            if diff > 0:
-                return (
-                    "│  " * (depth - diff)
-                    + "└─"
-                    * (diff - 1)  # no space because the formatting is weird otherwise
-                    + "└─ "
-                    + node.unique_name
-                )
-            else:
-                return "│  " * (depth - 1) + "├─ " + node.unique_name
-
         node_names = []
         for idx, n in enumerate(ordered_nodes):
             if idx == 0:
                 prev_depth = 0
             else:
                 prev_depth = ordered_nodes[idx - 1].depth
-            node_names.append(make_label(n, prev_depth))
+            node_names.append(self._make_label(n, prev_depth))
         node_idx = list(range(len(node_names)))
         plt.yticks(node_idx, node_names)
         plt.gca().yaxis.tick_right()
         plt.tight_layout()
+
+    def _make_label(self, node: MotionStatechartNode, prev_depth: int) -> str:
+        depth = node.depth
+        if depth == 0:
+            return node.unique_name
+        diff = depth - prev_depth
+        if diff > 0:
+            return (
+                "│  " * (depth - diff)
+                + "└─"
+                * (diff - 1)  # no space because the formatting is weird otherwise
+                + "└─ "
+                + node.unique_name
+            )
+        else:
+            return "│  " * (depth - 1) + "├─ " + node.unique_name
 
     def _save_figure(self, file_name: str) -> None:
         create_path(file_name)
