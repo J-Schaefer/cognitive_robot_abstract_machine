@@ -64,6 +64,7 @@ from ..costmaps import (
     GaussianCostmap,
     Costmap,
     OrientationGenerator,
+    RingCostmap,
 )
 from ..datastructures.enums import (
     Arms,
@@ -304,8 +305,16 @@ class CostmapLocation(LocationDesignatorDescription):
             final_map += visible
 
         if reachable_for:
-            gaussian = GaussianCostmap(200, 15, self.world, 0.02, ground_pose)
-            final_map += gaussian
+            ring = RingCostmap(
+                resolution=0.02,
+                width=200,
+                height=200,
+                std=15,
+                distance=0.5,  # That needs to be replaced with an estimate of the reachability space of the robot arms
+                world=self.world,
+                origin=target,
+            )
+            final_map += ring
 
         return final_map
 
