@@ -277,10 +277,6 @@ def test_parkArmsAction(database, mutable_model_world):
 def test_transportAction(database, mutable_simple_pr2_world):
     session = database
     world, robot_view, context = mutable_simple_pr2_world
-    node = rclpy.create_node(
-        "test_node",
-    )
-    VizMarkerPublisher(world, node, throttle_state_updates=20)
     action = SequentialPlan(
         Context.from_world(world),
         TransportActionDescription(
