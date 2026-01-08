@@ -85,11 +85,18 @@ class WorldStateTrajectoryPlotter:
         """Create a stacked subplot figure sized so the inner axes width matches duration_s in physical units."""
         # Inner drawable width must equal seconds-to-inches. Add margins around it in inches
         inner_w_in = max(0.0, self._seconds_to_inches(duration_s))
-        # Margins tuned to avoid clipping of yticks, ylabel and to leave space for a bottom legend
+        # Margins tuned to avoid clipping of yticks, ylabel; right margin reserved for legend
         left_margin_in = 0.8
         right_margin_in = 2.0
         top_margin_in = 0.3
         bottom_margin_in = 1.0
+        # store margins for potential dynamic adjustment during legend placement
+        self._margins = {
+            "left": left_margin_in,
+            "right": right_margin_in,
+            "top": top_margin_in,
+            "bottom": bottom_margin_in,
+        }
         fig_w_in = inner_w_in + left_margin_in + right_margin_in
         # Stack subplots vertically: add top/bottom margins to the inner subplot heights
         inner_h_in = max(1.0, n_subplots * (self.subplot_height_in_cm / 2.54))
@@ -101,16 +108,21 @@ class WorldStateTrajectoryPlotter:
             figsize=(fig_w_in, fig_h_in),
             constrained_layout=False,
         )
+        # position the subplots so that the inner width is exactly inner_w_in inches
+        left = left_margin_in / fig_w_in
+        right = 1.0 - (right_margin_in / fig_w_in)
+        bottom = bottom_margin_in / fig_h_in
+        top = 1.0 - (top_margin_in / fig_h_in)
+        fig.subplots_adjust(left=left, right=right, bottom=bottom, top=top)
+        # store layout metadata for potential dynamic adjustments later
+        self._layout_meta = {
+            "inner_w_in": inner_w_in,
+            "fig_h_in": fig_h_in,
+        }
         if n_subplots == 1:
             axes = [axes]
         # Set explicit normalized margins so that inner area keeps the intended physical width
-        fig.subplots_adjust(
-            left=left_margin_in / fig_w_in,
-            right=1.0 - right_margin_in / fig_w_in,
-            bottom=bottom_margin_in / fig_h_in,
-            top=1.0 - top_margin_in / fig_h_in,
-            hspace=0.2,
-        )
+        # (Already applied above via fig.subplots_adjust)
         return fig, axes
 
     def _choose_ticks(self, duration_s: float) -> np.ndarray:
@@ -246,7 +258,8 @@ class WorldStateTrajectoryPlotter:
             # Place a single shared legend at the top-right, outside the plotting area but inside the figure.
             handles, labels = axes[-1].get_legend_handles_labels()
             if handles:
-                fig.legend(
+                # First, create a temporary legend to measure its size
+                temp_leg = fig.legend(
                     handles,
                     labels,
                     loc="upper right",
@@ -255,6 +268,47 @@ class WorldStateTrajectoryPlotter:
                     frameon=True,
                     borderaxespad=0.0,
                 )
-
+                try:
+                    fig.canvas.draw()
+                    bbox = temp_leg.get_window_extent(fig.canvas.get_renderer())
+                    legend_w_in = bbox.width / float(fig.dpi)
+                except Exception:
+                    legend_w_in = 0.0
+                # Compute if we need more right margin to avoid overlap with axes area
+                right_margin_in = float(self._margins.get("right", 2.0))
+                left_margin_in = float(self._margins.get("left", 0.8))
+                top_margin_in = float(self._margins.get("top", 0.3))
+                bottom_margin_in = float(self._margins.get("bottom", 1.0))
+                inner_w_in = float(self._layout_meta.get("inner_w_in", 0.0))
+                fig_h_in = float(self._layout_meta.get("fig_h_in", fig.get_figheight()))
+                pad_in = 0.2
+                required_right_in = legend_w_in + pad_in
+                if required_right_in > right_margin_in and inner_w_in > 0.0:
+                    # Expand figure width to fit legend while preserving inner drawable width
+                    delta = required_right_in - right_margin_in
+                    new_fig_w_in = inner_w_in + left_margin_in + right_margin_in + delta
+                    fig.set_size_inches(new_fig_w_in, fig_h_in)
+                    # Update subplot positions to keep inner width constant
+                    left = left_margin_in / new_fig_w_in
+                    right = 1.0 - ((right_margin_in + delta) / new_fig_w_in)
+                    bottom = bottom_margin_in / fig_h_in
+                    top = 1.0 - (top_margin_in / fig_h_in)
+                    fig.subplots_adjust(left=left, right=right, bottom=bottom, top=top)
+                    # Update stored margins
+                    self._margins["right"] = right_margin_in + delta
+                    # Remove the temporary legend and create the final one after resize
+                    try:
+                        temp_leg.remove()
+                    except Exception:
+                        pass
+                    fig.legend(
+                        handles,
+                        labels,
+                        loc="upper right",
+                        bbox_to_anchor=(0.99, 0.99),
+                        ncol=1,
+                        frameon=True,
+                        borderaxespad=0.0,
+                    )
         plt.savefig(file_name)
         plt.close()
