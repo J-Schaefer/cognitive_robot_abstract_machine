@@ -35,11 +35,65 @@ class NewGraspDescription:
     def grasp_pose_sequence(self, reverse: bool = False):
         pass
 
-    def grasp_orientation(self):
-        pass
 
-    def grasp_position(self):
-        pass
+
+    def grasp_orientation(self):
+        rotation = Rotations.SIDE_ROTATIONS[self.approach_direction]
+        rotation = quaternion_multiply(
+            rotation, Rotations.VERTICAL_ROTATIONS[self.vertical_alignment]
+        )
+        rotation = quaternion_multiply(
+            rotation, Rotations.HORIZONTAL_ROTATIONS[False]
+        )
+
+        orientation = quaternion_multiply(rotation, self.manipulator.front_facing_orientation.to_np())
+
+        norm = math.sqrt(sum(comp**2 for comp in orientation))
+        orientation = [comp / norm for comp in orientation]
+
+        return orientation
+
+    def grasp_pose(self, grasp_edge: bool = False):
+        grasp_pose = PoseStamped().from_spatial_type(self.body.global_pose)
+
+        approach_direction = self.approach_direction
+        rim_direction_index = approach_direction.value[0].value.index(1)
+
+        rim_offset = (
+                self.body.collision.as_bounding_box_collection_in_frame(self.body)
+                .bounding_box()
+                .dimensions[rim_direction_index]
+                / 2
+        )
+
+        grasp_pose.rotate_by_quaternion(
+            self.grasp_orientation()
+        )
+        if grasp_edge:
+            grasp_pose = translate_pose_along_local_axis(
+                grasp_pose, self.approach_direction.axis.value, -rim_offset
+            )
+
+        return grasp_pose
+
+    def edge_offset(self):
+        rim_direction_index = self.approach_direction.value[0].value.index(1)
+
+        rim_offset = (
+                self.body.collision.as_bounding_box_collection_in_frame(self.body)
+                .bounding_box()
+                .dimensions[rim_direction_index]
+                / 2
+        )
+        return rim_offset
+
+    def grasp_pose_new(self, grasp_edge: bool = False):
+        edge_offset = -self.edge_offset() if grasp_edge else 0
+        orientation = self.grasp_orientation()
+        grasp_pose = PoseStamped().from_list([edge_offset, 0, 0], orientation, frame=self.body)
+
+        return grasp_pose
+
 
 # @has_parameters
 @dataclass
