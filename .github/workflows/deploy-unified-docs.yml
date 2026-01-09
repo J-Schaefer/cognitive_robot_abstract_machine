@@ -203,8 +203,9 @@ jobs:
         # Create .nojekyll to disable Jekyll processing
         touch _combined_docs/.nojekyll
         
-        # Copy the markdown index file
-        cp docs_index.md _combined_docs/index.md
+        # Convert markdown to HTML using pandoc
+        sudo apt-get update && sudo apt-get install -y pandoc
+        pandoc docs_index.md -f markdown -t html -s -o _combined_docs/index.html --metadata title="CRAM Documentation"
 
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v3
