@@ -25,7 +25,7 @@ class PosePublisher(StateChangeCallback):
     """
     The pose to publish.
     """
-    node: rclpy.Node
+    node: rclpy.node.Node
     """
     ROS node handle, used to create the publisher.
     """
@@ -61,25 +61,32 @@ class PosePublisher(StateChangeCallback):
         """
         marker_array = MarkerArray()
         for i in range(3):
-            axis = [0, 0, 0]
-            axis[i] = 1
-            color = [0, 0, 0, 1]
-            color[i] = 1
+            axis = [0.0, 0.0, 0.0]
+            axis[i] = 1.0  # Defines the length of the arrow
+            color = [0.0, 0.0, 0.0, 1.0]
+            color[i] = 1.0
             position = global_pose.to_position().to_np()[:3]
             orientation = global_pose.to_rotation_matrix().to_quaternion().to_np()
 
-            end_point = Point(
-                **dict(zip(["x", "y", "z"], np.array(position) + np.array(axis)))
-            )
             p = Pose(
-                position=Vector3(**dict(zip(["x", "y", "z"], axis))),
-                orientation=Quaternion(**dict(zip(["x", "y", "z", "w"], orientation))),
+                position=Point(**dict(zip(["x", "y", "z"], position.tolist()))),
+                orientation=Quaternion(
+                    **dict(zip(["x", "y", "z", "w"], orientation.tolist()))
+                ),
             )
             c = ColorRGBA(**dict(zip(["r", "g", "b", "a"], color)))
 
+            end_point = Point(
+                **dict(zip(["x", "y", "z"], (position + np.array(axis)).tolist()))
+            )
+
             marker_array.markers.append(
                 self._create_marker(
-                    c, i, p, Point(**dict(zip(["x", "y", "z"], position))), end_point
+                    c,
+                    i,
+                    p,
+                    Point(**dict(zip(["x", "y", "z"], position.tolist()))),
+                    end_point,
                 )
             )
         return marker_array
@@ -109,7 +116,7 @@ class PosePublisher(StateChangeCallback):
 
         m.points = [start_point, end_point]
 
-        m.scale = Vector3(x=0.1, y=0.1, z=0.1)
+        m.scale = Vector3(x=0.05, y=0.1, z=0.2)
         m.color = color
         m.ns = self.pose.reference_frame.name.name
 
