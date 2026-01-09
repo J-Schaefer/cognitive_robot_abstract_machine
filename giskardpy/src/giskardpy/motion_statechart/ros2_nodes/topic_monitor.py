@@ -18,12 +18,29 @@ from ..ros_context import RosContextExtension
 
 @dataclass
 class TopicSubscriberNode(MotionStatechartNode, Generic[MsgType]):
+    """
+    Superclass for all nodes that subscribe to a ROS topic.
+    This node will automatically create a subscriber on build and cache the last message in `current_msg` on_tick.
+    If you overwrite `on_tick`, make sure to call `super().on_tick(context)` first.
+    """
+
     topic_name: str = field(kw_only=True)
+    """Name of the ROS topic to subscribe to."""
     msg_type: Type[MsgType] = field(kw_only=True)
+    """Type of the ROS message."""
     qos_profile: QoSProfile | int = field(kw_only=True, default=10)
+    """QoS profile to use when subscribing to the topic."""
     _subscriber: Subscription = field(init=False)
-    current_msg: MsgType | None = field(init=False, default=None)
+    """Internal ROS subscription object."""
     __last_msg: MsgType | None = field(init=False, default=None)
+    """
+    The callback updates this variable.
+    Don't use it directly, use `current_msg` instead.
+    """
+    current_msg: MsgType | None = field(init=False, default=None)
+    """
+    __last_msg is copied to this variable on every tick while this node is RUNNING.
+    """
 
     def build(self, context: BuildContext) -> NodeArtifacts:
         ros_context_extension = context.require_extension(RosContextExtension)
@@ -39,7 +56,7 @@ class TopicSubscriberNode(MotionStatechartNode, Generic[MsgType]):
         self.__last_msg = msg
 
     def has_msg(self) -> bool:
-        return self.__last_msg is not None
+        return self.current_msg is not None
 
     def clear_msg(self):
         self.__last_msg = None
@@ -47,17 +64,28 @@ class TopicSubscriberNode(MotionStatechartNode, Generic[MsgType]):
     def on_tick(self, context: ExecutionContext) -> Optional[ObservationStateValues]:
         self.current_msg = self.__last_msg
 
+    def on_reset(self, context: ExecutionContext):
+        self.clear_msg()
+
 
 @dataclass(eq=False, repr=False)
 class TopicPublisherNode(MotionStatechartNode, Generic[MsgType]):
+    """
+    Superclass for all nodes that publish to a ROS topic.
+    This node will automatically create a publisher on build.
+    """
     topic_name: str = field(kw_only=True)
+    """Name of the ROS topic to publish to."""
     msg_type: Type[MsgType] = field(kw_only=True)
+    """Type of the ROS message."""
     qos_profile: QoSProfile | int = field(kw_only=True, default=10)
-    publisher: Publisher = field(init=False)
+    """QoS profile to use when publishing to the topic."""
+    _publisher: Publisher = field(init=False)
+    """Internal ROS publisher object."""
 
     def build(self, context: BuildContext) -> NodeArtifacts:
         ros_context_extension = context.require_extension(RosContextExtension)
-        self.publisher = ros_context_extension.ros_node.create_publisher(
+        self._publisher = ros_context_extension.ros_node.create_publisher(
             msg_type=self.msg_type,
             topic=self.topic_name,
             qos_profile=self.qos_profile,
@@ -67,6 +95,10 @@ class TopicPublisherNode(MotionStatechartNode, Generic[MsgType]):
 
 @dataclass(eq=False, repr=False)
 class WaitForMessage(TopicSubscriberNode[MsgType]):
+    """
+    This node will turn to True once a message was received on its topic.
+    """
+
     def on_tick(self, context: ExecutionContext) -> Optional[ObservationStateValues]:
         super().on_tick(context)
         if self.has_msg():
@@ -76,8 +108,14 @@ class WaitForMessage(TopicSubscriberNode[MsgType]):
 
 @dataclass(eq=False, repr=False)
 class PublishOnStart(TopicPublisherNode[MsgType]):
+    """
+    This node will publish its message when on_start is called.
+    This is not repeated on every tick, but will be repeated after a reset, if the node is started again.
+    """
     msg: MsgType = field(kw_only=True)
+    """Message to publish."""
     msg_type: Type[MsgType] = field(init=False)
+    """init=False, because we can figure out the type from the msg parameter."""
 
     def __post_init__(self):
         super().__post_init__()
@@ -89,4 +127,4 @@ class PublishOnStart(TopicPublisherNode[MsgType]):
         return node_artifacts
 
     def on_start(self, context: ExecutionContext):
-        self.publisher.publish(self.msg)
+        self._publisher.publish(self.msg)
