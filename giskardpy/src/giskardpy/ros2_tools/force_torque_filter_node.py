@@ -16,14 +16,42 @@ from scipy.signal import butter, sosfilt
 
 @dataclass
 class FilterConfig:
+    """
+    Config file for the force torque filter node.
+    """
+
     topic_in: str = "/in"
+    """
+    Name of the topic with the unfiltered force torque data.
+    """
     topic_filtered_out_suffix: str = "filtered"
+    """
+    Suffix to append to the topic_in topic name to produce the filtered output topic.
+    """
     topic_diff_out_suffix: str = "filtered/derivative"
+    """
+    Suffix to append to the topic_in topic name to produce the first time derivative the filtered output topic.
+    """
     expected_rate_hz: float = 100.0
+    """
+    Expected rate of the input topic, used to compute the filter cutoff frequencies.
+    """
     cutoff_main_hz: float = 5.0
+    """
+    Cutoff frequency for the main low-pass filter.
+    """
     order_main: int = 3
+    """
+    Order of the main low-pass filter.
+    """
     cutoff_diff_hz: float = 3.0
+    """
+    Cutoff frequency for the derivative low-pass filter.
+    """
     order_diff: int = 2
+    """
+    Order of the derivative low-pass filter.
+    """
     offset_mode: str = "ewma"  # "ewma" or "none"
     offset_alpha: float = 0.005
     warmup_samples: int = 50
