@@ -12,9 +12,7 @@ from visualization_msgs.msg import MarkerArray, Marker
 from semantic_digital_twin.callbacks.callback import StateChangeCallback
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from geometry_msgs.msg import (
-    TransformStamped,
     Vector3,
-    PoseStamped,
     Pose,
     Point,
     Quaternion,
@@ -97,16 +95,14 @@ class PosePublisher(StateChangeCallback):
 
             c = ColorRGBA(**dict(zip(["r", "g", "b", "a"], color)))
 
-            end_point = Point(
-                **dict(zip(["x", "y", "z"], (position + np.array(axis)).tolist()))
-            )
+            end_point = Point(**dict(zip(["x", "y", "z"], np.array(axis).tolist())))
 
             marker_array.markers.append(
                 self._create_marker(
                     c,
                     i,
                     p,
-                    Point(**dict(zip(["x", "y", "z"], position.tolist()))),
+                    Point(),
                     end_point,
                 )
             )
