@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import math
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Tuple
 
 import numpy as np
 from semantic_digital_twin.robots.abstract_robot import Manipulator, AbstractRobot
+from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.world_entity import Body
 from typing_extensions import Optional, Union, List
 from scipy.spatial.transform import Rotation as R
@@ -22,22 +24,120 @@ from ..utils import translate_pose_along_local_axis
 @dataclass
 class NewGraspDescription:
     approach_direction: ApproachDirection
+    """
+    The direction from which the body should be grasped. These are the four directions in the x-y plane (FRONT, BACK, LEFT, RIGHT).
+    """
     vertical_alignment: VerticalAlignment
 
+    """
+    The alignment of the gripper with the body in the z-axis (TOP, BOTTOM).
+    """
+
     body: Body
+    """
+    The body that should be grasped.
+    """
 
     manipulator: Manipulator
+    """
+    The manipulator that is used to grasp the body.
+    """
+
+    manipulation_offset: float = 0.05
+    """
+    The offset between the center of the pose in the grasp sequence
+    """
 
     @classmethod
     def calculate_all_grasp_descriptions(cls, body: Body, manipulator: Manipulator):
         pass
 
     def grasp_pose_sequence(self, reverse: bool = False):
-        pass
+        """
+        Calculates the pose sequence to grasp the body. The sequence is 3 poses, one in front of the body (taking body
+        geometry into account), one at the center of the body, and the last one above the body to lift it.
+
+        :param reverse: Indicates if the sequence should be reversed.
+        :return: The pose sequence.
+        """
+
+        grasp_orientation = self.grasp_orientation()
+
+        bb_in_frame = self.body.collision.as_bounding_box_collection_in_frame(self.body).bounding_box()
+
+        grasp_axis = np.array(self.manipulation_axis(), dtype=np.bool)
+
+        approach_axis = np.array(self.approach_direction.axis.value, dtype=np.bool)
+
+        # Pre-pose calculation
+
+        pre_position  = np.array([0., 0., 0.])
+        offset = np.array(bb_in_frame.dimensions)[approach_axis] + self.manipulation_offset
+        pre_position[grasp_axis] = -offset
+
+        pre_pose = PoseStamped.from_list(pre_position.tolist(), grasp_orientation, self.body)
+
+        # Lift pose calculation
+
+        lift_axis = np.array(self.lift_axis(), dtype=np.bool)
+
+        lift_position = np.array([0., 0., 0.])
+        lift_position[lift_axis] = self.manipulation_offset
+        lift_pose = PoseStamped.from_list(lift_position.tolist(), grasp_orientation, self.body)
+
+        sequence = [pre_pose, PoseStamped.from_list([0, 0, 0], grasp_orientation, frame=self.body), lift_pose]
+
+        if reverse:
+            sequence.reverse()
+        return sequence
+
+    def manipulation_axis(self) -> List[float]:
+        """
+        Axis of the manipulator that is manipulating the body. Translates the x-axis of the global frame to how the
+        manipulator is rotated.
+
+        :returns: The axis of the manipulator that is manipulating the body.
+        """
+        return self.calculate_manipulator_axis([1, 0, 0])
 
 
+    def lift_axis(self) -> List[float]:
+        """
+        Axis of the manipulator that is lifting the body. Translates the z-axis of the global frame to how the
+        manipulator is rotated.
+
+        :returns: The axis of the manipulator that is lifting the body.
+        """
+        return self.calculate_manipulator_axis([0, 0, 1])
+
+
+    def calculate_manipulator_axis(self, axis: List[int]) -> List[float]:
+        """
+        Calculates the corresponding axis of the manipulator for a given axis of the body.
+
+        :param axis: The axis of the body as a list of [x, y, z] indices.
+        :return: The corresponding axis of the manipulator as a list of [x, y, z] values.
+        """
+        front_pose = HomogeneousTransformationMatrix.from_xyz_rpy(
+            *axis, reference_frame=self.body
+        )
+
+        grasp_pose = self.grasp_pose_new()
+        world = self.body._world
+
+        front_global = world.transform(front_pose, world.root)
+
+        grasp_global = world.transform(grasp_pose.to_spatial_type(), world.root)
+
+        t = grasp_global.inverse().to_np() @ front_global.to_np()
+
+        return t[:3, 3].astype(int).tolist()
 
     def grasp_orientation(self):
+        """
+        The orientation of the grasp pose in the global frame??. Takes into account the approach direction and vertical
+        alignment.
+        """
         rotation = Rotations.SIDE_ROTATIONS[self.approach_direction]
         rotation = quaternion_multiply(
             rotation, Rotations.VERTICAL_ROTATIONS[self.vertical_alignment]
@@ -53,30 +153,11 @@ class NewGraspDescription:
 
         return orientation
 
-    def grasp_pose(self, grasp_edge: bool = False):
-        grasp_pose = PoseStamped().from_spatial_type(self.body.global_pose)
-
-        approach_direction = self.approach_direction
-        rim_direction_index = approach_direction.value[0].value.index(1)
-
-        rim_offset = (
-                self.body.collision.as_bounding_box_collection_in_frame(self.body)
-                .bounding_box()
-                .dimensions[rim_direction_index]
-                / 2
-        )
-
-        grasp_pose.rotate_by_quaternion(
-            self.grasp_orientation()
-        )
-        if grasp_edge:
-            grasp_pose = translate_pose_along_local_axis(
-                grasp_pose, self.approach_direction.axis.value, -rim_offset
-            )
-
-        return grasp_pose
-
-    def edge_offset(self):
+    def edge_offset(self) -> float:
+        """
+        The offset between the center of the body and its edge in the direction of the approach axis.
+        :return: The edge offset.
+        """
         rim_direction_index = self.approach_direction.value[0].value.index(1)
 
         rim_offset = (
@@ -87,7 +168,13 @@ class NewGraspDescription:
         )
         return rim_offset
 
-    def grasp_pose_new(self, grasp_edge: bool = False):
+    def grasp_pose_new(self, grasp_edge: bool = False) -> PoseStamped:
+        """
+        The pose for the given manipulator to grasp the body in the frame of the body.
+
+        :param grasp_edge: Indicates if the pose should be for the edge of the body or the center.
+        :return: The pose of the body in the body frame.
+        """
         edge_offset = -self.edge_offset() if grasp_edge else 0
         orientation = self.grasp_orientation()
         grasp_pose = PoseStamped().from_list([edge_offset, 0, 0], orientation, frame=self.body)
