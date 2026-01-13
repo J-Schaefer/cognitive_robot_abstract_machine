@@ -8,10 +8,19 @@ from pycram.datastructures.enums import ApproachDirection, VerticalAlignment
 from pycram.datastructures.grasp import NewGraspDescription
 from pycram.datastructures.pose import PoseStamped
 from semantic_digital_twin.adapters.mesh import STLParser
+from semantic_digital_twin.adapters.ros.pose_publisher import PosePublisher
+from semantic_digital_twin.adapters.viz_marker import VizMarkerPublisher
+from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 
 from semantic_digital_twin.robots.tracy import Tracy
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
-from semantic_digital_twin.world_description.connections import FixedConnection
+from semantic_digital_twin.world_description.connections import (
+    FixedConnection,
+    Connection6DoF,
+)
+from semantic_digital_twin.world_description.geometry import Box, Scale
+from semantic_digital_twin.world_description.shape_collection import ShapeCollection
+from semantic_digital_twin.world_description.world_entity import Body
 
 
 @pytest.fixture(scope="session")
@@ -34,6 +43,15 @@ def tracy_milk_world(tracy_world):
         milk_world.root,
     )
     tracy_copy.merge_world(milk_world, connection)
+    with tracy_copy.modify_world():
+        box = Body(
+            name=PrefixedName("box"),
+            collision=ShapeCollection([Box(scale=Scale(0.1, 0.1, 0.1))]),
+        )
+        connection = Connection6DoF.create_with_dofs(tracy_copy, tracy_copy.root, box)
+        tracy_copy.add_connection(connection)
+        connection.origin = HomogeneousTransformationMatrix.from_xyz_rpy(1, 0, 1)
+
     return tracy_copy, Tracy.from_world(tracy_copy)
 
 
@@ -405,3 +423,144 @@ def test_grasp_sequence_right_tracy(tracy_milk_world):
     assert sequence[0].position.to_list() == pytest.approx([0, -0.082, 0], abs=0.01)
     assert sequence[1].position.to_list() == pytest.approx([0, 0, 0.0], abs=0.01)
     assert sequence[2].position.to_list() == pytest.approx([0, 0.0, 0.05], abs=0.01)
+
+
+def test_place_sequence(immutable_simple_pr2_holding_world):
+    world, robot_view, context = immutable_simple_pr2_holding_world
+    man = robot_view.left_arm.manipulator
+
+    grasp_desc = NewGraspDescription(
+        ApproachDirection.FRONT,
+        VerticalAlignment.NoAlignment,
+        man,
+    )
+
+    sequence = grasp_desc.place_pose_sequence(
+        PoseStamped.from_list([1, 1, 1], [0, 0, 0, 1], world.root)
+    )
+
+    assert sequence[2].position.to_list() == pytest.approx([0.9179, 1, 1], abs=0.01)
+    assert sequence[1].position.to_list() == pytest.approx([1, 1, 1], abs=0.01)
+    assert sequence[0].position.to_list() == pytest.approx([1, 1, 1.05], abs=0.01)
+
+
+def test_place_sequence_right_tracy(tracy_milk_world):
+    world, robot_view = tracy_milk_world
+    man = robot_view.left_arm.manipulator
+
+    grasp_desc = NewGraspDescription(
+        ApproachDirection.RIGHT,
+        VerticalAlignment.NoAlignment,
+        man,
+    )
+
+    sequence = grasp_desc.place_pose_sequence(
+        PoseStamped.from_list([1, 1, 1], [0, 0, 0, 1], world.root)
+    )
+
+    assert sequence[0].frame_id == world.root
+
+    assert sequence[0].position.to_list() == pytest.approx([1, 1, 1.05], abs=0.01)
+    assert sequence[1].position.to_list() == pytest.approx([1, 1, 1], abs=0.01)
+    assert sequence[2].position.to_list() == pytest.approx([1, 0.918, 1.0], abs=0.01)
+
+    assert sequence[0].orientation.to_list() == pytest.approx(
+        [0.0, 0.707, 0.707, 0.0], abs=0.001
+    )
+    assert sequence[1].orientation.to_list() == pytest.approx(
+        [0.0, 0.707, 0.707, 0.0], abs=0.001
+    )
+    assert sequence[2].orientation.to_list() == pytest.approx(
+        [0.0, 0.707, 0.707, 0.0], abs=0.001
+    )
+
+
+def test_pose_sequence_top(immutable_simple_pr2_world):
+    world, robot_view, context = immutable_simple_pr2_world
+    man = robot_view.left_arm.manipulator
+
+    grasp_desc = NewGraspDescription(
+        ApproachDirection.FRONT,
+        VerticalAlignment.TOP,
+        man,
+    )
+
+    sequence = grasp_desc.grasp_pose_sequence(world.get_body_by_name("milk.stl"))
+
+    assert sequence[0].frame_id == world.get_body_by_name("milk.stl")
+
+    assert sequence[0].position.to_list() == pytest.approx([0, 0, 0.083], abs=0.01)
+    assert sequence[1].position.to_list() == pytest.approx([0, 0, 0], abs=0.01)
+    assert sequence[2].position.to_list() == pytest.approx([0, 0.0, 0.05], abs=0.01)
+
+    assert sequence[0].orientation.to_list() == pytest.approx(
+        [0, 0.707, 0, 0.707], abs=0.001
+    )
+    assert sequence[1].orientation.to_list() == pytest.approx(
+        [0, 0.707, 0, 0.707], abs=0.001
+    )
+    assert sequence[2].orientation.to_list() == pytest.approx(
+        [0, 0.707, 0, 0.707], abs=0.001
+    )
+
+
+def test_pose_sequence_top_tracy(tracy_milk_world):
+    world, robot_view = tracy_milk_world
+    man = robot_view.left_arm.manipulator
+    grasp_desc = NewGraspDescription(
+        ApproachDirection.FRONT,
+        VerticalAlignment.TOP,
+        man,
+    )
+    sequence = grasp_desc.grasp_pose_sequence(world.get_body_by_name("milk.stl"))
+
+    assert sequence[0].frame_id == world.get_body_by_name("milk.stl")
+
+    assert sequence[0].position.to_list() == pytest.approx([0, 0, 0.083], abs=0.01)
+    assert sequence[1].position.to_list() == pytest.approx([0, 0, 0], abs=0.01)
+    assert sequence[2].position.to_list() == pytest.approx([0, 0.0, 0.05], abs=0.01)
+
+    assert sequence[0].orientation.to_list() == pytest.approx(
+        [0.707, 0.707, 0.0, 0.0], abs=0.001
+    )
+    assert sequence[1].orientation.to_list() == pytest.approx(
+        [0.707, 0.707, 0.0, 0.0], abs=0.001
+    )
+    assert sequence[2].orientation.to_list() == pytest.approx(
+        [0.707, 0.707, 0.0, 0.0], abs=0.001
+    )
+
+
+def test_pose_sequence_top_tracy_box(tracy_milk_world):
+    world, robot_view = tracy_milk_world
+    man = robot_view.left_arm.manipulator
+    grasp_desc = NewGraspDescription(
+        ApproachDirection.FRONT,
+        VerticalAlignment.TOP,
+        man,
+    )
+    sequence = grasp_desc._pose_sequence(
+        PoseStamped.from_list([1, 0, 1], frame=world.root),
+        world.get_body_by_name("box"),
+    )
+
+    node = rclpy.create_node("test")
+    VizMarkerPublisher(world, node)
+    for p in sequence:
+        PosePublisher(world, p.to_spatial_type(), node)
+
+    assert sequence[0].frame_id == world.root
+
+    assert sequence[0].position.to_list() == pytest.approx([1, 0, 1.1], abs=0.01)
+    assert sequence[1].position.to_list() == pytest.approx([1, 0, 1], abs=0.01)
+    assert sequence[2].position.to_list() == pytest.approx([1, 0.0, 1.05], abs=0.01)
+
+    assert sequence[0].orientation.to_list() == pytest.approx(
+        [0.707, 0.707, 0.0, 0.0], abs=0.001
+    )
+    assert sequence[1].orientation.to_list() == pytest.approx(
+        [0.707, 0.707, 0.0, 0.0], abs=0.001
+    )
+    assert sequence[2].orientation.to_list() == pytest.approx(
+        [0.707, 0.707, 0.0, 0.0], abs=0.001
+    )

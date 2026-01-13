@@ -56,16 +56,16 @@ class NewGraspDescription:
         approach_axis = np.array(self.approach_direction.axis.value, dtype=np.bool)
 
         # Pre-pose calculation
-        offset = np.array(bb_in_frame.dimensions)[approach_axis] / 2 + self.manipulation_offset
+        offset = (np.array(bb_in_frame.dimensions)[approach_axis] / 2 + self.manipulation_offset)[0]
 
         pre_pose = PoseStamped.from_list(pose.position.to_list(), orientation=grasp_orientation, frame=pose_frame)
-        pre_pose = translate_pose_along_local_axis(pre_pose, self.manipulation_axis(), -offset[0])
+        pre_pose = translate_pose_along_local_axis(pre_pose, self.manipulation_axis(), -offset)
 
         # Lift pose calculation
         lift_pose = PoseStamped.from_list(pose.position.to_list(), orientation=grasp_orientation, frame=pose_frame)
         lift_pose = translate_pose_along_local_axis(lift_pose, self.lift_axis(), self.manipulation_offset)
 
-        sequence = [pre_pose, PoseStamped.from_list([0, 0, 0], grasp_orientation, frame=pose_frame), lift_pose]
+        sequence = [pre_pose, PoseStamped.from_list(pose.position.to_list(), grasp_orientation, frame=pose_frame), lift_pose]
 
         if reverse:
             sequence.reverse()
@@ -91,8 +91,6 @@ class NewGraspDescription:
         """
         body =  self.manipulator.tool_frame.child_kinematic_structure_entities[0]
         return self._pose_sequence(pose, body, reverse=True)
-
-
 
     def manipulation_axis(self) -> List[float]:
         """
