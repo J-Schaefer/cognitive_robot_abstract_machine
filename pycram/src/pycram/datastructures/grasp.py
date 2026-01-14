@@ -62,10 +62,12 @@ class NewGraspDescription:
         pre_pose = translate_pose_along_local_axis(pre_pose, self.manipulation_axis(), -offset)
 
         # Lift pose calculation
-        lift_pose = PoseStamped.from_list(pose.position.to_list(), orientation=grasp_orientation, frame=pose_frame)
-        lift_pose = translate_pose_along_local_axis(lift_pose, self.lift_axis(), self.manipulation_offset)
+        lift_pose_map = PoseStamped.from_spatial_type(body._world.transform(pose.to_spatial_type(), body._world.root))
+        lift_pose_map.position.z += self.manipulation_offset
 
-        sequence = [pre_pose, PoseStamped.from_list(pose.position.to_list(), grasp_orientation, frame=pose_frame), lift_pose]
+        lift_pose =  PoseStamped.from_spatial_type(body._world.transform(lift_pose_map.to_spatial_type(), pose_frame))
+
+        sequence = [pre_pose, PoseStamped.from_list(pose.position.to_list(), grasp_orientation, frame=pose_frame), PoseStamped.from_list(lift_pose.position.to_list(), grasp_orientation, frame=pose_frame)]
 
         if reverse:
             sequence.reverse()

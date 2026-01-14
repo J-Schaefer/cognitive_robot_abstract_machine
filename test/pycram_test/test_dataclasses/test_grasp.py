@@ -38,11 +38,9 @@ def tracy_milk_world(tracy_world):
             "milk.stl",
         )
     ).parse()
-    connection = FixedConnection(
-        tracy_copy.get_body_by_name("l_gripper_tool_frame"),
-        milk_world.root,
+    tracy_copy.merge_world_at_pose(
+        milk_world, HomogeneousTransformationMatrix.from_xyz_rpy(1, 0, 1)
     )
-    tracy_copy.merge_world(milk_world, connection)
     with tracy_copy.modify_world():
         box = Body(
             name=PrefixedName("box"),
@@ -435,8 +433,10 @@ def test_place_sequence(immutable_simple_pr2_holding_world):
         man,
     )
 
-    sequence = grasp_desc.place_pose_sequence(
-        PoseStamped.from_list([1, 1, 1], [0, 0, 0, 1], world.root)
+    sequence = grasp_desc._pose_sequence(
+        PoseStamped.from_list([1, 1, 1], [0, 0, 0, 1], world.root),
+        world.get_body_by_name("milk.stl"),
+        reverse=True,
     )
 
     assert sequence[2].position.to_list() == pytest.approx([0.9179, 1, 1], abs=0.01)
@@ -454,8 +454,10 @@ def test_place_sequence_right_tracy(tracy_milk_world):
         man,
     )
 
-    sequence = grasp_desc.place_pose_sequence(
-        PoseStamped.from_list([1, 1, 1], [0, 0, 0, 1], world.root)
+    sequence = grasp_desc._pose_sequence(
+        PoseStamped.from_list([1, 1, 1], [0, 0, 0, 1], world.root),
+        world.get_body_by_name("milk.stl"),
+        reverse=True,
     )
 
     assert sequence[0].frame_id == world.root
