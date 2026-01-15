@@ -150,7 +150,9 @@ def test_pick_up(mutable_model_world):
     world, robot_view, context = mutable_model_world
 
     grasp_description = GraspDescription(
-        ApproachDirection.FRONT, VerticalAlignment.NoAlignment, False
+        ApproachDirection.FRONT,
+        VerticalAlignment.NoAlignment,
+        robot_view.left_arm.manipulator,
     )
     description = PickUpActionDescription(
         world.get_body_by_name("milk.stl"), [Arms.LEFT], [grasp_description]

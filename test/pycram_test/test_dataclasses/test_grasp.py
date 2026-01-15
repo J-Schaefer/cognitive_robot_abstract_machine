@@ -4,6 +4,7 @@ from copy import deepcopy
 import pytest
 import rclpy
 
+from pycram.datastructures.dataclasses import Context
 from pycram.datastructures.enums import ApproachDirection, VerticalAlignment
 from pycram.datastructures.grasp import GraspDescription
 from pycram.datastructures.pose import PoseStamped
@@ -11,6 +12,7 @@ from semantic_digital_twin.adapters.mesh import STLParser
 from semantic_digital_twin.adapters.ros.pose_publisher import PosePublisher
 from semantic_digital_twin.adapters.viz_marker import VizMarkerPublisher
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
+from semantic_digital_twin.robots.pr2 import PR2
 
 from semantic_digital_twin.robots.tracy import Tracy
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
@@ -56,12 +58,14 @@ def tracy_milk_world(tracy_world):
 @pytest.fixture(scope="session")
 def immutable_simple_pr2_holding_world(simple_pr2_world_setup):
     world, robot_view, context = simple_pr2_world_setup
+    copy_world = deepcopy(world)
 
-    milk = world.get_body_by_name("milk.stl")
-    tcp = world.get_body_by_name("l_gripper_tool_frame")
-    with world.modify_world():
-        world.move_branch(milk, tcp)
-    return world, robot_view, context
+    milk = copy_world.get_body_by_name("milk.stl")
+    tcp = copy_world.get_body_by_name("l_gripper_tool_frame")
+    with copy_world.modify_world():
+        copy_world.move_branch(milk, tcp)
+    view = PR2.from_world(copy_world)
+    return copy_world, view, Context(copy_world, view)
 
 
 def test_grasp_pose_front(immutable_simple_pr2_world):
@@ -545,11 +549,6 @@ def test_pose_sequence_top_tracy_box(tracy_milk_world):
         PoseStamped.from_list([1, 0, 1], frame=world.root),
         world.get_body_by_name("box"),
     )
-
-    node = rclpy.create_node("test")
-    VizMarkerPublisher(world, node)
-    for p in sequence:
-        PosePublisher(world, p.to_spatial_type(), node)
 
     assert sequence[0].frame_id == world.root
 

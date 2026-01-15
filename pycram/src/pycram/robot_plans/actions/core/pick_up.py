@@ -68,17 +68,8 @@ class ReachAction(ActionDescription):
 
     def execute(self) -> None:
 
-        end_effector = ViewManager.get_end_effector_view(self.arm, self.robot_view)
-
-        target_pose = (
-            self.grasp_description.get_grasp_pose(end_effector, self.object_designator)
-            if self.object_designator
-            else self.target_pose
-        )
-        target_pre_pose = translate_pose_along_local_axis(
-            target_pose,
-            end_effector.front_facing_axis.to_np()[:3],
-            ActionConfig.pick_up_prepose_distance,
+        target_pre_pose, target_pose, _ = self.grasp_description.grasp_pose_sequence(
+            self.object_designator
         )
 
         SequentialPlan(
@@ -188,10 +179,9 @@ class PickUpAction(ActionDescription):
                 )
             )
 
-        lift_to_pose = PoseStamped().from_spatial_type(
-            end_effector.tool_frame.global_pose
+        _, _, lift_to_pose = self.grasp_description.grasp_pose_sequence(
+            self.object_designator
         )
-        lift_to_pose.pose.position.z += 0.10
         SequentialPlan(
             self.context,
             MoveTCPMotion(

@@ -56,14 +56,21 @@ class PlaceAction(ActionDescription):
         super().__post_init__()
 
     def execute(self) -> None:
+        man = (
+            self.robot_view.left_arm.manipulator
+            if self.arm == Arms.LEFT
+            else self.robot_view.right_arm.manipulator
+        )
+        # TODO: get grasp description from previous pickup
         SequentialPlan(
             self.context,
             ReachActionDescription(
                 self.target_location,
                 self.arm,
                 GraspDescription(
-                    ApproachDirection.FRONT, VerticalAlignment.NoAlignment
+                    ApproachDirection.FRONT, VerticalAlignment.NoAlignment, man
                 ),
+                self.object_designator,
             ),
             MoveGripperMotion(GripperState.OPEN, self.arm),
         ).perform()

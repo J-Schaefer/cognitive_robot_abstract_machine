@@ -35,29 +35,6 @@ from pycram.robot_plans import (
     PickUpAction,
     PlaceAction,
 )
-from pycram.testing import ApartmentWorldTestCase
-
-
-class ORMaticBaseTestCaseMixin(ApartmentWorldTestCase):
-    engine: sqlalchemy.engine
-    session: Session
-
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        cls.engine = create_engine("sqlite:///:memory:")
-
-    def setUp(self):
-        super().setUp()
-        session = Session(engine)
-        Base.metadata.create_all(bind=session.bind)
-
-    def tearDown(self):
-        super().tearDown()
-        Base.metadata.drop_all(session.bind)
-        session.expunge_all()
-        session.close()
-
 
 engine = create_engine("sqlite:///:memory:")
 
@@ -229,7 +206,9 @@ def test_inheritance(database, mutable_model_world):
                 world.get_body_by_name("milk.stl"),
                 Arms.LEFT,
                 GraspDescription(
-                    ApproachDirection.FRONT, VerticalAlignment.NoAlignment, False
+                    ApproachDirection.FRONT,
+                    VerticalAlignment.NoAlignment,
+                    robot_view.left_arm.manipulator,
                 ),
             ),
             NavigateActionDescription(
