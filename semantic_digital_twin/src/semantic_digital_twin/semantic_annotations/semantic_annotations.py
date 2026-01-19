@@ -66,7 +66,7 @@ class Handle(HasRootBody):
         world: World,
         world_root_T_self: Optional[HomogeneousTransformationMatrix] = None,
         connection_limits: Optional[DegreeOfFreedomLimits] = None,
-        active_axis: Vector3 = Vector3.Z(),
+        active_axis: Optional[Vector3] = None,
         connection_multiplier: float = 1.0,
         connection_offset: float = 0.0,
         *,

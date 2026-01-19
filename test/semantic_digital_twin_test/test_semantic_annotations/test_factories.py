@@ -94,10 +94,12 @@ class TestFactories(unittest.TestCase):
             returned_hinge = Hinge.create_with_new_body_in_world(
                 name=PrefixedName("hinge"),
                 world=world,
+                active_axis=Vector3.Z(),
             )
             returned_slider = Slider.create_with_new_body_in_world(
                 name=PrefixedName("slider"),
                 world=world,
+                active_axis=Vector3.X(),
             )
         semantic_hinge_annotations = world.get_semantic_annotations_by_type(Hinge)
         self.assertEqual(len(semantic_hinge_annotations), 1)
@@ -174,7 +176,7 @@ class TestFactories(unittest.TestCase):
                 name=PrefixedName("door"), scale=Scale(0.03, 1, 2), world=world
             )
             hinge = Hinge.create_with_new_body_in_world(
-                name=PrefixedName("hinge"), world=world
+                name=PrefixedName("hinge"), world=world, active_axis=Vector3.Z()
             )
         assert len(world.kinematic_structure_entities) == 4
         assert isinstance(hinge.root.parent_connection, RevoluteConnection)
@@ -257,7 +259,7 @@ class TestFactories(unittest.TestCase):
                 world=world,
             )
             slider = Slider.create_with_new_body_in_world(
-                name=PrefixedName("slider"), world=world
+                name=PrefixedName("slider"), world=world, active_axis=Vector3.X()
             )
         assert len(world.kinematic_structure_entities) == 3
         with world.modify_world():
@@ -692,7 +694,10 @@ class TestFactories(unittest.TestCase):
             world.add_body(root)
         with world.modify_world():
             Hinge.create_with_new_body_in_world(
-                name=PrefixedName("hinge"), world=world, connection_limits=limits
+                name=PrefixedName("hinge"),
+                world=world,
+                connection_limits=limits,
+                active_axis=Vector3.Z(),
             )
 
         dof = world.degrees_of_freedom[0]
@@ -712,7 +717,10 @@ class TestFactories(unittest.TestCase):
 
         with self.assertRaises(InvalidConnectionLimits), world.modify_world():
             Hinge.create_with_new_body_in_world(
-                name=PrefixedName("hinge"), world=world, connection_limits=limits
+                name=PrefixedName("hinge"),
+                world=world,
+                connection_limits=limits,
+                active_axis=Vector3.Z(),
             )
 
     def test_perceivable_cup(self):

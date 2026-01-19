@@ -31,6 +31,7 @@ from ..exceptions import (
     InvalidConnectionLimits,
     MismatchingWorld,
     MissingWorldModificationContextError,
+    MissingActiveAxis,
 )
 from ..spatial_types import Point3, HomogeneousTransformationMatrix, Vector3
 from ..spatial_types.derivatives import DerivativeMap
@@ -140,7 +141,7 @@ class HasRootKinematicStructureEntity(SemanticAnnotation, ABC):
         kinematic_structure_entity: KinematicStructureEntity,
         world_root_T_self: Optional[HomogeneousTransformationMatrix] = None,
         connection_limits: Optional[DegreeOfFreedomLimits] = None,
-        active_axis: Vector3 = Vector3.Z(),
+        active_axis: Optional[Vector3] = None,
         connection_multiplier: float = 1.0,
         connection_offset: float = 0.0,
     ):
@@ -166,6 +167,8 @@ class HasRootKinematicStructureEntity(SemanticAnnotation, ABC):
 
         world.add_kinematic_structure_entity(kinematic_structure_entity)
         if issubclass(connection_type, ActiveConnection1DOF):
+            if active_axis is None:
+                raise MissingActiveAxis(cls)
             limits = connection_limits or cls._generate_default_dof_limits(
                 connection_type
             )
@@ -354,7 +357,7 @@ class HasRootBody(HasRootKinematicStructureEntity, ABC):
         world: World,
         world_root_T_self: Optional[HomogeneousTransformationMatrix] = None,
         connection_limits: Optional[DegreeOfFreedomLimits] = None,
-        active_axis: Vector3 = Vector3.Z(),
+        active_axis: Optional[Vector3] = None,
         connection_multiplier: float = 1.0,
         connection_offset: float = 0.0,
         **kwargs,
@@ -411,7 +414,7 @@ class HasRootRegion(HasRootKinematicStructureEntity, ABC):
         world: World,
         world_root_T_self: Optional[HomogeneousTransformationMatrix] = None,
         connection_limits: Optional[DegreeOfFreedomLimits] = None,
-        active_axis: Vector3 = Vector3.Z(),
+        active_axis: Optional[Vector3] = None,
         connection_multiplier: float = 1.0,
         connection_offset: float = 0.0,
         **kwargs,
@@ -795,7 +798,7 @@ class HasCaseAsRootBody(HasSupportingSurface, ABC):
         world: World,
         world_root_T_self: Optional[HomogeneousTransformationMatrix] = None,
         connection_limits: Optional[DegreeOfFreedomLimits] = None,
-        active_axis: Vector3 = Vector3.Z(),
+        active_axis: Optional[Vector3] = None,
         connection_multiplier: float = 1.0,
         connection_offset: float = 0.0,
         *,

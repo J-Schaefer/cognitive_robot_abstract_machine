@@ -138,6 +138,17 @@ class MissingConnectionType(UsageError):
 
 
 @dataclass
+class MissingActiveAxis(UsageError):
+    clazz: Type[HasRootKinematicStructureEntity]
+
+    def __post_init__(self):
+        self.message = (
+            f"When creating an instance of {self.clazz.__name__}, active_axis must be provided for connection_type "
+            f"{self.clazz._parent_connection_type.__name__}."
+        )
+
+
+@dataclass
 class InvalidConnectionLimits(UsageError):
     name: PrefixedName
     limits: DegreeOfFreedomLimits
