@@ -15,8 +15,8 @@ from ...callbacks.callback import ModelChangeCallback
 class VizMarkerPublisher(ModelChangeCallback):
     """
     Publishes the world model as a visualization marker.
-    Relies on the tf tree to correctly position the markers.
-    Use TFPublisher to publish the tf tree.
+    .. warning:: Relies on the tf tree to correctly position the markers.
+        Use TFPublisher to publish the tf tree.
     """
 
     red: ClassVar[ColorRGBA] = ColorRGBA(r=1.0, g=0.0, b=0.0, a=1.0)
