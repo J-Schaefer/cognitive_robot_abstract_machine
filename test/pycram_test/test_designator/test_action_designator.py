@@ -117,7 +117,9 @@ def test_navigate(immutable_model_world):
 def test_reach_to_pick_up(immutable_model_world):
     world, robot_view, context = immutable_model_world
     grasp_description = GraspDescription(
-        ApproachDirection.FRONT, VerticalAlignment.NoAlignment, False
+        ApproachDirection.FRONT,
+        VerticalAlignment.NoAlignment,
+        robot_view.left_arm.manipulator,
     )
     performable = ReachActionDescription(
         target_pose=PoseStamped.from_spatial_type(
@@ -198,7 +200,9 @@ def test_place(mutable_model_world):
             object_description,
             Arms.LEFT,
             GraspDescription(
-                ApproachDirection.FRONT, VerticalAlignment.NoAlignment, False
+                ApproachDirection.FRONT,
+                VerticalAlignment.NoAlignment,
+                robot_view.left_arm.manipulator,
             ),
         ),
         description,

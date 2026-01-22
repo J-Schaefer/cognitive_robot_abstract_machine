@@ -61,7 +61,12 @@ class PlaceAction(ActionDescription):
             if self.arm == Arms.LEFT
             else self.robot_view.right_arm.manipulator
         )
-        # TODO: get grasp description from previous pickup
+        # previous_pick = self.plan.get_previous_node_by_type_on_layer(
+        #     self.plan_node, PickUpAction
+        # )
+
+        # previous_grasp = previous_pick.designator_ref
+
         SequentialPlan(
             self.context,
             ReachActionDescription(
@@ -141,8 +146,8 @@ class PlaceAction(ActionDescription):
         object_designator: Union[Iterable[Body], Body],
         target_location: Union[Iterable[PoseStamped], PoseStamped],
         arm: Union[Iterable[Arms], Arms],
-    ) -> PartialDesignator[Type[PlaceAction]]:
-        return PartialDesignator(
+    ) -> PartialDesignator[PlaceAction]:
+        return PartialDesignator[PlaceAction](
             PlaceAction,
             object_designator=object_designator,
             target_location=target_location,

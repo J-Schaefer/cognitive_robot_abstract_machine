@@ -89,7 +89,7 @@ classes |= {
     PlanNode,
     SequentialNode,
     RepeatNode,
-    ResolvedActionNode,
+    ActionNode,
     Plan,
     PlanEdge,
     LanguageNode,

@@ -16,7 +16,7 @@ from pycram.designators.specialized_designators.probabilistic.probabilistic_acti
     MoveAndPickUpParameterizer,
 )
 from pycram.failures import PlanFailure
-from pycram.plan import Plan, ResolvedActionNode, PlanNode
+from pycram.plan import Plan, ActionNode, PlanNode
 from pycram.process_module import simulated_robot
 from pycram.robot_description import RobotDescriptionManager, RobotDescription
 from pycram.testing import EmptyWorldTestCase, ApartmentWorldTestCase
@@ -52,7 +52,7 @@ class MoveAndPickUpTestCase(ApartmentWorldTestCase):
         ).create_action()
 
         plan = Plan(
-            ResolvedActionNode(
+            ActionNode(
                 designator_ref=mpa, kwargs={}, designator_type=MoveAndPickUpAction
             ),
             self.context,

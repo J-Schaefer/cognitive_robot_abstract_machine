@@ -114,8 +114,8 @@ class ReachAction(ActionDescription):
         arm: Union[Iterable[Arms], Arms] = None,
         grasp_description: Union[Iterable[GraspDescription], GraspDescription] = None,
         object_designator: Union[Iterable[Body], Body] = None,
-    ) -> PartialDesignator[Type[ReachAction]]:
-        return PartialDesignator(
+    ) -> PartialDesignator[ReachAction]:
+        return PartialDesignator[ReachAction](
             ReachAction,
             target_pose=target_pose,
             arm=arm,
@@ -209,8 +209,8 @@ class PickUpAction(ActionDescription):
         object_designator: Union[Iterable[Body], Body],
         arm: Union[Iterable[Arms], Arms] = None,
         grasp_description: Union[Iterable[GraspDescription], GraspDescription] = None,
-    ) -> PartialDesignator[Type[PickUpAction]]:
-        return PartialDesignator(
+    ) -> PartialDesignator[PickUpAction]:
+        return PartialDesignator[PickUpAction](
             PickUpAction,
             object_designator=object_designator,
             arm=arm,
@@ -282,8 +282,8 @@ class GraspingAction(ActionDescription):
         prepose_distance: Union[
             Iterable[float], float
         ] = ActionConfig.grasping_prepose_distance,
-    ) -> PartialDesignator[Type[GraspingAction]]:
-        return PartialDesignator(
+    ) -> PartialDesignator[GraspingAction]:
+        return PartialDesignator[GraspingAction](
             GraspingAction,
             object_designator=object_designator,
             arm=arm,
