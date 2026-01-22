@@ -15,7 +15,7 @@ from geometry_msgs.msg import (
     QuaternionStamped,
 )
 from std_msgs.msg import ColorRGBA
-from typing_extensions import Generic, TypeVar, ClassVar
+from typing_extensions import Generic, TypeVar, ClassVar, overload
 from visualization_msgs.msg import Marker
 
 from krrood.utils import recursive_subclasses, DataclassException
@@ -65,20 +65,29 @@ class CannotConvertFromRos2Error(ROS2ConversionError):
 class ROS2MessageConverter(ABC, Generic[OurType, Ros2Type]):
     """
     Converts between some semDT types and ROS2 messages.
-    If you want to add a new converter, you need to add a new class that inherits from ROS2MessageConverter.
+    If you want to add a new converter, you need to sublcass this.
     """
 
     our_registry: ClassVar[Dict[Type, Type[ROS2MessageConverter]]] = field(default={})
+    """Registry mapping semDT types to their corresponding ROS2MessageConverter subclass."""
     ros2_registry: ClassVar[Dict[Type, Type[ROS2MessageConverter]]] = field(default={})
+    """Registry mapping ROS2 message types to their corresponding ROS2MessageConverter subclass."""
 
     our_type: Type
+    """The semDT type for which this converter handles conversion."""
     ros2_type: Type
+    """The ROS2 message type for which this converter handles conversion."""
 
     def __post_init__(self):
         self.our_registry[self.__class__] = self.__class__
 
     @classmethod
     def get_to_ros2_converter(cls, our_type: Type) -> Type[ROS2MessageConverter]:
+        """
+        Recursively checks all subclasses of ROS2MessageConverter to find the converter for the given semDT type.
+        :param our_type: The semDT type for which to find the ROS2 converter.
+        :return: The ROS2MessageConverter subclass that handles conversion from the given semDT type.
+        """
         for sub_class in recursive_subclasses(cls):
             if sub_class.our_type == our_type:
                 return sub_class
@@ -86,6 +95,11 @@ class ROS2MessageConverter(ABC, Generic[OurType, Ros2Type]):
 
     @classmethod
     def get_to_our_converter(cls, ros2_type: Type) -> Type[ROS2MessageConverter]:
+        """
+        Recursively checks all subclasses of ROS2MessageConverter to find the converter for the given ROS2 message type.
+        :param ros2_type: The ROS2 message type for which to find the semDT converter.
+        :return: The ROS2MessageConverter subclass that handles conversion from the given ROS2 message type.
+        """
         for sub_class in recursive_subclasses(cls):
             if sub_class.ros2_type == ros2_type:
                 return sub_class
@@ -93,6 +107,11 @@ class ROS2MessageConverter(ABC, Generic[OurType, Ros2Type]):
 
     @classmethod
     def to_ros2_message(cls, data: OurType) -> Ros2Type:
+        """
+        Transforms some types from semDT to ROS2 messages, for which converters are defined.
+        :param data: The semDT data to be converted to ROS2 message.
+        :return: The corresponding ROS2 message.
+        """
         return ROS2MessageConverter.get_to_ros2_converter(type(data))._to_ros2_message(
             data
         )
@@ -100,10 +119,20 @@ class ROS2MessageConverter(ABC, Generic[OurType, Ros2Type]):
     @classmethod
     @abstractmethod
     def _to_ros2_message(cls, data: OurType) -> Ros2Type:
-        pass
+        """
+        Subclasses should implement this method to convert data to a ROS2 message.
+        :param data: The semDT data to be converted.
+        :return: The corresponding ROS2 message.
+        """
 
     @classmethod
     def from_ros2_message(cls, data: Ros2Type, world: World) -> OurType:
+        """
+        Transforms some ROS2 messages to semDT types, for which converters are defined.
+        :param data: The ROS2 message to be converted to semDT.
+        :param world: The world used for context.
+        :return: The converted semDT data.
+        """
         return ROS2MessageConverter.get_to_our_converter(type(data))._from_ros2_message(
             data, world
         )
@@ -111,7 +140,12 @@ class ROS2MessageConverter(ABC, Generic[OurType, Ros2Type]):
     @classmethod
     @abstractmethod
     def _from_ros2_message(cls, data: Ros2Type, world: World) -> OurType:
-        pass
+        """
+        Subclasses should implement this method to convert a ROS2 message to semDT data.
+        :param data: The ROS2 message to be converted.
+        :param world: The world used for context.
+        :return: The converted semDT data.
+        """
 
 
 @dataclass
@@ -200,10 +234,11 @@ class PoseROS2Converter(ROS2MessageConverter[Pose, PoseStamped]):
             quat_y=data.pose.orientation.y,
             quat_z=data.pose.orientation.z,
             quat_w=data.pose.orientation.w,
-            reference_frame=world.get_kinematic_structure_entity_by_name(
-                data.header.frame_id
-            ),
         )
+        if data.header.frame_id != "":
+            result.reference_frame = world.get_kinematic_structure_entity_by_name(
+                data.header.frame_id
+            )
         return result
 
 
@@ -225,14 +260,16 @@ class Point3ROS2Converter(ROS2MessageConverter[Point3, PointStamped]):
 
     @classmethod
     def _from_ros2_message(cls, data: Ros2Type, world: World) -> OurType:
-        return Point3(
+        result = Point3(
             data.point.x,
             data.point.y,
             data.point.z,
-            reference_frame=world.get_kinematic_structure_entity_by_name(
-                data.header.frame_id
-            ),
         )
+        if data.header.frame_id != "":
+            result.reference_frame = world.get_kinematic_structure_entity_by_name(
+                data.header.frame_id
+            )
+        return result
 
 
 @dataclass
@@ -246,21 +283,23 @@ class Vector3ROS2Converter(ROS2MessageConverter[Vector3, Vector3Stamped]):
         if data.reference_frame is not None:
             vector_stamped.header.frame_id = str(data.reference_frame.name)
         vector = data.evaluate()
-        vector_stamped.vector = geometry_msgs.Point(
+        vector_stamped.vector = geometry_msgs.Vector3(
             x=vector[0], y=vector[1], z=vector[2]
         )
         return vector_stamped
 
     @classmethod
-    def _from_ros2_message(cls, data: Ros2Type, world: World) -> Vector3:
-        return Vector3(
-            data.point.x,
-            data.point.y,
-            data.point.z,
-            reference_frame=world.get_kinematic_structure_entity_by_name(
-                data.header.frame_id
-            ),
+    def _from_ros2_message(cls, data: Vector3Stamped, world: World) -> Vector3:
+        result = Vector3(
+            data.vector.x,
+            data.vector.y,
+            data.vector.z,
         )
+        if data.header.frame_id != "":
+            result.reference_frame = world.get_kinematic_structure_entity_by_name(
+                data.header.frame_id
+            )
+        return result
 
 
 @dataclass
@@ -275,21 +314,23 @@ class QuaternionROS2Converter(ROS2MessageConverter[Quaternion, QuaternionStamped
             vector_stamped.header.frame_id = str(data.reference_frame.name)
         vector = data.evaluate()
         vector_stamped.quaternion = geometry_msgs.Quaternion(
-            x=vector[0], y=vector[1], z=vector[2]
+            x=vector[0], y=vector[1], z=vector[2], w=vector[3]
         )
         return vector_stamped
 
     @classmethod
     def _from_ros2_message(cls, data: QuaternionStamped, world: World) -> Quaternion:
-        return Quaternion(
+        result = Quaternion(
             data.quaternion.x,
             data.quaternion.y,
             data.quaternion.z,
             data.quaternion.w,
-            reference_frame=world.get_kinematic_structure_entity_by_name(
-                data.header.frame_id
-            ),
         )
+        if data.header.frame_id != "":
+            result.reference_frame = world.get_kinematic_structure_entity_by_name(
+                data.header.frame_id
+            )
+        return result
 
 
 @dataclass
@@ -325,7 +366,17 @@ class ShapeROS2Converter(ROS2MessageConverter[OurType, Marker]):
 
     @classmethod
     def _from_ros2_message(cls, data: Ros2Type, world: World) -> OurType:
-        raise ROS2ConversionError("cannot convert marker to shape")
+        match data.type:
+            case visualization_msgs.Marker.CUBE:
+                return BoxShapeROS2Converter._from_ros2_message(data, world)
+            case visualization_msgs.Marker.CYLINDER:
+                return CylinderShapeROS2Converter._from_ros2_message(data, world)
+            case visualization_msgs.Marker.SPHERE:
+                return SphereShapeROS2Converter._from_ros2_message(data, world)
+            case visualization_msgs.Marker.MESH_RESOURCE:
+                return FileMeshShapeROS2Converter._from_ros2_message(data, world)
+            case _:
+                raise CannotConvertFromRos2Error(ros2_type=type(data))
 
 
 @dataclass
@@ -341,6 +392,11 @@ class BoxShapeROS2Converter(ShapeROS2Converter[Box]):
         marker.scale.y = data.scale.y
         marker.scale.z = data.scale.z
         return marker
+
+    @classmethod
+    def _from_ros2_message(cls, data: Marker, world: World) -> Box:
+        result = cls.our_type()
+        result.origin = PoseROS2Converter.from_ros2_message()
 
 
 @dataclass
