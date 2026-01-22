@@ -484,7 +484,6 @@ class Body(KinematicStructureEntity):
             name=PrefixedName.from_json(data["name"], **kwargs),
             id=from_json(data["id"]),
         )
-
         result._track_object_in_from_json(kwargs)
 
         collision = ShapeCollection.from_json(data["collision"], **kwargs)
