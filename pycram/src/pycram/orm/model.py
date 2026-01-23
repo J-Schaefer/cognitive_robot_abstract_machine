@@ -95,7 +95,7 @@ class DesignatorNodeMapping(PlanNodeMapping, AlternativeMapping[DesignatorNode])
 
 
 @dataclass
-class ActionNodeMapping(
+class ActionDescriptionNodeMapping(
     DesignatorNodeMapping, AlternativeMapping[ActionDescriptionNode]
 ):
 
@@ -137,7 +137,7 @@ class MotionNodeMapping(DesignatorNodeMapping, AlternativeMapping[MotionNode]):
 
 
 @dataclass
-class ResolvedActionNodeMapping(DesignatorNodeMapping, AlternativeMapping[ActionNode]):
+class ActionNodeMapping(DesignatorNodeMapping, AlternativeMapping[ActionNode]):
     designator_ref: ActionDescription = None
     execution_data: ExecutionData = None
 

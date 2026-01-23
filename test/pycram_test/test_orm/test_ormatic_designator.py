@@ -102,8 +102,8 @@ def test_action_to_pose(database, test_simple_plan):
     session.commit()
     # result = session.scalars(select(ActionDescriptionDAO)).all()
     result = session.scalars(
-        select(ResolvedActionNodeMappingDAO).where(
-            ResolvedActionNodeMappingDAO.designator_type == NavigateAction
+        select(ActionNodeMappingDAO).where(
+            ActionNodeMappingDAO.designator_type == NavigateAction
         )
     ).all()
     assert all(
@@ -184,7 +184,7 @@ def test_code_designator_type(database, mutable_model_world):
     session.add(dao)
     session.commit()
 
-    result = session.scalars(select(ResolvedActionNodeMappingDAO)).all()
+    result = session.scalars(select(ActionNodeMappingDAO)).all()
     # motion = session.scalars(select(MoveMotionDAO)).all()
     assert result[0].designator_type == NavigateAction
     assert result[0].start_time < result[0].end_time
@@ -487,13 +487,13 @@ def test_manipulated_body_pose(database, complex_plan):
 
     # pick_up = session.scalars(select(PickUpActionDAO)).all()[0]
     pick_up_node = session.scalars(
-        select(ResolvedActionNodeMappingDAO).where(
-            ResolvedActionNodeMappingDAO.designator_type == PickUpAction
+        select(ActionNodeMappingDAO).where(
+            ActionNodeMappingDAO.designator_type == PickUpAction
         )
     ).all()[0]
     place_node = session.scalars(
-        select(ResolvedActionNodeMappingDAO).where(
-            ResolvedActionNodeMappingDAO.designator_type == PlaceAction
+        select(ActionNodeMappingDAO).where(
+            ActionNodeMappingDAO.designator_type == PlaceAction
         )
     ).all()[0]
     # place = session.scalars(select(PlaceActionDAO)).all()[0]
@@ -535,8 +535,8 @@ def test_manipulated_body(database, complex_plan):
     session.commit()
 
     pick_up_node = session.scalars(
-        select(ResolvedActionNodeMappingDAO).where(
-            ResolvedActionNodeMappingDAO.designator_type == PickUpAction
+        select(ActionNodeMappingDAO).where(
+            ActionNodeMappingDAO.designator_type == PickUpAction
         )
     ).all()[0]
     assert (pick_up_node.execution_data.manipulated_body) is not None
@@ -560,8 +560,8 @@ def test_state(database, immutable_model_world):
     session.add(dao)
     session.commit()
     navigate_node = session.scalars(
-        select(ResolvedActionNodeMappingDAO).where(
-            ResolvedActionNodeMappingDAO.designator_type == NavigateAction
+        select(ActionNodeMappingDAO).where(
+            ActionNodeMappingDAO.designator_type == NavigateAction
         )
     ).all()[0]
     assert (navigate_node.execution_data.execution_start_world_state) is not None
