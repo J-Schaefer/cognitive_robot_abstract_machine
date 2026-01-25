@@ -102,10 +102,31 @@ class WorldEntity(Symbol):
 
 
 @dataclass(eq=False)
-class WorldEntityWithIDSubclassJSONSerializer(SubclassJSONSerializer):
+class WorldEntityWithID(WorldEntity, SubclassJSONSerializer):
+    """
+    A WorldEntity that has a unique identifier.
+
+    .. warning::
+        The WorldEntity class is not meant to be instantiated directly.
+    """
+
+    id: UUID = field(default_factory=uuid4)
+    """
+    A unique identifier for this world entity.
+    """
+
+    @cached_property
+    def _hash(self):
+        return hash(self.id)
+
+    def __hash__(self):
+        return self._hash
+
+    def add_to_world(self, world: World):
+        super().add_to_world(world)
 
     def to_json(self) -> Dict[str, Any]:
-        result = {}
+        result = {**super().to_json()}
         for field_ in fields(self):
             if self.skip_field(field_):
                 continue
@@ -163,31 +184,32 @@ class WorldEntityWithIDSubclassJSONSerializer(SubclassJSONSerializer):
             behavior.
         """
         tracker = WorldEntityWithIDKwargsTracker.from_kwargs(kwargs)
-        semantic_annotation_fields = {f.name: f for f in fields(cls)}
+
+        half_initialized_instance = cls.__new__(cls)
+        half_initialized_instance.id = from_json(data["id"], **kwargs)
+        if tracker.has_world_entity_with_id(half_initialized_instance.id):
+            return tracker.get_world_entity_with_id(half_initialized_instance.id)
+        tracker.add_world_entity_with_id(half_initialized_instance)
+
+        fields_ = {f.name: f for f in fields(cls)}
 
         init_args = {}
-
-        for k, v in semantic_annotation_fields.items():
+        for k, v in fields_.items():
+            if k == "id":
+                continue
             if k not in data.keys():
                 continue
 
             current_data = data[k]
-
-            if k == "id":
-                current_result = from_json(current_data, **kwargs)
-                if tracker.has_world_entity_with_id(current_result):
-                    return tracker.get_world_entity_with_id(current_result)
-            elif isinstance(current_data, list):
+            if isinstance(current_data, list):
                 current_result = [
                     cls._item_from_json(data, **kwargs) for data in current_data
                 ]
             else:
                 current_result = cls._item_from_json(current_data, **kwargs)
             init_args[k] = current_result
-        result = cls(**init_args)
-        if isinstance(result, WorldEntityWithID):
-            result._track_object_in_from_json(kwargs)
-        return result
+        half_initialized_instance.__init__(**init_args)
+        return half_initialized_instance
 
     @classmethod
     def _item_from_json(cls, data: Dict[str, Any], **kwargs) -> Any:
@@ -201,33 +223,8 @@ class WorldEntityWithIDSubclassJSONSerializer(SubclassJSONSerializer):
             return obj
 
 
-@dataclass(eq=False)
-class WorldEntityWithID(WorldEntity, WorldEntityWithIDSubclassJSONSerializer):
-    """
-    A WorldEntity that has a unique identifier.
-
-    .. warning::
-        The WorldEntity class is not meant to be instantiated directly.
-    """
-
-    id: UUID = field(default_factory=uuid4)
-    """
-    A unique identifier for this world entity.
-    """
-
-    @cached_property
-    def _hash(self):
-        return hash(self.id)
-
-    def __hash__(self):
-        return self._hash
-
-    def add_to_world(self, world: World):
-        super().add_to_world(world)
-
-
 @dataclass
-class CollisionCheckingConfig(WorldEntityWithIDSubclassJSONSerializer):
+class CollisionCheckingConfig:
     buffer_zone_distance: Optional[float] = None
     """
     Distance defining a buffer zone around the entity. The buffer zone represents a soft boundary where
@@ -250,22 +247,6 @@ class CollisionCheckingConfig(WorldEntityWithIDSubclassJSONSerializer):
     Maximum number of other bodies this body should avoid simultaneously.
     If more bodies than this are in the buffer zone, only the closest ones are avoided.
     """
-    #
-    # def to_json(self) -> Dict[str, Any]:
-    #     json_data = super().to_json()
-    #     for field_ in fields(self):
-    #         value = getattr(self, field_.name)
-    #         json_data[field_.name] = to_json(value)
-    #     return json_data
-    #
-    # @classmethod
-    # def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
-    #     cls_kwargs = {}
-    #     for field_name, json_field_data in data.items():
-    #         if field_name == JSON_TYPE_NAME:
-    #             continue
-    #         cls_kwargs[field_name] = from_json(json_field_data)
-    #     return cls(**cls_kwargs)
 
 
 @dataclass(eq=False)
@@ -911,7 +892,7 @@ class SemanticEnvironmentAnnotation(RootedSemanticAnnotation):
 
 
 @dataclass(eq=False)
-class Connection(WorldEntity, WorldEntityWithIDSubclassJSONSerializer):
+class Connection(WorldEntity, SubclassJSONSerializer):
     """
     Represents a connection between two entities in the world.
     """
@@ -989,29 +970,29 @@ class Connection(WorldEntity, WorldEntityWithIDSubclassJSONSerializer):
         self.parent_T_connection_expression.reference_frame = self.parent
         self.connection_T_child_expression.child_frame = self.child
 
-    # def to_json(self) -> Dict[str, Any]:
-    #     result = super().to_json()
-    #     result["name"] = self.name.to_json()
-    #     result["parent_id"] = to_json(self.parent.id)
-    #     result["child_id"] = to_json(self.child.id)
-    #     result["parent_T_connection_expression"] = (
-    #         self.parent_T_connection_expression.to_json()
-    #     )
-    #     return result
-    #
-    # @classmethod
-    # def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
-    #     tracker = WorldEntityWithIDKwargsTracker.from_kwargs(kwargs)
-    #     parent = tracker.get_world_entity_with_id(id=from_json(data["parent_id"]))
-    #     child = tracker.get_world_entity_with_id(id=from_json(data["child_id"]))
-    #     return cls(
-    #         name=PrefixedName.from_json(data["name"]),
-    #         parent=parent,
-    #         child=child,
-    #         parent_T_connection_expression=HomogeneousTransformationMatrix.from_json(
-    #             data["parent_T_connection_expression"], **kwargs
-    #         ),
-    #     )
+    def to_json(self) -> Dict[str, Any]:
+        result = super().to_json()
+        result["name"] = self.name.to_json()
+        result["parent_id"] = to_json(self.parent.id)
+        result["child_id"] = to_json(self.child.id)
+        result["parent_T_connection_expression"] = (
+            self.parent_T_connection_expression.to_json()
+        )
+        return result
+
+    @classmethod
+    def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
+        tracker = WorldEntityWithIDKwargsTracker.from_kwargs(kwargs)
+        parent = tracker.get_world_entity_with_id(id=from_json(data["parent_id"]))
+        child = tracker.get_world_entity_with_id(id=from_json(data["child_id"]))
+        return cls(
+            name=PrefixedName.from_json(data["name"]),
+            parent=parent,
+            child=child,
+            parent_T_connection_expression=HomogeneousTransformationMatrix.from_json(
+                data["parent_T_connection_expression"], **kwargs
+            ),
+        )
 
     @property
     def origin_expression(self) -> HomogeneousTransformationMatrix:

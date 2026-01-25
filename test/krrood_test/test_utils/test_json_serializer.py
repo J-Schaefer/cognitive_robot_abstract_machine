@@ -1,5 +1,5 @@
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Any, Self
 
@@ -257,3 +257,17 @@ def test_nparray():
     data = to_json(obj)
     result = from_json(data)
     assert np.allclose(result, obj)
+
+
+@dataclass
+class Foo:
+    bar: str = "baz"
+    muh: int = field(default_factory=lambda: 42)
+
+
+def test_dataclass_with_default_factory():
+
+    foo = Foo()
+    data = to_json(foo)
+    result = from_json(data)
+    assert result == foo

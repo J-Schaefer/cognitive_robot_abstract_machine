@@ -357,7 +357,7 @@ class DataclassJSONSerializer(ExternalClassJSONSerializer[None]):
         )
 
     @classmethod
-    def _from_json(cls, data: Dict[str, Any], clazz: Type, **kwargs) -> Self:
+    def from_json(cls, data: Dict[str, Any], clazz: Type, **kwargs) -> Self:
         """
         .. warn::
 
