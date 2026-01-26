@@ -351,15 +351,7 @@ class Plan:
 
     @property
     def actions(self) -> List[ActionDescriptionNode]:
-        return list(
-            filter(
-                None,
-                [
-                    node if type(node) is ActionDescriptionNode else None
-                    for node in self.nodes
-                ],
-            )
-        )
+        return [node for node in self.nodes if type(node) is ActionDescriptionNode]
 
     @property
     def layers(self) -> List[List[PlanNode]]:
