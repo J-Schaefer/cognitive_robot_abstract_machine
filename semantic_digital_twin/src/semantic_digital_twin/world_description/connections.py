@@ -71,10 +71,10 @@ class ActiveConnection(Connection):
         parent = tracker.get_world_entity_with_id(id=from_json(data["parent_id"]))
         child = tracker.get_world_entity_with_id(id=from_json(data["child_id"]))
         return cls(
-            name=PrefixedName.from_json(data["name"]),
+            name=from_json(data["name"]),
             parent=parent,
             child=child,
-            parent_T_connection_expression=HomogeneousTransformationMatrix.from_json(
+            parent_T_connection_expression=from_json(
                 data["parent_T_connection_expression"], **kwargs
             ),
             frozen_for_collision_avoidance=data["frozen_for_collision_avoidance"],
@@ -157,10 +157,10 @@ class ActiveConnection1DOF(ActiveConnection, ABC):
         parent = tracker.get_world_entity_with_id(id=from_json(data["parent_id"]))
         child = tracker.get_world_entity_with_id(id=from_json(data["child_id"]))
         return cls(
-            name=PrefixedName.from_json(data["name"]),
+            name=from_json(data["name"]),
             parent=parent,
             child=child,
-            parent_T_connection_expression=HomogeneousTransformationMatrix.from_json(
+            parent_T_connection_expression=from_json(
                 data["parent_T_connection_expression"], **kwargs
             ),
             frozen_for_collision_avoidance=data["frozen_for_collision_avoidance"],
@@ -404,10 +404,10 @@ class Connection6DoF(Connection):
         parent = tracker.get_world_entity_with_id(id=from_json(data["parent_id"]))
         child = tracker.get_world_entity_with_id(id=from_json(data["child_id"]))
         return cls(
-            name=PrefixedName.from_json(data["name"]),
+            name=from_json(data["name"]),
             parent=parent,
             child=child,
-            parent_T_connection_expression=HomogeneousTransformationMatrix.from_json(
+            parent_T_connection_expression=from_json(
                 data["parent_T_connection_expression"], **kwargs
             ),
             x_id=from_json(data["x_id"]),
@@ -630,10 +630,10 @@ class OmniDrive(ActiveConnection, HasUpdateState):
         parent = tracker.get_world_entity_with_id(id=from_json(data["parent_id"]))
         child = tracker.get_world_entity_with_id(id=from_json(data["child_id"]))
         return cls(
-            name=PrefixedName.from_json(data["name"], **kwargs),
+            name=from_json(data["name"], **kwargs),
             parent=parent,
             child=child,
-            parent_T_connection_expression=HomogeneousTransformationMatrix.from_json(
+            parent_T_connection_expression=from_json(
                 data["parent_T_connection_expression"], **kwargs
             ),
             x_id=from_json(data["x_id"]),

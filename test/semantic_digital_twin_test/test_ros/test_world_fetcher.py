@@ -188,7 +188,7 @@ def test_semantic_annotation_modifications(rclpy_node):
 
 
 def test_pr2_semantic_annotation(rclpy_node, pr2_world_state_reset):
-    pr2 = PR2.from_world(pr2_world_state_reset)
+    pr2 = pr2_world_state_reset.get_semantic_annotations_by_type(PR2)[0]
     fetcher = FetchWorldServer(node=rclpy_node, world=pr2_world_state_reset)
 
     pr2_world_copy = fetch_world_from_service(

@@ -1,5 +1,3 @@
-import unittest
-
 import pytest
 import rclpy
 import rustworkx
@@ -10,8 +8,10 @@ from pycram.motion_executor import MotionExecutor
 from pycram.process_module import simulated_robot
 from pycram.robot_plans.actions import *
 from pycram.robot_plans.motions import MoveTCPWaypointsMotion
-from pycram.testing import ApartmentWorldTestCase
-from semantic_digital_twin.adapters.viz_marker import VizMarkerPublisher
+from semantic_digital_twin.adapters.ros.tf_publisher import TFPublisher
+from semantic_digital_twin.adapters.ros.visualization.viz_marker import (
+    VizMarkerPublisher,
+)
 from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Milk,
 )
@@ -295,7 +295,8 @@ def test_close(immutable_model_world):
 def test_transport(mutable_model_world):
     world, robot_view, context = mutable_model_world
     node = rclpy.create_node("test_node")
-    VizMarkerPublisher(world, node, throttle_state_updates=20)
+    TFPublisher(world, node, throttle_state_updates=10)
+    VizMarkerPublisher(world, node)
     description = TransportActionDescription(
         world.get_body_by_name("milk.stl"),
         [PoseStamped.from_list([3.1, 2.2, 0.95], [0.0, 0.0, 1.0, 0.0], world.root)],
