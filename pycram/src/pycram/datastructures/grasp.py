@@ -157,9 +157,6 @@ class GraspDescription:
             rotation, Rotations.VERTICAL_ROTATIONS[self.vertical_alignment]
         )
         rotation = quaternion_multiply(
-            rotation, Rotations.HORIZONTAL_ROTATIONS[False]
-        )
-        rotation = quaternion_multiply(
             rotation, Rotations.HORIZONTAL_ROTATIONS[self.rotate_gripper]
         )
 
