@@ -2,22 +2,17 @@ import os
 from copy import deepcopy
 
 import pytest
-import rclpy
 
 from pycram.datastructures.dataclasses import Context
 from pycram.datastructures.enums import ApproachDirection, VerticalAlignment
 from pycram.datastructures.grasp import GraspDescription
 from pycram.datastructures.pose import PoseStamped
 from semantic_digital_twin.adapters.mesh import STLParser
-from semantic_digital_twin.adapters.ros.pose_publisher import PosePublisher
-from semantic_digital_twin.adapters.viz_marker import VizMarkerPublisher
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.pr2 import PR2
-
 from semantic_digital_twin.robots.tracy import Tracy
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import (
-    FixedConnection,
     Connection6DoF,
 )
 from semantic_digital_twin.world_description.geometry import Box, Scale
