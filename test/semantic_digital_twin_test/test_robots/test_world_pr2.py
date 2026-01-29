@@ -22,6 +22,7 @@ from semantic_digital_twin.spatial_types.spatial_types import (
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.connections import (
     OmniDrive,
+    DiffDrive,
     PrismaticConnection,
     RevoluteConnection,
 )
@@ -298,6 +299,44 @@ def test_apply_control_commands_omni_drive_pr2(pr2_world_state_reset):
     assert pr2_world_state_reset.state[omni_drive.y.id].acceleration == 0.0
     assert pr2_world_state_reset.state[omni_drive.y.id].velocity == 0.0
     assert pr2_world_state_reset.state[omni_drive.y.id].position == 0.1094837581924854
+
+
+# TODO redefine this with the Stretch robot, right now just testing the DiffDrive
+def test_apply_control_commands_diff_drive_pr2(pr2_world_state_reset):
+    diff_drive: DiffDrive = pr2_world_state_reset.get_connection_by_name(
+        "odom_combined_T_base_footprint"
+    )
+    cmd = np.zeros((len(pr2_world_state_reset.degrees_of_freedom)), dtype=float)
+    cmd[pr2_world_state_reset.state._index[diff_drive.x_velocity.id]] = 100
+    cmd[pr2_world_state_reset.state._index[diff_drive.yaw.id]] = 100
+    dt = 0.1
+    pr2_world_state_reset.apply_control_commands(cmd, dt, Derivatives.jerk)
+    assert pr2_world_state_reset.state[diff_drive.yaw.id].jerk == 100.0
+    assert pr2_world_state_reset.state[diff_drive.yaw.id].acceleration == 100.0 * dt
+    assert pr2_world_state_reset.state[diff_drive.yaw.id].velocity == 100.0 * dt * dt
+    assert (
+        pr2_world_state_reset.state[diff_drive.yaw.id].position == 100.0 * dt * dt * dt
+    )
+
+    assert pr2_world_state_reset.state[diff_drive.x_velocity.id].jerk == 100.0
+    assert (
+        pr2_world_state_reset.state[diff_drive.x_velocity.id].acceleration == 100.0 * dt
+    )
+    assert (
+        pr2_world_state_reset.state[diff_drive.x_velocity.id].velocity
+        == 100.0 * dt * dt
+    )
+    assert pr2_world_state_reset.state[diff_drive.x_velocity.id].position == 0
+
+    assert pr2_world_state_reset.state[diff_drive.x.id].jerk == 0.0
+    assert pr2_world_state_reset.state[diff_drive.x.id].acceleration == 0.0
+    assert pr2_world_state_reset.state[diff_drive.x.id].velocity == 0.0
+    assert pr2_world_state_reset.state[diff_drive.x.id].position == 0.09950041652780259
+
+    assert pr2_world_state_reset.state[diff_drive.y.id].jerk == 0.0
+    assert pr2_world_state_reset.state[diff_drive.y.id].acceleration == 0.0
+    assert pr2_world_state_reset.state[diff_drive.y.id].velocity == 0.0
+    assert pr2_world_state_reset.state[diff_drive.y.id].position == 0.009983341664682815
 
 
 def test_search_for_connections_of_type(pr2_world_state_reset: World):
