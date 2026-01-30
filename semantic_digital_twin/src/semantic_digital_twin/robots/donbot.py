@@ -19,6 +19,7 @@ from ..robots.abstract_robot import (
 )
 from ..spatial_types import Quaternion, Vector3
 from ..world import World
+from ..world_description.connections import FixedConnection
 
 
 @dataclass(eq=False)
@@ -119,41 +120,34 @@ class Donbot(AbstractRobot, HasArms, HasNeck):
             # Create states
             arm_park = JointState(
                 name=PrefixedName("arm_park", prefix=donbot.name.name),
-                joints=[world.get_connection_by_name("ur5_shoulder_pan_joint"),
-                             world.get_connection_by_name("ur5_shoulder_lift_joint"),
-                             world.get_connection_by_name("ur5_elbow_joint"),
-                             world.get_connection_by_name("ur5_wrist_1_joint"),
-                             world.get_connection_by_name("ur5_wrist_2_joint"),
-                             world.get_connection_by_name("ur5_wrist_3_joint")],
+                joints=[c for c in arm.connections if type(c) != FixedConnection],
                 joint_positions=[3.23, -1.51, -1.57, 0.0, 1.57, -1.65],
                 state_type=StaticJointState.PARK,
-                kinematic_chains=[arm],
                 _world=world,
             )
+
+            arm.add_joint_state(arm_park)
 
             looking = JointState(
                 name=PrefixedName("looking", prefix=donbot.name.name),
-                joints=[world.get_connection_by_name("ur5_shoulder_pan_joint"),
-                             world.get_connection_by_name("ur5_shoulder_lift_joint"),
-                             world.get_connection_by_name("ur5_elbow_joint"),
-                             world.get_connection_by_name("ur5_wrist_1_joint"),
-                             world.get_connection_by_name("ur5_wrist_2_joint"),
-                             world.get_connection_by_name("ur5_wrist_3_joint")],
+                joints=[c for c in neck.connections if type(c) != FixedConnection],
                 joint_positions=[0.0, -0.35, -2.15, -0.7, 1.57, -1.57],
                 state_type=StaticJointState.PARK,
-                kinematic_chains=[arm],
                 _world=world,
             )
 
-            gripper_joints = [world.get_connection_by_name("gripper_joint"),
-                              world.get_connection_by_name("gripper_base_gripper_left_joint")]
+            neck.add_joint_state(looking)
+
+            gripper_joints = [
+                world.get_connection_by_name("gripper_joint"),
+                world.get_connection_by_name("gripper_base_gripper_left_joint"),
+            ]
 
             gripper_open = JointState(
                 name=PrefixedName("gripper_open", prefix=donbot.name.name),
                 joints=gripper_joints,
                 joint_positions=[0.109, -0.055],
                 state_type=GripperState.OPEN,
-                kinematic_chains=[gripper],
                 _world=world,
             )
 
@@ -162,9 +156,11 @@ class Donbot(AbstractRobot, HasArms, HasNeck):
                 joints=gripper_joints,
                 joint_positions=[0.0065, -0.0027],
                 state_type=GripperState.CLOSE,
-                kinematic_chains=[gripper],
                 _world=world,
             )
+
+            gripper.add_joint_state(gripper_close)
+            gripper.add_joint_state(gripper_open)
 
             torso_joint = [world.get_connection_by_name("arm_base_mounting_joint")]
 
@@ -173,7 +169,6 @@ class Donbot(AbstractRobot, HasArms, HasNeck):
                 joints=torso_joint,
                 joint_positions=[0.0],
                 state_type=TorsoState.LOW,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
@@ -182,7 +177,6 @@ class Donbot(AbstractRobot, HasArms, HasNeck):
                 joints=torso_joint,
                 joint_positions=[0.0],
                 state_type=TorsoState.MID,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
@@ -191,11 +185,12 @@ class Donbot(AbstractRobot, HasArms, HasNeck):
                 joints=torso_joint,
                 joint_positions=[0.0],
                 state_type=TorsoState.HIGH,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
-            donbot.add_joint_states([arm_park, looking, gripper_open, gripper_close, torso_low, torso_mid, torso_high])
+            torso.add_joint_state(torso_low)
+            torso.add_joint_state(torso_mid)
+            torso.add_joint_state(torso_high)
 
             world.add_semantic_annotation(donbot)
 

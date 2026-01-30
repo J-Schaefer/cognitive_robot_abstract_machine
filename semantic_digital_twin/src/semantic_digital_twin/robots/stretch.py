@@ -17,6 +17,7 @@ from ..datastructures.prefixed_name import PrefixedName
 from ..spatial_types import Quaternion
 from ..spatial_types.spatial_types import Vector3
 from ..world import World
+from ..world_description.connections import FixedConnection
 
 
 @dataclass(eq=False)
@@ -86,7 +87,9 @@ class Stretch(AbstractRobot, HasArms, HasNeck):
 
             # Create camera and neck
             camera_color = Camera(
-                name=PrefixedName("camera_color_optical_frame", prefix=stretch.name.name),
+                name=PrefixedName(
+                    "camera_color_optical_frame", prefix=stretch.name.name
+                ),
                 root=world.get_body_by_name("camera_color_optical_frame"),
                 forward_facing_axis=Vector3(0, 0, 1),
                 minimal_height=1.322,
@@ -95,7 +98,9 @@ class Stretch(AbstractRobot, HasArms, HasNeck):
             )
 
             camera_depth = Camera(
-                name=PrefixedName("camera_depth_optical_frame", prefix=stretch.name.name),
+                name=PrefixedName(
+                    "camera_depth_optical_frame", prefix=stretch.name.name
+                ),
                 root=world.get_body_by_name("camera_depth_optical_frame"),
                 forward_facing_axis=Vector3(0, 0, 1),
                 minimal_height=1.307,
@@ -104,7 +109,9 @@ class Stretch(AbstractRobot, HasArms, HasNeck):
             )
 
             camera_infra1 = Camera(
-                name=PrefixedName("camera_infra1_optical_frame", prefix=stretch.name.name),
+                name=PrefixedName(
+                    "camera_infra1_optical_frame", prefix=stretch.name.name
+                ),
                 root=world.get_body_by_name("camera_infra1_optical_frame"),
                 forward_facing_axis=Vector3(0, 0, 1),
                 minimal_height=1.307,
@@ -113,7 +120,9 @@ class Stretch(AbstractRobot, HasArms, HasNeck):
             )
 
             camera_infra2 = Camera(
-                name=PrefixedName("camera_infra2_optical_frame", prefix=stretch.name.name),
+                name=PrefixedName(
+                    "camera_infra2_optical_frame", prefix=stretch.name.name
+                ),
                 root=world.get_body_by_name("camera_infra2_optical_frame"),
                 forward_facing_axis=Vector3(0, 0, 1),
                 minimal_height=1.257,
@@ -144,25 +153,24 @@ class Stretch(AbstractRobot, HasArms, HasNeck):
             # Create states
             arm_park = JointState(
                 name=PrefixedName("arm_park", prefix=stretch.name.name),
-                joints=[world.get_connection_by_name("joint_lift"), world.get_connection_by_name("joint_arm_l3"),
-                             world.get_connection_by_name("joint_arm_l2"), world.get_connection_by_name("joint_arm_l1"),
-                             world.get_connection_by_name("joint_arm_l0"), world.get_connection_by_name("joint_wrist_yaw"),
-                             world.get_connection_by_name("joint_wrist_pitch"), world.get_connection_by_name("joint_wrist_roll")],
+                joints=[c for c in arm.connections if type(c) != FixedConnection],
                 joint_positions=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 state_type=StaticJointState.PARK,
-                kinematic_chains=[arm],
                 _world=world,
             )
 
-            gripper_joints = [world.get_connection_by_name("joint_gripper_finger_left"),
-                              world.get_connection_by_name("joint_gripper_finger_right")]
+            arm.add_joint_state(arm_park)
+
+            gripper_joints = [
+                world.get_connection_by_name("joint_gripper_finger_left"),
+                world.get_connection_by_name("joint_gripper_finger_right"),
+            ]
 
             gripper_open = JointState(
                 name=PrefixedName("gripper_open", prefix=stretch.name.name),
                 joints=gripper_joints,
                 joint_positions=[0.59, 0.59],
                 state_type=GripperState.OPEN,
-                kinematic_chains=[gripper],
                 _world=world,
             )
 
@@ -171,9 +179,11 @@ class Stretch(AbstractRobot, HasArms, HasNeck):
                 joints=gripper_joints,
                 joint_positions=[0.0, 0.0],
                 state_type=GripperState.CLOSE,
-                kinematic_chains=[gripper],
                 _world=world,
             )
+
+            gripper.add_joint_state(gripper_open)
+            gripper.add_joint_state(gripper_close)
 
             torso_joint = [world.get_connection_by_name("joint_lift")]
 
@@ -182,7 +192,6 @@ class Stretch(AbstractRobot, HasArms, HasNeck):
                 joints=torso_joint,
                 joint_positions=[0.0],
                 state_type=TorsoState.LOW,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
@@ -191,7 +200,6 @@ class Stretch(AbstractRobot, HasArms, HasNeck):
                 joints=torso_joint,
                 joint_positions=[0.5],
                 state_type=TorsoState.MID,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
@@ -200,13 +208,13 @@ class Stretch(AbstractRobot, HasArms, HasNeck):
                 joints=torso_joint,
                 joint_positions=[1.0],
                 state_type=TorsoState.HIGH,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
-            stretch.add_joint_states([arm_park, gripper_open, gripper_close, torso_low, torso_mid, torso_high])
+            torso.add_joint_state(torso_low)
+            torso.add_joint_state(torso_mid)
+            torso.add_joint_state(torso_high)
 
             world.add_semantic_annotation(stretch)
 
         return stretch
-

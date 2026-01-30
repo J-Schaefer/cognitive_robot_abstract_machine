@@ -18,6 +18,7 @@ from ..datastructures.prefixed_name import PrefixedName
 from ..spatial_types import Quaternion
 from ..spatial_types.spatial_types import Vector3
 from ..world import World
+from ..world_description.connections import FixedConnection
 
 
 @dataclass(eq=False)
@@ -153,37 +154,34 @@ class Tiago(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
             # Create states
             left_arm_park = JointState(
                 name=PrefixedName("left_arm_park", prefix=tiago.name.name),
-                joints=[world.get_connection_by_name("arm_left_1_joint"), world.get_connection_by_name("arm_left_2_joint"),
-                             world.get_connection_by_name("arm_left_3_joint"), world.get_connection_by_name("arm_left_4_joint"),
-                             world.get_connection_by_name("arm_left_5_joint"), world.get_connection_by_name("arm_left_6_joint"),
-                             world.get_connection_by_name("arm_left_7_joint")],
+                joints=[c for c in left_arm.connections if type(c) != FixedConnection],
                 joint_positions=[0.27, -1.07, 1.5, 1.96, -2.0, 1.2, 0.5],
                 state_type=StaticJointState.PARK,
-                kinematic_chains=[left_arm],
                 _world=world,
             )
+
+            left_arm.add_joint_state(left_arm_park)
 
             right_arm_park = JointState(
                 name=PrefixedName("right_arm_park", prefix=tiago.name.name),
-                joints=[world.get_connection_by_name("arm_right_1_joint"), world.get_connection_by_name("arm_right_2_joint"),
-                             world.get_connection_by_name("arm_right_3_joint"), world.get_connection_by_name("arm_right_4_joint"),
-                             world.get_connection_by_name("arm_right_5_joint"), world.get_connection_by_name("arm_right_6_joint"),
-                             world.get_connection_by_name("arm_right_7_joint")],
+                joints=[c for c in right_arm.connections if type(c) != FixedConnection],
                 joint_positions=[0.27, -1.07, 1.5, 1.96, -2.0, 1.2, 0.5],
                 state_type=StaticJointState.PARK,
-                kinematic_chains=[right_arm],
                 _world=world,
             )
 
-            left_gripper_joints = [world.get_connection_by_name("gripper_left_left_finger_joint"),
-                                   world.get_connection_by_name("gripper_left_right_finger_joint")]
+            right_arm.add_joint_state(right_arm_park)
+
+            left_gripper_joints = [
+                world.get_connection_by_name("gripper_left_left_finger_joint"),
+                world.get_connection_by_name("gripper_left_right_finger_joint"),
+            ]
 
             left_gripper_open = JointState(
                 name=PrefixedName("left_gripper_open", prefix=tiago.name.name),
                 joints=left_gripper_joints,
                 joint_positions=[0.048, 0.048],
                 state_type=GripperState.OPEN,
-                kinematic_chains=[left_gripper],
                 _world=world,
             )
 
@@ -192,19 +190,22 @@ class Tiago(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
                 joints=left_gripper_joints,
                 joint_positions=[0.0, 0.0],
                 state_type=GripperState.CLOSE,
-                kinematic_chains=[left_gripper],
                 _world=world,
             )
 
-            right_gripper_joints = [world.get_connection_by_name("gripper_right_left_finger_joint"),
-                                    world.get_connection_by_name("gripper_right_right_finger_joint")]
+            left_gripper.add_joint_state(left_gripper_close)
+            left_gripper.add_joint_state(left_gripper_open)
+
+            right_gripper_joints = [
+                world.get_connection_by_name("gripper_right_left_finger_joint"),
+                world.get_connection_by_name("gripper_right_right_finger_joint"),
+            ]
 
             right_gripper_open = JointState(
                 name=PrefixedName("right_gripper_open", prefix=tiago.name.name),
                 joints=right_gripper_joints,
                 joint_positions=[0.048, 0.048],
                 state_type=GripperState.OPEN,
-                kinematic_chains=[right_gripper],
                 _world=world,
             )
 
@@ -213,9 +214,11 @@ class Tiago(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
                 joints=right_gripper_joints,
                 joint_positions=[0.0, 0.0],
                 state_type=GripperState.CLOSE,
-                kinematic_chains=[right_gripper],
                 _world=world,
             )
+
+            right_gripper.add_joint_state(right_gripper_close)
+            right_gripper.add_joint_state(right_gripper_open)
 
             torso_joint = [world.get_connection_by_name("torso_lift_joint")]
 
@@ -224,7 +227,6 @@ class Tiago(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
                 joints=torso_joint,
                 joint_positions=[0.3],
                 state_type=TorsoState.LOW,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
@@ -233,7 +235,6 @@ class Tiago(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
                 joints=torso_joint,
                 joint_positions=[0.15],
                 state_type=TorsoState.MID,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
@@ -242,14 +243,13 @@ class Tiago(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
                 joints=torso_joint,
                 joint_positions=[0.0],
                 state_type=TorsoState.HIGH,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
-            tiago.add_joint_states([left_arm_park, right_arm_park, left_gripper_open, left_gripper_close,
-                                    right_gripper_open, right_gripper_close, torso_low, torso_mid, torso_high])
+            torso.add_joint_state(torso_low)
+            torso.add_joint_state(torso_mid)
+            torso.add_joint_state(torso_high)
 
             world.add_semantic_annotation(tiago)
 
         return tiago
-

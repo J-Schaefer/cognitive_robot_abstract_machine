@@ -18,6 +18,7 @@ from ..robots.abstract_robot import (
 )
 from ..spatial_types import Quaternion, Vector3
 from ..world import World
+from ..world_description.connections import FixedConnection
 
 
 @dataclass(eq=False)
@@ -111,25 +112,24 @@ class Kevin(AbstractRobot, HasArms):
             # Create states
             arm_park = JointState(
                 name=PrefixedName("arm_park", prefix=kevin.name.name),
-                joints=[world.get_connection_by_name("robot_arm_column_joint"),
-                             world.get_connection_by_name("robot_arm_inner_joint"),
-                             world.get_connection_by_name("robot_arm_outer_joint"),
-                             world.get_connection_by_name("robot_arm_wrist_joint")],
+                joints=[c for c in arm.connections if type(c) != FixedConnection],
                 joint_positions=[0.63, 0.03, 4.70, -1.63],
                 state_type=StaticJointState.PARK,
-                kinematic_chains=[arm],
                 _world=world,
             )
 
-            gripper_joints = [world.get_connection_by_name("robot_arm_gripper_joint"),
-                             world.get_connection_by_name("robot_arm_gripper_mirror_joint")]
+            arm.add_joint_state(arm_park)
+
+            gripper_joints = [
+                world.get_connection_by_name("robot_arm_gripper_joint"),
+                world.get_connection_by_name("robot_arm_gripper_mirror_joint"),
+            ]
 
             gripper_open = JointState(
                 name=PrefixedName("gripper_open", prefix=kevin.name.name),
                 joints=gripper_joints,
                 joint_positions=[0.066, 0.066],
                 state_type=GripperState.OPEN,
-                kinematic_chains=[gripper],
                 _world=world,
             )
 
@@ -138,9 +138,11 @@ class Kevin(AbstractRobot, HasArms):
                 joints=gripper_joints,
                 joint_positions=[0.0, 0.0],
                 state_type=GripperState.CLOSE,
-                kinematic_chains=[gripper],
                 _world=world,
             )
+
+            gripper.add_joint_state(gripper_close)
+            gripper.add_joint_state(gripper_open)
 
             torso_joint = [world.get_connection_by_name("robot_arm_column_joint")]
 
@@ -149,7 +151,6 @@ class Kevin(AbstractRobot, HasArms):
                 joints=torso_joint,
                 joint_positions=[0.0],
                 state_type=TorsoState.LOW,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
@@ -158,7 +159,6 @@ class Kevin(AbstractRobot, HasArms):
                 joints=torso_joint,
                 joint_positions=[0.3],
                 state_type=TorsoState.MID,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
@@ -167,11 +167,12 @@ class Kevin(AbstractRobot, HasArms):
                 joints=torso_joint,
                 joint_positions=[0.69],
                 state_type=TorsoState.HIGH,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
-            kevin.add_joint_states([arm_park, gripper_open, gripper_close, torso_low, torso_mid, torso_high])
+            torso.add_joint_state(torso_low)
+            torso.add_joint_state(torso_mid)
+            torso.add_joint_state(torso_high)
 
             world.add_semantic_annotation(kevin)
 

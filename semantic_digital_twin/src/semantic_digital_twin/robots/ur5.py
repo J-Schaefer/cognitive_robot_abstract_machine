@@ -14,6 +14,7 @@ from ..datastructures.prefixed_name import PrefixedName
 from ..spatial_types import Quaternion
 from ..spatial_types.spatial_types import Vector3
 from ..world import World
+from ..world_description.connections import FixedConnection
 
 
 @dataclass(eq=False)
@@ -84,31 +85,23 @@ class UR5(AbstractRobot, HasArms):
             # Create states
             arm_park = JointState(
                 name=PrefixedName("arm_park", prefix=ur5.name.name),
-                joints=[world.get_connection_by_name("shoulder_pan_joint"),
-                             world.get_connection_by_name("shoulder_lift_joint"),
-                             world.get_connection_by_name("elbow_joint"),
-                             world.get_connection_by_name("wrist_1_joint"),
-                             world.get_connection_by_name("wrist_2_joint"),
-                             world.get_connection_by_name("wrist_3_joint")],
+                joints=[c for c in arm.connections if type(c) != FixedConnection],
                 joint_positions=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 state_type=StaticJointState.PARK,
-                kinematic_chains=[arm],
                 _world=world,
             )
 
-            gripper_joints = [world.get_connection_by_name("robotiq_85_left_finger_joint"),
-                              world.get_connection_by_name("robotiq_85_right_finger_joint"),
-                              world.get_connection_by_name("robotiq_85_left_inner_knuckle_joint"),
-                              world.get_connection_by_name("robotiq_85_right_inner_knuckle_joint"),
-                              world.get_connection_by_name("robotiq_85_left_finger_tip_joint"),
-                              world.get_connection_by_name("robotiq_85_right_finger_tip_joint")]
+            arm.add_joint_state(arm_park)
+
+            gripper_joints = [
+                c for c in gripper.connections if type(c) != FixedConnection
+            ]
 
             gripper_open = JointState(
                 name=PrefixedName("gripper_open", prefix=ur5.name.name),
                 joints=gripper_joints,
                 joint_positions=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 state_type=GripperState.OPEN,
-                kinematic_chains=[gripper],
                 _world=world,
             )
 
@@ -117,13 +110,12 @@ class UR5(AbstractRobot, HasArms):
                 joints=gripper_joints,
                 joint_positions=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
                 state_type=GripperState.CLOSE,
-                kinematic_chains=[gripper],
                 _world=world,
             )
 
-            ur5.add_joint_states([arm_park, gripper_open, gripper_close])
+            gripper.add_joint_state(gripper_open)
+            gripper.add_joint_state(gripper_close)
 
             world.add_semantic_annotation(ur5)
 
         return ur5
-

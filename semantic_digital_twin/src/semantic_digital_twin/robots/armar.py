@@ -19,6 +19,7 @@ from ..robots.abstract_robot import (
 )
 from ..spatial_types import Quaternion, Vector3
 from ..world import World
+from ..world_description.connections import FixedConnection
 
 
 @dataclass(eq=False)
@@ -153,81 +154,129 @@ class Armar(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
 
             left_arm_park = JointState(
                 name=PrefixedName("left_arm_park", prefix=armar.name.name),
-                joints=[world.get_connection_by_name("torso_joint"), world.get_connection_by_name("arm_t12_joint_r0"),
-                             world.get_connection_by_name("arm_t23_joint_r0"), world.get_connection_by_name("arm_t34_joint_r0"),
-                             world.get_connection_by_name("arm_t45_joint_r0"), world.get_connection_by_name("arm_t56_joint_r0"),
-                             world.get_connection_by_name("arm_t67_joint_r0"), world.get_connection_by_name("arm_t78_joint_r0"),
-                             world.get_connection_by_name("arm_t8_joint_r0")],
+                joints=[c for c in left_arm.connections if type(c) != FixedConnection],
                 joint_positions=[-0.15, 0.0, 0.0, 1.5, 0.5, 2.0, 1.5, 0.0, 0.0],
                 state_type=StaticJointState.PARK,
-                kinematic_chains=[left_arm],
                 _world=world,
             )
+
+            left_arm.add_joint_state(left_arm_park)
 
             right_arm_park = JointState(
                 name=PrefixedName("right_arm_park", prefix=armar.name.name),
-                joints=[world.get_connection_by_name("torso_joint"), world.get_connection_by_name("arm_t12_joint_r1"),
-                             world.get_connection_by_name("arm_t23_joint_r1"), world.get_connection_by_name("arm_t34_joint_r1"),
-                             world.get_connection_by_name("arm_t45_joint_r1"), world.get_connection_by_name("arm_t56_joint_r1"),
-                             world.get_connection_by_name("arm_t67_joint_r1"), world.get_connection_by_name("arm_t78_joint_r1"),
-                             world.get_connection_by_name("arm_t8_joint_r1")],
+                joints=[c for c in right_arm.connections if type(c) != FixedConnection],
                 joint_positions=[-0.15, 0.0, 0.0, 1.5, 2.64, 2.0, 1.6415, 0.0, 0.0],
                 state_type=StaticJointState.PARK,
-                kinematic_chains=[left_arm],
                 _world=world,
             )
 
-            left_gripper_joints = [world.get_connection_by_name("Thumb L 1 Joint"), world.get_connection_by_name("Thumb L 2 Joint"),
-                             world.get_connection_by_name("Index L 1 Joint"), world.get_connection_by_name("Index L 2 Joint"),
-                             world.get_connection_by_name("Index L 3 Joint"), world.get_connection_by_name("Middle L 1 Joint"),
-                             world.get_connection_by_name("Middle L 2 Joint"), world.get_connection_by_name("Middle L 3 Joint"),
-                             world.get_connection_by_name("Ring L 1 Joint"), world.get_connection_by_name("Ring L 2 Joint"),
-                             world.get_connection_by_name("Ring L 3 Joint"), world.get_connection_by_name("Pinky L 1 Joint"),
-                             world.get_connection_by_name("Pinky L 2 Joint"), world.get_connection_by_name("Pinky L 3 Joint")]
+            right_arm.add_joint_state(right_arm_park)
+
+            left_gripper_joints = [
+                c for c in left_gripper.connections if type(c) != FixedConnection
+            ]
 
             left_gripper_open = JointState(
                 name=PrefixedName("left_gripper_open", prefix=armar.name.name),
                 joints=left_gripper_joints,
-                joint_positions=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                joint_positions=[
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ],
                 state_type=GripperState.OPEN,
-                kinematic_chains=[left_gripper],
                 _world=world,
             )
 
             left_gripper_close = JointState(
                 name=PrefixedName("left_gripper_close", prefix=armar.name.name),
                 joints=left_gripper_joints,
-                joint_positions=[1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57],
+                joint_positions=[
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                ],
                 state_type=GripperState.CLOSE,
-                kinematic_chains=[left_gripper],
                 _world=world,
             )
 
-            right_gripper_joints = [world.get_connection_by_name("Thumb R 1 Joint"), world.get_connection_by_name("Thumb R 2 Joint"),
-                             world.get_connection_by_name("Index R 1 Joint"), world.get_connection_by_name("Index R 2 Joint"),
-                             world.get_connection_by_name("Index R 3 Joint"), world.get_connection_by_name("Middle R 1 Joint"),
-                             world.get_connection_by_name("Middle R 2 Joint"), world.get_connection_by_name("Middle R 3 Joint"),
-                             world.get_connection_by_name("Ring R 1 Joint"), world.get_connection_by_name("Ring R 2 Joint"),
-                             world.get_connection_by_name("Ring R 3 Joint"), world.get_connection_by_name("Pinky R 1 Joint"),
-                             world.get_connection_by_name("Pinky R 2 Joint"), world.get_connection_by_name("Pinky R 3 Joint")]
+            left_gripper.add_joint_state(left_gripper_close)
+            left_gripper.add_joint_state(left_gripper_open)
+
+            right_gripper_joints = [
+                c for c in right_gripper.connections if type(c) != FixedConnection
+            ]
 
             right_gripper_open = JointState(
                 name=PrefixedName("right_gripper_open", prefix=armar.name.name),
                 joints=right_gripper_joints,
-                joint_positions=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                joint_positions=[
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ],
                 state_type=GripperState.OPEN,
-                kinematic_chains=[right_gripper],
                 _world=world,
             )
 
             right_gripper_close = JointState(
                 name=PrefixedName("right_gripper_close", prefix=armar.name.name),
                 joints=right_gripper_joints,
-                joint_positions=[1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57],
+                joint_positions=[
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                    1.57,
+                ],
                 state_type=GripperState.CLOSE,
-                kinematic_chains=[right_gripper],
                 _world=world,
             )
+
+            right_gripper.add_joint_state(right_gripper_close)
+            right_gripper.add_joint_state(right_gripper_open)
 
             torso_joint = [world.get_connection_by_name("torso_joint")]
 
@@ -236,7 +285,6 @@ class Armar(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
                 joints=torso_joint,
                 joint_positions=[-0.365],
                 state_type=TorsoState.LOW,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
@@ -245,7 +293,6 @@ class Armar(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
                 joints=torso_joint,
                 joint_positions=[-0.185],
                 state_type=TorsoState.MID,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
@@ -254,12 +301,12 @@ class Armar(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
                 joints=torso_joint,
                 joint_positions=[0.0],
                 state_type=TorsoState.HIGH,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
-            armar.add_joint_states([left_arm_park, right_arm_park, left_gripper_open, left_gripper_close,
-                                    right_gripper_open, right_gripper_close, torso_low, torso_mid, torso_high])
+            torso.add_joint_state(torso_low)
+            torso.add_joint_state(torso_mid)
+            torso.add_joint_state(torso_high)
 
             world.add_semantic_annotation(armar)
 

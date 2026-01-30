@@ -14,6 +14,7 @@ from ..datastructures.prefixed_name import PrefixedName
 from ..spatial_types import Quaternion
 from ..spatial_types.spatial_types import Vector3
 from ..world import World
+from ..world_description.connections import FixedConnection
 
 
 @dataclass(eq=False)
@@ -84,33 +85,32 @@ class UR5Controlled(AbstractRobot, HasArms):
             # Create states
             arm_park = JointState(
                 name=PrefixedName("arm_park", prefix=ur5_controlled.name.name),
-                joints=[world.get_connection_by_name("shoulder_pan_joint"),
-                             world.get_connection_by_name("shoulder_lift_joint"),
-                             world.get_connection_by_name("elbow_joint"),
-                             world.get_connection_by_name("wrist_1_joint"),
-                             world.get_connection_by_name("wrist_2_joint"),
-                             world.get_connection_by_name("wrist_3_joint")],
+                joints=[c for c in arm.connections if type(c) != FixedConnection],
                 joint_positions=[3.14, -1.56, 1.58, -1.57, -1.57, 0.0],
                 state_type=StaticJointState.PARK,
-                kinematic_chains=[arm],
                 _world=world,
             )
 
-            gripper_joints = [world.get_connection_by_name("right_driver_joint"),
-                              world.get_connection_by_name("right_coupler_joint"),
-                              world.get_connection_by_name("right_spring_link_joint"),
-                              world.get_connection_by_name("right_follower_joint"),
-                              world.get_connection_by_name("left_driver_joint"),
-                              world.get_connection_by_name("left_coupler_joint"),
-                              world.get_connection_by_name("left_spring_link_joint"),
-                              world.get_connection_by_name("left_follower_joint")]
+            arm.add_joint_state(arm_park)
+
+            gripper_joints = [
+                c for c in gripper.connections if type(c) != FixedConnection
+            ]
 
             gripper_open = JointState(
-                name=PrefixedName("gripper_open",prefix=ur5_controlled.name.name),
+                name=PrefixedName("gripper_open", prefix=ur5_controlled.name.name),
                 joints=gripper_joints,
-                joint_positions=[0.798, 0.00366, 0.796, -0.793, 0.798, 0.00366, 0.796, -0.793],
+                joint_positions=[
+                    0.798,
+                    0.00366,
+                    0.796,
+                    -0.793,
+                    0.798,
+                    0.00366,
+                    0.796,
+                    -0.793,
+                ],
                 state_type=GripperState.OPEN,
-                kinematic_chains=[gripper],
                 _world=world,
             )
 
@@ -119,13 +119,12 @@ class UR5Controlled(AbstractRobot, HasArms):
                 joints=gripper_joints,
                 joint_positions=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 state_type=GripperState.CLOSE,
-                kinematic_chains=[gripper],
                 _world=world,
             )
 
-            ur5_controlled.add_joint_states([arm_park, gripper_open, gripper_close])
+            gripper.add_joint_state(gripper_open)
+            gripper.add_joint_state(gripper_close)
 
             world.add_semantic_annotation(ur5_controlled)
 
         return ur5_controlled
-

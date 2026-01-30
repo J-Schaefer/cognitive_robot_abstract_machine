@@ -1,19 +1,14 @@
 from dataclasses import dataclass
 from typing import Self
 
-from .abstract_robot import (
-    AbstractRobot,
-    Arm,
-    Finger,
-    ParallelGripper,
-    JointState
-)
+from .abstract_robot import AbstractRobot, Arm, Finger, ParallelGripper, JointState
 from .robot_mixins import HasArms
 from ..datastructures.definitions import StaticJointState, GripperState
 from ..datastructures.prefixed_name import PrefixedName
 from ..spatial_types import Quaternion
 from ..spatial_types.spatial_types import Vector3
 from ..world import World
+from ..world_description.connections import FixedConnection
 
 
 @dataclass(eq=False)
@@ -83,24 +78,24 @@ class Panda(AbstractRobot, HasArms):
 
             arm_park = JointState(
                 name=PrefixedName("arm_park", prefix=panda.name.name),
-                joints=[world.get_connection_by_name("joint1"), world.get_connection_by_name("joint2"),
-                             world.get_connection_by_name("joint3"), world.get_connection_by_name("joint4"),
-                             world.get_connection_by_name("joint5"), world.get_connection_by_name("joint6"),
-                             world.get_connection_by_name("joint7"), world.get_connection_by_name("joint8")],
+                joints=[c for c in arm.connections if type(c) != FixedConnection],
                 joint_positions=[0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853],
                 state_type=StaticJointState.PARK,
-                kinematic_chains=[arm],
                 _world=world,
             )
 
-            gripper_joints = [world.get_connection_by_name("finger_joint1"), world.get_connection_by_name("finger_joint2")]
+            arm.add_joint_state(arm_park)
+
+            gripper_joints = [
+                world.get_connection_by_name("finger_joint1"),
+                world.get_connection_by_name("finger_joint2"),
+            ]
 
             gripper_open = JointState(
                 name=PrefixedName("gripper_open", prefix=panda.name.name),
                 joints=gripper_joints,
                 joint_positions=[0.04, 0.04],
                 state_type=GripperState.OPEN,
-                kinematic_chains=[gripper],
                 _world=world,
             )
 
@@ -109,13 +104,12 @@ class Panda(AbstractRobot, HasArms):
                 joints=gripper_joints,
                 joint_positions=[0.0, 0.0],
                 state_type=GripperState.CLOSE,
-                kinematic_chains=[gripper],
                 _world=world,
             )
 
-            panda.add_joint_states([arm_park, gripper_open, gripper_close])
+            gripper.add_joint_state(gripper_open)
+            gripper.add_joint_state(gripper_close)
 
             world.add_semantic_annotation(panda)
 
         return panda
-

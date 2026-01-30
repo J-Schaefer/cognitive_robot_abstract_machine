@@ -19,6 +19,7 @@ from ..robots.abstract_robot import (
 )
 from ..spatial_types import Quaternion, Vector3
 from ..world import World
+from ..world_description.connections import FixedConnection
 
 
 @dataclass(eq=False)
@@ -120,7 +121,9 @@ class ICub3(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
                 _world=world,
             )
             right_gripper_middle_finger = Finger(
-                name=PrefixedName("right_gripper_middle_finger", prefix=icub3.name.name),
+                name=PrefixedName(
+                    "right_gripper_middle_finger", prefix=icub3.name.name
+                ),
                 root=world.get_body_by_name("r_hand_middle_0"),
                 tip=world.get_body_by_name("r_hand_middle_tip"),
                 _world=world,
@@ -132,7 +135,9 @@ class ICub3(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
                 _world=world,
             )
             right_gripper_little_finger = Finger(
-                name=PrefixedName("right_gripper_little_finger", prefix=icub3.name.name),
+                name=PrefixedName(
+                    "right_gripper_little_finger", prefix=icub3.name.name
+                ),
                 root=world.get_body_by_name("r_hand_little_0"),
                 tip=world.get_body_by_name("r_hand_little_tip"),
                 _world=world,
@@ -194,117 +199,153 @@ class ICub3(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
             # Create states
             left_arm_park = JointState(
                 name=PrefixedName("left_arm_park", prefix=icub3.name.name),
-                joints=[world.get_connection_by_name("torso_roll"), world.get_connection_by_name("torso_pitch"),
-                             world.get_connection_by_name("torso_yaw"), world.get_connection_by_name("l_shoulder_pitch"),
-                             world.get_connection_by_name("l_shoulder_roll"), world.get_connection_by_name("l_shoulder_pitch"),
-                             world.get_connection_by_name("l_elbow"), world.get_connection_by_name("l_wrist_prosup"),
-                             world.get_connection_by_name("l_wrist_pitch"), world.get_connection_by_name("l_wrist_yaw")],
+                joints=[c for c in left_arm.connections if type(c) != FixedConnection],
                 joint_positions=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 state_type=StaticJointState.PARK,
-                kinematic_chains=[left_arm],
                 _world=world,
             )
+
+            left_arm.add_joint_state(left_arm_park)
 
             right_arm_park = JointState(
                 name=PrefixedName("right_arm_park", prefix=icub3.name.name),
-                joints=[world.get_connection_by_name("torso_roll"), world.get_connection_by_name("torso_pitch"),
-                             world.get_connection_by_name("torso_yaw"), world.get_connection_by_name("r_shoulder_pitch"),
-                             world.get_connection_by_name("r_shoulder_roll"), world.get_connection_by_name("r_shoulder_pitch"),
-                             world.get_connection_by_name("r_elbow"), world.get_connection_by_name("r_wrist_prosup"),
-                             world.get_connection_by_name("r_wrist_pitch"), world.get_connection_by_name("r_wrist_yaw")],
+                joints=[c for c in right_arm.connections if type(c) != FixedConnection],
                 joint_positions=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 state_type=StaticJointState.PARK,
-                kinematic_chains=[right_arm],
                 _world=world,
             )
 
-            left_gripper_joints = [world.get_connection_by_name("l_hand_thumb_0_joint"),
-                                   world.get_connection_by_name("l_hand_thumb_1_joint"),
-                                   world.get_connection_by_name("l_hand_thumb_2_joint"),
-                                   world.get_connection_by_name("l_hand_thumb_3_joint"),
-                                   world.get_connection_by_name("l_hand_index_0_joint"),
-                                   world.get_connection_by_name("l_hand_index_1_joint"),
-                                   world.get_connection_by_name("l_hand_index_2_joint"),
-                                   world.get_connection_by_name("l_hand_index_3_joint"),
-                                   world.get_connection_by_name("l_hand_middle_0_joint"),
-                                   world.get_connection_by_name("l_hand_middle_1_joint"),
-                                   world.get_connection_by_name("l_hand_middle_2_joint"),
-                                   world.get_connection_by_name("l_hand_middle_3_joint"),
-                                   world.get_connection_by_name("l_hand_ring_0_joint"),
-                                   world.get_connection_by_name("l_hand_ring_1_joint"),
-                                   world.get_connection_by_name("l_hand_ring_2_joint"),
-                                   world.get_connection_by_name("l_hand_ring_3_joint"),
-                                   world.get_connection_by_name("l_hand_little_0_joint"),
-                                   world.get_connection_by_name("l_hand_little_1_joint"),
-                                   world.get_connection_by_name("l_hand_little_2_joint"),
-                                   world.get_connection_by_name("l_hand_little_3_joint")]
+            right_arm.add_joint_state(right_arm_park)
+
+            left_gripper_joints = [
+                c for c in left_gripper.connections if type(c) != FixedConnection
+            ]
 
             left_gripper_open = JointState(
                 name=PrefixedName("left_gripper_open", prefix=icub3.name.name),
                 joints=left_gripper_joints,
-                joint_positions=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                                 0.0, 0.0, 0.0, 0.0, 0.0],
+                joint_positions=[
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ],
                 state_type=GripperState.OPEN,
-                kinematic_chains=[left_gripper],
                 _world=world,
             )
 
             left_gripper_close = JointState(
                 name=PrefixedName("left_gripper_close", prefix=icub3.name.name),
                 joints=left_gripper_joints,
-                joint_positions=[1.5707963267948966, 1.5707963267948966, 1.5707963267948966, 1.5707963267948966,
-                                 -0.3490658503988659, 1.5707963267948966, 1.5707963267948966, 1.5707963267948966,
-                                 0.3490658503988659, 1.5707963267948966, 1.5707963267948966, 1.5707963267948966,
-                                 0.3490658503988659, 1.5707963267948966, 1.5707963267948966, 1.5707963267948966,
-                                 0.3490658503988659, 1.5707963267948966, 1.5707963267948966, 1.5707963267948966],
+                joint_positions=[
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    -0.3490658503988659,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    0.3490658503988659,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    0.3490658503988659,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    0.3490658503988659,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                ],
                 state_type=GripperState.CLOSE,
-                kinematic_chains=[left_gripper],
                 _world=world,
             )
 
-            right_gripper_joints = [world.get_connection_by_name("r_hand_thumb_0_joint"),
-                                    world.get_connection_by_name("r_hand_thumb_1_joint"),
-                                    world.get_connection_by_name("r_hand_thumb_2_joint"),
-                                    world.get_connection_by_name("r_hand_thumb_3_joint"),
-                                    world.get_connection_by_name("r_hand_index_0_joint"),
-                                    world.get_connection_by_name("r_hand_index_1_joint"),
-                                    world.get_connection_by_name("r_hand_index_2_joint"),
-                                    world.get_connection_by_name("r_hand_index_3_joint"),
-                                    world.get_connection_by_name("r_hand_middle_0_joint"),
-                                    world.get_connection_by_name("r_hand_middle_1_joint"),
-                                    world.get_connection_by_name("r_hand_middle_2_joint"),
-                                    world.get_connection_by_name("r_hand_middle_3_joint"),
-                                    world.get_connection_by_name("r_hand_ring_0_joint"),
-                                    world.get_connection_by_name("r_hand_ring_1_joint"),
-                                    world.get_connection_by_name("r_hand_ring_2_joint"),
-                                    world.get_connection_by_name("r_hand_ring_3_joint"),
-                                    world.get_connection_by_name("r_hand_little_0_joint"),
-                                    world.get_connection_by_name("r_hand_little_1_joint"),
-                                    world.get_connection_by_name("r_hand_little_2_joint"),
-                                    world.get_connection_by_name("r_hand_little_3_joint")]
+            left_gripper.add_joint_state(left_gripper_close)
+            left_gripper.add_joint_state(left_gripper_open)
+
+            right_gripper_joints = [
+                c for c in right_gripper.connections if type(c) != FixedConnection
+            ]
 
             right_gripper_open = JointState(
                 name=PrefixedName("right_gripper_open", prefix=icub3.name.name),
                 joints=right_gripper_joints,
-                joint_positions=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                                 0.0, 0.0, 0.0, 0.0, 0.0],
+                joint_positions=[
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ],
                 state_type=GripperState.OPEN,
-                kinematic_chains=[right_gripper],
                 _world=world,
             )
 
             right_gripper_close = JointState(
                 name=PrefixedName("right_gripper_close", prefix=icub3.name.name),
                 joints=right_gripper_joints,
-                joint_positions=[1.5707963267948966, 1.5707963267948966, 1.5707963267948966, 1.5707963267948966,
-                                 -0.3490658503988659, 1.5707963267948966, 1.5707963267948966, 1.5707963267948966,
-                                 0.3490658503988659, 1.5707963267948966, 1.5707963267948966, 1.5707963267948966,
-                                 0.3490658503988659, 1.5707963267948966, 1.5707963267948966, 1.5707963267948966,
-                                 0.3490658503988659, 1.5707963267948966, 1.5707963267948966, 1.5707963267948966],
+                joint_positions=[
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    -0.3490658503988659,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    0.3490658503988659,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    0.3490658503988659,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    0.3490658503988659,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                    1.5707963267948966,
+                ],
                 state_type=GripperState.CLOSE,
-                kinematic_chains=[right_gripper],
                 _world=world,
             )
+
+            right_gripper.add_joint_state(right_gripper_close)
+            right_gripper.add_joint_state(right_gripper_open)
 
             torso_joint = [world.get_connection_by_name("torso_roll")]
 
@@ -313,7 +354,6 @@ class ICub3(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
                 joints=torso_joint,
                 joint_positions=[0.0],
                 state_type=TorsoState.LOW,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
@@ -322,7 +362,6 @@ class ICub3(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
                 joints=torso_joint,
                 joint_positions=[0.0],
                 state_type=TorsoState.MID,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
@@ -331,12 +370,12 @@ class ICub3(AbstractRobot, SpecifiesLeftRightArm, HasNeck):
                 joints=torso_joint,
                 joint_positions=[0.0],
                 state_type=TorsoState.HIGH,
-                kinematic_chains=[torso],
                 _world=world,
             )
 
-            icub3.add_joint_states([left_arm_park, right_arm_park, left_gripper_open, left_gripper_close,
-                                    right_gripper_open, right_gripper_close, torso_low, torso_mid, torso_high])
+            torso.add_joint_state(torso_low)
+            torso.add_joint_state(torso_mid)
+            torso.add_joint_state(torso_high)
 
             world.add_semantic_annotation(icub3)
 
