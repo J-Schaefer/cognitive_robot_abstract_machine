@@ -886,28 +886,33 @@ class OmniDrive(ActiveConnection, HasUpdateState):
 class DiffDrive(ActiveConnection, HasUpdateState):
     """
     A connection describing a differential drive.
-    It can rotate about its z-axis and drive on the x-y plane simultaneously.
-    - x/y: Passive dofs describing the measured odometry with respect to parent frame.
-        We assume that the robot can't fly, and we can't measure its z-axis position, so z=0.
-        The odometry sensors typically provide velocity measurements with respect to the child frame,
-        therefore the velocity values of x/y must stay 0.
-    - x_vel: The measured and commanded velocity is represented with respect to the child frame with these
-        active dofs. It must be ensured that their position values stay 0.
-    - roll/pitch: Some robots, like the PR2, have sensors to measure pitch and roll using an IMU,
-        we therefore have passive dofs for them.
-    - yaw: Since the robot can only rotate about its z-axis, we don't need different dofs for position and velocity of yaw.
-        They are combined into one active dof.
+    It can rotate around its z-axis and drive in x-direction. It allows movement in the x-y plane.
     """
 
-    # passive dofs
     x_id: UUID = field(kw_only=True)
+    """
+    Passive DoFs describing the measured odometry in x with respect to parent frame.
+    """
     y_id: UUID = field(kw_only=True)
+    """
+    Passive DoFs describing the measured odometry in y with respect to parent frame.
+    """
     roll_id: UUID = field(kw_only=True)
+    """
+    Passive DoF describing the measured odometry in roll using the IMU sensor.
+    """
     pitch_id: UUID = field(kw_only=True)
-
-    # active dofs
+    """
+    Passive DoF describing the measured odometry in pitch using the IMU sensor.
+    """
     yaw_id: UUID = field(kw_only=True)
+    """
+    Active DoF describing rotation around the robot's z-axis.
+    """
     x_velocity_id: UUID = field(kw_only=True)
+    """
+    Actibe DoF describing the measured and commanded velocity in x. Represented with respect to the child frame.
+    """
 
     def to_json(self) -> Dict[str, Any]:
         result = super().to_json()
@@ -1000,14 +1005,8 @@ class DiffDrive(ActiveConnection, HasUpdateState):
         **kwargs,
     ) -> Self:
         """
-        Creates an instance of the class with automatically generated degrees of freedom
-        (DOFs) for translation on the x and y axes, rotation along roll, pitch, and yaw
-        axes, and velocity limits for translation and rotation.
-
-        This method modifies the provided world to add all required degrees of freedom
-        and their limits, based on the provided settings. Names for the degrees of
-        freedom are auto-generated using the stringified version of the provided name
-        or its default setting.
+        Creates an instance of the class with automatically generated DoFs for translation on the x-axis,
+        rotation along roll, pitch, and yaw axes, and velocity limits for translation and rotation.
 
         :param world: The world where the configuration is being applied, and degrees of freedom are added.
         :param parent: The parent kinematic structure entity.
