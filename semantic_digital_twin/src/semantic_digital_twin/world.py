@@ -1321,21 +1321,23 @@ class World:
 
     # %% Subgraph Targeting
 
-    def reattach_with_fixed_connection(
-        self, new_parent: KinematicStructureEntity, new_child: KinematicStructureEntity
+    def reattach_child_to_new_parent(
+        self, new_parent: KinematicStructureEntity, child: KinematicStructureEntity
     ):
         """
-        Remounts a kinematic structure entity as a child of another kinematic structure entity with a fixed connection
+        Reattach a child to a new parent, removing the child from the old parent in the process.
+
+        ..warning:: the old connection is lost after calling this method
 
         :param new_parent: The new parent of the kinematic structure entity.
-        :param new_child: The new child of the kinematic structure entity.
+        :param child: The child to be reattached.
         """
-        new_parent_T_child = self.compute_forward_kinematics(new_parent, new_child)
-        self.remove_connection(new_child.parent_connection)
+        new_parent_T_child = self.compute_forward_kinematics(new_parent, child)
+        self.remove_connection(child.parent_connection)
         self.add_connection(
             FixedConnection(
                 parent=new_parent,
-                child=new_child,
+                child=child,
                 parent_T_connection_expression=new_parent_T_child,
             )
         )
