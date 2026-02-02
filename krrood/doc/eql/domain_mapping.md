@@ -157,7 +157,7 @@ containers = variable(Container, world.bodies)
 
 # Concatenate them into a single variable
 handles_and_containers = concatenate(handles, containers)
-results = an(entity(handles_and_containers)).evaluate()
+results = list(an(entity(handles_and_containers)).evaluate())
 
 assert len(results) == len(world.bodies)
 print(len(results))
