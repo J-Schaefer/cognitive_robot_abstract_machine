@@ -159,6 +159,23 @@ class OperationResult:
         )
 
 
+def auto_update_eval_parent(func):
+    """
+    Decorator that updates the _eval_parent_ of a SymbolicExpression during evaluation.
+    """
+
+    @wraps(func)
+    def wrapper(self, sources=None, parent=None):
+        previous_parent = self._eval_parent_
+        self._eval_parent_ = parent
+        try:
+            yield from func(self, sources, parent)
+        finally:
+            self._eval_parent_ = previous_parent
+
+    return wrapper
+
+
 @dataclass(eq=False)
 class GroupOperationResult(OperationResult):
     """
@@ -240,13 +257,8 @@ class SymbolicExpression(Generic[T], ABC):
     def _update_child_(
         self,
         child: Optional[SymbolicExpression] = None,
-        parent_of_existing_child: bool = False,
     ):
         child = child or self._child_
-        if self._child_ is not None and parent_of_existing_child:
-            self._child_._node_.parents.remove(self._node_)
-            self._child_._parent_ = None
-            child._update_children_(self._child_)
         self._child_ = self._update_children_(child)[0]
 
     def _update_children_(
@@ -571,6 +583,52 @@ class CanBehaveLikeAVariable(Selectable[T], ABC):
         :param current_value: The current value of the variable.
         """
         if isinstance(self._parent_, (LogicalOperator, ConstraintSpecifier)):
+            is_true = (
+                len(current_value) > 0
+                if is_iterable(current_value)
+                else bool(current_value)
+            )
+            self._is_false_ = not is_true
+
+    def _get_domain_mapping_(
+        self, type_: Type[DomainMapping], *args, **kwargs
+    ) -> DomainMapping:
+        """
+        Retrieves or creates a domain mapping instance based on the provided arguments.
+
+        :param type_: The type of the domain mapping to retrieve or create.
+        :param args: Positional arguments to pass to the domain mapping constructor.
+        :param kwargs: Keyword arguments to pass to the domain mapping constructor.
+        :return: The retrieved or created domain mapping instance.
+        """
+        cache_item = DomainMappingCacheItem(type_, self, args, kwargs)
+        if cache_item in self._known_mappings_:
+            return self._known_mappings_[cache_item]
+        else:
+            instance = type_(**cache_item.all_kwargs)
+            self._known_mappings_[cache_item] = instance
+            return instance
+
+    def _get_domain_mapping_key_(self, type_: Type[DomainMapping], *args, **kwargs):
+        """
+        Generates a hashable key for the given type and arguments.
+
+        :param type_: The type of the domain mapping.
+        :param args: Positional arguments to pass to the domain mapping constructor.
+        :param kwargs: Keyword arguments to pass to the domain mapping constructor.
+        :return: The generated hashable key.
+        """
+        args = (self,) + args
+        all_kwargs = merge_args_and_kwargs(type_, args, kwargs, ignore_first=True)
+        return convert_args_and_kwargs_into_a_hashable_key(all_kwargs)
+
+    def _update_truth_value_(self, current_value: Any) -> None:
+        """
+        Updates the truth value of the variable based on the current value.
+
+        :param current_value: The current value of the variable.
+        """
+        if isinstance(self._parent_, LogicalOperator) or self is self._conditions_root_:
             is_true = (
                 len(current_value) > 0
                 if is_iterable(current_value)
@@ -1000,7 +1058,7 @@ class UnificationDict(UserDict):
     """
 
     def __getitem__(self, key: Selectable[T]) -> T:
-        key = key._id_expression_map_[key._var_._id_]
+        key = key._id_expression_map_[key._binding_id_]
         return super().__getitem__(key)
 
 
@@ -1485,7 +1543,7 @@ class QueryObjectDescriptor(SymbolicExpression[T], ABC):
         """
         Get the IDs of variables used for distinctness.
         """
-        return tuple(k._var_._id_ for k in self._distinct_on)
+        return tuple(k._binding_id_ for k in self._distinct_on)
 
     def _get_distinct_results__(
         self, results_gen: Iterable[Dict[int, Any]]
@@ -1615,7 +1673,7 @@ class QueryObjectDescriptor(SymbolicExpression[T], ABC):
         :param result: The current result containing the current bindings.
         :return: True if the variable is bound, otherwise False.
         """
-        if var._id_ in result:
+        if var._binding_id_ in result:
             return True
         unique_vars = [uv for uv in var._unique_variables_ if uv is not var]
         if unique_vars and all(
@@ -1894,8 +1952,8 @@ class Variable(CanBehaveLikeAVariable[T]):
         """
 
         sources = sources or {}
-        if self._id_ in sources:
-            yield OperationResult(sources, self._is_false_, self)
+        if self._binding_id_ in sources:
+            yield self._build_operation_result_and_update_truth_value_(sources)
         elif self._domain_:
             yield from self._iterator_over_domain_values_(sources)
         elif self._is_inferred_ or self._predicate_type_:
@@ -1926,7 +1984,7 @@ class Variable(CanBehaveLikeAVariable[T]):
         """
         for domain in self._domain_._evaluate__(sources, parent=self):
             for v in domain.value:
-                bindings = {**sources, **domain.bindings, self._id_: v}
+                bindings = {**sources, **domain.bindings, self._binding_id_: v}
                 yield self._build_operation_result_and_update_truth_value_(bindings)
 
     def _iterator_over_iterable_domain_values_(self, sources: Bindings):
@@ -1937,7 +1995,7 @@ class Variable(CanBehaveLikeAVariable[T]):
         :return: An Iterable of OperationResults for each value in the domain.
         """
         for v in self._domain_:
-            bindings = {**sources, self._id_: v}
+            bindings = {**sources, self._binding_id_: v}
             yield self._build_operation_result_and_update_truth_value_(bindings)
 
     def _instantiate_using_child_vars_and_yield_results_(
@@ -1948,7 +2006,9 @@ class Variable(CanBehaveLikeAVariable[T]):
         """
         for kwargs in self._generate_combinations_for_child_vars_values_(sources):
             # Build once: unwrapped hashed kwargs for already provided child vars
-            bound_kwargs = {k: v[self._child_vars_[k]._id_] for k, v in kwargs.items()}
+            bound_kwargs = {
+                k: v[self._child_vars_[k]._binding_id_] for k, v in kwargs.items()
+            }
             instance = self._type_(**bound_kwargs)
             yield self._process_output_and_update_values_(instance, kwargs)
 
@@ -1971,7 +2031,7 @@ class Variable(CanBehaveLikeAVariable[T]):
         """
         # kwargs is a mapping from name -> {var_id: value};
         # we need a single dict {var_id: value}
-        values = {self._id_: instance}
+        values = {self._binding_id_: instance}
         for d in kwargs.values():
             values.update(d.bindings)
         return self._build_operation_result_and_update_truth_value_(values)
@@ -1985,7 +2045,7 @@ class Variable(CanBehaveLikeAVariable[T]):
         :param bindings: The bindings of the result.
         :return: The OperationResult instance with updated truth value.
         """
-        self._update_truth_value_(bindings[self._id_])
+        self._update_truth_value_(bindings[self._binding_id_])
         return OperationResult(bindings, self._is_false_, self)
 
     @property
@@ -2136,7 +2196,7 @@ class DomainMapping(CanBehaveLikeAVariable[T], ABC):
 
         sources = sources or {}
 
-        if self._id_ in sources:
+        if self._binding_id_ in sources:
             yield OperationResult(sources, self._is_false_, self)
             return
 
@@ -2160,7 +2220,7 @@ class DomainMapping(CanBehaveLikeAVariable[T], ABC):
         """
         self._update_truth_value_(current_value)
         return OperationResult(
-            {**child_result.bindings, self._id_: current_value},
+            {**child_result.bindings, self._binding_id_: current_value},
             self._is_false_,
             self,
         )
@@ -2500,7 +2560,7 @@ class Comparator(BinaryOperator):
         elif not left_has_the and right_has_the:
             return self.right, self.left
         if sources and any(
-            v._var_._id_ in sources for v in self.right._unique_variables_
+            v._binding_id_ in sources for v in self.right._unique_variables_
         ):
             return self.right, self.left
         else:
@@ -2717,7 +2777,7 @@ class ForAll(QuantifiedConditional):
     @cached_property
     def condition_unique_variable_ids(self) -> List[int]:
         return [
-            v._id_
+            v._binding_id_
             for v in self.condition._unique_variables_.difference(
                 self.left._unique_variables_
             )
@@ -2790,7 +2850,7 @@ class Exists(QuantifiedConditional):
 
         seen_var_values = []
         for val in self.condition._evaluate__(sources, parent=self):
-            var_val = val[self.variable._id_]
+            var_val = val[self.variable._binding_id_]
             if val.is_true and var_val not in seen_var_values:
                 seen_var_values.append(var_val)
                 yield OperationResult(val.bindings, False, self)
