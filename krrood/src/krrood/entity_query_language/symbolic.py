@@ -478,7 +478,7 @@ class CanBehaveLikeAVariable(Selectable[T], ABC):
 
         :param current_value: The current value of the variable.
         """
-        if isinstance(self._parent_, LogicalOperator):
+        if isinstance(self._parent_, LogicalOperator) or self is self._conditions_root_:
             is_true = (
                 len(current_value) > 0
                 if is_iterable(current_value)
@@ -1535,12 +1535,7 @@ class Variable(CanBehaveLikeAVariable[T]):
         :param bindings: The bindings of the result.
         :return: The OperationResult instance with updated truth value.
         """
-        if isinstance(self._parent_, LogicalOperator) or (
-            self is self._conditions_root_
-        ):
-            self._is_false_ = not bool(bindings[self._binding_id_])
-        else:
-            self._is_false_ = False
+        self._update_truth_value_(bindings[self._binding_id_])
         return OperationResult(bindings, self._is_false_, self)
 
     @property
@@ -1662,8 +1657,7 @@ class DomainMapping(CanBehaveLikeAVariable[T], ABC):
         :param current_value: The current value of this operation that is derived from the child result.
         :return: The operation result.
         """
-        if isinstance(self._parent_, LogicalOperator) or self is self._conditions_root_:
-            self._is_false_ = not bool(current_value)
+        self._update_truth_value_(current_value)
         return OperationResult(
             {**child_result.bindings, self._binding_id_: current_value},
             self._is_false_,
