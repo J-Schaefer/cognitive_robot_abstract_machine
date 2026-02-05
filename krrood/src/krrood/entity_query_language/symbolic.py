@@ -915,7 +915,7 @@ class QueryObjectDescriptor(SymbolicExpression[T], ABC):
 
     def order_by(
         self,
-        variable: Selectable,
+        variable: TypingUnion[Selectable[T], Any],
         descending: bool = False,
         key: Optional[Callable] = None,
     ) -> Self:
@@ -940,7 +940,11 @@ class QueryObjectDescriptor(SymbolicExpression[T], ABC):
         """
 
         def key(result: OperationResult) -> Any:
-            variable_value = result.bindings[self._order_by.variable._var_._id_]
+            var = self._order_by.variable
+            var_id = var._var_._id_
+            if var_id not in result:
+                result[var_id] = next(var._evaluate__(result.bindings, self)).value
+            variable_value = result.bindings[var_id]
             if self._order_by.key:
                 return self._order_by.key(variable_value)
             else:
