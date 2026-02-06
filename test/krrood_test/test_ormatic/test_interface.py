@@ -735,10 +735,10 @@ def test_generic_class(session, database):
     assert GenericClassAssociationDAO.associated_value
     generic_position = GenericClass(Position(1, 2, 3))
     obj = GenericClassAssociation(
-        GenericClass(1),
-        [GenericClass(2), GenericClass(3)],
-        generic_position,
-        [generic_position],
+        associated_value=GenericClass(1),
+        associated_value_list=[generic_position, generic_position],
+        associated_value_not_parametrized=generic_position,
+        associated_value_not_parametrized_list=[GenericClass(2)],
     )
     dao: GenericClassAssociationDAO = to_dao(obj)
     assert isinstance(dao.associated_value, GenericClass_floatDAO)
@@ -750,5 +750,6 @@ def test_generic_class(session, database):
     q = session.scalar(select(GenericClassAssociationDAO))
     assert q.associated_value.value == 1
 
-    reconstructed = q.from_dao()
+    reconstructed: GenericClassAssociation = q.from_dao()
+    assert reconstructed == generic_position
     assert reconstructed == obj

@@ -11,6 +11,7 @@ from .utils import InheritanceStrategy
 from ..utils import module_and_class_name
 from ..class_diagrams.class_diagram import (
     WrappedClass,
+    WrappedSpecializedGeneric,
 )
 from ..class_diagrams.failures import ClassIsUnMappedInClassDiagram
 from ..class_diagrams.wrapped_field import WrappedField
@@ -243,6 +244,15 @@ class WrappedTable:
     def tablename(self):
         result = self.wrapped_clazz.name
         result += "DAO"
+        return result
+
+    @cached_property
+    def data_access_object_parent_name(self):
+        result = self.wrapped_clazz.clazz.__module__
+        if isinstance(self.wrapped_clazz, WrappedSpecializedGeneric):
+            result += f".{self.wrapped_clazz.clazz}"
+        else:
+            result += f".{self.wrapped_clazz.clazz.__name__}"
         return result
 
     @cached_property
