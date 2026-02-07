@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import pytest
 
 import krrood.entity_query_language.entity_result_processors as eql
@@ -14,7 +16,7 @@ from krrood.entity_query_language.failures import (
     AggregatorInWhereConditionsError,
 )
 from ..dataset.department_and_employee import Department, Employee
-from ..dataset.semantic_world_like_classes import Cabinet, Body
+from ..dataset.semantic_world_like_classes import Cabinet, Body, Container, Drawer
 
 
 def test_count(handles_and_containers_world):
@@ -134,7 +136,9 @@ def test_multiple_grouped_variables(handles_and_containers_world):
     drawer = variable_from(cabinet.drawers)
 
     # Group by both cabinet and drawer (silly, but tests multiple variables)
-    query = a(set_of(cabinet, count:= eql.count(drawer), drawer).grouped_by(cabinet, drawer))
+    query = a(
+        set_of(cabinet, count := eql.count(drawer), drawer).grouped_by(cabinet, drawer)
+    )
     results = list(query.evaluate())
 
     # Each result should have count=1 because each (cabinet, drawer) pair is unique here
@@ -151,7 +155,12 @@ def test_sum_grouped_by(handles_and_containers_world):
     # Give drawers a numeric property to sum. They don't have one, but we can use a key func.
     # Let's sum the length of handle names per cabinet.
 
-    query = a(set_of(total_characters:=eql.sum(drawer, key=lambda d: len(d.handle.name)), cabinet).grouped_by(cabinet))
+    query = a(
+        set_of(
+            total_characters := eql.sum(drawer, key=lambda d: len(d.handle.name)),
+            cabinet,
+        ).grouped_by(cabinet)
+    )
     results = list(query.evaluate())
 
     expected_cabinets = [c for c in world.views if isinstance(c, Cabinet)]
@@ -179,6 +188,48 @@ def test_count_grouped_by(handles_and_containers_world):
     result_all = results[0]
     expected_all = sum(len(c.drawers) for c in world.views if isinstance(c, Cabinet))
     assert result_all == expected_all
+
+
+def test_count_all_or_without_a_specific_child(handles_and_containers_world):
+    world = handles_and_containers_world
+    cabinet = variable(Cabinet, domain=world.views)
+    query = a(set_of(count := eql.count(), cabinet).grouped_by(cabinet))
+    results = list(query.evaluate())
+    expected = defaultdict(lambda: 0)
+    for c in world.views:
+        if isinstance(c, Cabinet):
+            expected[c] += 1
+    for result in results:
+        assert result[count] == expected[result[cabinet]]
+
+
+def test_count_with_duplicates(handles_and_containers_world):
+    world = handles_and_containers_world
+    cabinet_with_duplicate_drawers = Cabinet(
+        next(b for b in world.bodies if isinstance(b, Container)),
+        [
+            next(d for d in world.views if isinstance(d, Drawer)),
+            next(d for d in world.views if isinstance(d, Drawer)),
+        ],
+        world=world,
+    )
+    world.views.append(cabinet_with_duplicate_drawers)
+    cabinet = variable(Cabinet, domain=world.views)
+    cabinet_drawer = variable_from(cabinet.drawers)
+    query = a(
+        set_of(count := eql.count(), cabinet, cabinet_drawer).grouped_by(
+            cabinet, cabinet_drawer
+        )
+    )
+    results = list(query.evaluate())
+    expected = defaultdict(lambda: 0)
+    for c in world.views:
+        if isinstance(c, Cabinet):
+            for d in c.drawers:
+                expected[(c, d)] += 1
+    for result in results:
+        print(result)
+        assert result[count] == expected[(result[cabinet], result[cabinet_drawer])]
 
 
 def test_max_count_grouped_by(handles_and_containers_world):

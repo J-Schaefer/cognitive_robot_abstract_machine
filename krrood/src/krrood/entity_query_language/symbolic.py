@@ -278,12 +278,19 @@ class SymbolicExpression(Generic[T], ABC):
 
     @cached_property
     def _binding_id_(self) -> int:
+        """
+        The binding id is the id used in the bindings (the results dictionary of operations). It is sometimes different
+        from the id of the symbolic expression itself because some operations do not have results themselves but their
+        children do, so they delegate the binding id to one of their children. For example, in the case of quantifiers,
+        the quantifier expression itself does not have a binding id, but it delegates it to its child variable that is
+         being selected and tracked.
+        """
         return self._id_
 
     @abstractmethod
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterator[OperationResult]:
         """
         Evaluate the symbolic expression and set the operands indices.
@@ -334,7 +341,7 @@ class SymbolicExpression(Generic[T], ABC):
 
     @property
     def _all_nodes_(self) -> List[SymbolicExpression]:
-        return [self] + self._descendants_
+        return [self._root_] + self._root_._descendants_
 
     @property
     def _descendants_(self) -> List[SymbolicExpression]:
@@ -421,7 +428,7 @@ class ConstraintSpecifier(SymbolicExpression[T], ABC):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterator[OperationResult]:
 
         yield from self._child_._evaluate_(sources, self)
@@ -757,7 +764,7 @@ class Aggregator(ResultProcessor[T], ABC):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[OperationResult]:
 
         child_results = self._child_._evaluate_(sources, parent=self)
@@ -792,6 +799,11 @@ class Aggregator(ResultProcessor[T], ABC):
 class Count(Aggregator[T]):
     """
     Count the number of child results.
+    """
+
+    _child_: Optional[SymbolicExpression[T]] = None
+    """
+    The child expression to be counted. If not given, the count of all results (by group) is returned.
     """
 
     def _apply_aggregation_function_(
@@ -948,7 +960,7 @@ class ResultQuantifier(ResultProcessor[T], ABC):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[T]:
 
         result_count = 0
@@ -1045,7 +1057,7 @@ class The(ResultQuantifier[T]):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[TypingUnion[T, Dict[TypingUnion[T, SymbolicExpression[T]], T]]]:
         try:
             yield from super()._evaluate__(sources)
@@ -1215,7 +1227,7 @@ class GroupBy(SymbolicExpression[T]):
         """
         :return: A list of the aggregated variables from the aggregators in the selected variables of the query descriptor.
         """
-        return [var._child_ for var in self.aggregators]
+        return [var._child_ for var in self.aggregators if var._child_ is not None]
 
     def aggregators_of_grouped_by_variables_that_are_not_count(
         self,
@@ -1239,7 +1251,8 @@ class GroupBy(SymbolicExpression[T]):
         return [
             var
             for var in self.aggregators
-            if var._child_._binding_id_ in self.ids_of_variables_to_group_by
+            if (var._child_ is None)
+            or (var._child_._binding_id_ in self.ids_of_variables_to_group_by)
         ]
 
     @cached_property
@@ -1305,7 +1318,7 @@ class QueryObjectDescriptor(SymbolicExpression[T], ABC):
     """
     The variables that are selected by the query object descriptor.
     """
-    _variables_to_group_by_: List[Selectable] = field(default_factory=list, init=False)
+    _variables_to_group_by_: Tuple[Selectable, ...] = field(default=(), init=False)
     """
     The variables to group the results by.
     """
@@ -1630,9 +1643,12 @@ class QueryObjectDescriptor(SymbolicExpression[T], ABC):
         self, *variables: TypingUnion[Selectable, Any]
     ) -> TypingUnion[Self, T]:
         """
-        Note that the results should be grouped by the specified variables.
+        Specify the variables to group the results by.
+
+        :param variables: The variables to group the results by.
+        :return: This query object descriptor.
         """
-        self._variables_to_group_by_ = list(variables)
+        self._variables_to_group_by_ = tuple(variables)
         return self
 
     def _build__(self):
@@ -1653,15 +1669,13 @@ class QueryObjectDescriptor(SymbolicExpression[T], ABC):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[OperationResult]:
         """
         Evaluate the query descriptor by constraining values, updating conclusions,
         and selecting variables.
         """
         self._assert_correct_selected_variables__()
-
-        sources = sources or {}
 
         if all(var._binding_id_ in sources for var in self._selected_variables):
             yield OperationResult(sources, False, self)
@@ -1925,7 +1939,7 @@ class SetOfSelectable(CanBehaveLikeAVariable[T]):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterator[OperationResult]:
         for v in self._set_of_._evaluate_(sources, self):
             yield OperationResult(
@@ -2045,7 +2059,7 @@ class Variable(CanBehaveLikeAVariable[T]):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[OperationResult]:
         """
         A variable either is already bound in sources by other constraints (Symbolic Expressions).,
@@ -2111,9 +2125,7 @@ class Variable(CanBehaveLikeAVariable[T]):
             instance = self._type_(**bound_kwargs)
             yield self._process_output_and_update_values_(instance, kwargs)
 
-    def _generate_combinations_for_child_vars_values_(
-        self, sources: Optional[Bindings] = None
-    ):
+    def _generate_combinations_for_child_vars_values_(self, sources: Bindings):
         yield from generate_combinations(
             {k: var._evaluate_(sources, self) for k, var in self._child_vars_.items()}
         )
@@ -2285,7 +2297,7 @@ class DomainMapping(CanBehaveLikeAVariable[T], ABC):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[OperationResult]:
         """
         Apply the domain mapping to the child's values.
@@ -2525,7 +2537,7 @@ class Having(ConstraintSpecifier[T]):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[OperationResult]:
 
         yield from (
@@ -2592,7 +2604,7 @@ class Comparator(BinaryOperator):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[OperationResult]:
         """
         Compares the left and right symbolic variables using the "operation".
@@ -2681,9 +2693,8 @@ class Not(LogicalOperator[T]):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[OperationResult]:
-        sources = sources or {}
 
         for v in self._child_._evaluate_(sources, parent=self):
             self._is_false_ = v.is_true
@@ -2712,9 +2723,8 @@ class AND(LogicalBinaryOperator):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[OperationResult]:
-        sources = sources or {}
 
         left_values = self.left._evaluate_(sources, parent=self)
         for left_value in left_values:
@@ -2789,9 +2799,8 @@ class Union(OR):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[OperationResult]:
-        sources = sources or {}
 
         yield from self.evaluate_left(sources)
         yield from self.evaluate_right(sources)
@@ -2805,14 +2814,12 @@ class ElseIf(OR):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[OperationResult]:
         """
         Constrain the symbolic expression based on the indices of the operands.
         This method overrides the base class method to handle ElseIf logic.
         """
-        sources = sources or {}
-
         yield from self.evaluate_left(sources)
 
 
@@ -2858,10 +2865,8 @@ class ForAll(QuantifiedConditional):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[OperationResult]:
-        sources = sources or {}
-
         solution_set = None
 
         for var_val in self.variable._evaluate_(sources, parent=self):
@@ -2915,10 +2920,8 @@ class Exists(QuantifiedConditional):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[OperationResult]:
-        sources = sources or {}
-
         seen_var_values = []
         for val in self.condition._evaluate_(sources, parent=self):
             var_val = val[self.variable._binding_id_]

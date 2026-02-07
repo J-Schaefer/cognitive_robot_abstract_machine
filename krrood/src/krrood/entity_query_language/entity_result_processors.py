@@ -106,7 +106,9 @@ def sum(
 
 
 def average(
-    variable: Union[Selectable[T], Any], key: Optional[Callable] = None, default: Optional[T] = None
+    variable: Union[Selectable[T], Any],
+    key: Optional[Callable] = None,
+    default: Optional[T] = None,
 ) -> Union[T, Average[T]]:
     """
     Computes the sum of values produced by the given variable.
@@ -121,11 +123,12 @@ def average(
     )
 
 
-def count(variable: Selectable[T]) -> Union[T, Count[T]]:
+def count(variable: Optional[Selectable[T]] = None) -> Union[T, Count[T]]:
     """
     Count the number of values produced by the given variable.
 
-    :param variable: The variable for which the count is calculated.
+    :param variable: The variable for which the count is calculated, if not given, the count of all results (by group)
+     is returned.
     :return: A Count object that can be evaluated to count the number of values.
     """
     return _apply_result_processor(Count, variable)
@@ -133,7 +136,7 @@ def count(variable: Selectable[T]) -> Union[T, Count[T]]:
 
 def _apply_result_processor(
     result_processor: Type[ResultProcessor[T]],
-    variable: Selectable[T],
+    variable: Optional[Selectable[T]] = None,
     **result_processor_kwargs,
 ) -> Union[T, ResultProcessor[T]]:
     """

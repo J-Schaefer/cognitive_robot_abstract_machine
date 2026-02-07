@@ -123,7 +123,7 @@ class Alternative(ElseIf, ConclusionSelector):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[OperationResult]:
         outputs = super()._evaluate__(sources)
         for output in outputs:
@@ -144,7 +144,7 @@ class Next(EQLUnion, ConclusionSelector):
 
     def _evaluate__(
         self,
-        sources: Optional[Bindings] = None,
+        sources: Bindings,
     ) -> Iterable[OperationResult]:
         outputs = super()._evaluate__(sources)
         for output in outputs:
