@@ -129,6 +129,19 @@ class UsageError(DataclassException):
 
 
 @dataclass
+class UnsupportedExpressionTypeForDistinct(UsageError):
+    """
+    Raised when an expression type is not supported for distinct operation.
+    """
+
+    unsupported_expression_type: Type[SymbolicExpression]
+
+    def __post_init__(self):
+        self.message = f"Distinct operation is not supported for expression type {self.unsupported_expression_type}"
+        super().__post_init__()
+
+
+@dataclass
 class NoConditionsProvidedToWhereStatementOfDescriptor(UsageError):
     """
     Raised when no conditions are provided to the where statement of a query descriptor.

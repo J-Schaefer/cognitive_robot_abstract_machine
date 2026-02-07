@@ -48,6 +48,11 @@ from krrood.entity_query_language.entity_result_processors import an
 @dataclass
 class Body(Symbol):
     name: str
+    
+    
+@dataclass
+class Handle(Body):
+    pass
 
 
 @dataclass
@@ -56,7 +61,7 @@ class World:
     bodies: List[Body]
 
 
-world = World(1, [Body("Body1"), Body("Body2")])
+world = World(1, [Body("Body1"), Body("Body2"), Handle("Handle1"), Handle("Handle2"), Handle("Handle2")])
 
 body = variable(Body, domain=world.bodies)
 query = an(
@@ -86,20 +91,45 @@ import krrood.entity_query_language.entity_result_processors as eql
 from krrood.entity_query_language.entity import set_of
 
 # On a ResultProcessor
-total_count = eql.count(body).tolist()[0]
+first_body = an(entity(body)).tolist()[0]
+print(first_body)
 
 # On a QueryObjectDescriptor
-all_names = set_of(body.name).tolist()
+all_names = entity(body.name).tolist()
+print(all_names)
 ```
 
 ### Using `.evaluate()`
 
-Alternatively, you can use `.evaluate()` to get an iterator over the results. This is useful for processing large result sets lazily.
+Alternatively, you can use `.evaluate()` (must use a result processor like an/the) to get an iterator over the results. This is useful for processing large result sets lazily.
 
 ```{code-cell} ipython3
+query = an(entity(body).where(body.name.startswith("B")))
 for res in query.evaluate():
     print(res)
 ```
+
+### Ordering with `.order_by()`
+
+Query objects now support ordering of results.
+
+```{code-cell} ipython3
+# Order bodies by height in descending order
+query = entity(body).order_by(body.name[-1], descending=True)
+sorted_bodies = query.tolist()
+for b in sorted_bodies:
+    print(b)
+```
+
+### Distinct with `.distinct()`
+
+`.distinct()` can be used to remove duplicate results from the query.
+
+```{code-cell} ipython3
+distinct_bodies = entity(body).distinct().tolist()
+print(distinct_bodies)
+```
+
 
 
 

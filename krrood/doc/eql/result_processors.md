@@ -133,7 +133,7 @@ print(min_query.tolist()[0])  # -> Body(name='Handle1', height=1)
 
 ## Grouping with `.grouped_by()`
 
-Aggregators can now be grouped by one or more variables using the `.grouped_by()` method (which replaces the older `.per()` syntax).
+Aggregators can now be grouped by one or more variables using the `.grouped_by()` method.
 When `.grouped_by()` is used with multiple selected variables in a `set_of`, each result is a dictionary mapping the variables to their values.
 
 ```{code-cell} ipython3
@@ -163,18 +163,6 @@ query = set_of(first_char := body.name[0], avg_height := eql.average(body.height
 
 for res in query.tolist():
     print(f"Group: {res[first_char]}, Average Height: {res[avg_height]}")
-```
-
-## Ordering with `.order_by()`
-
-Query objects now support ordering of results.
-
-```{code-cell} ipython3
-# Order bodies by height in descending order
-query = set_of(body).order_by(body.height, descending=True)
-sorted_bodies = query.tolist()
-for b in sorted_bodies:
-    print(b)
 ```
 
 ## Multiple Aggregations

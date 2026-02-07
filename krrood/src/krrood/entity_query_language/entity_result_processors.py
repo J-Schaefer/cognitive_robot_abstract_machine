@@ -58,7 +58,10 @@ def the(
 
 
 def max(
-    variable: Selectable[T], key: Optional[Callable] = None, default: Optional[T] = None
+    variable: Selectable[T],
+    key: Optional[Callable] = None,
+    default: Optional[T] = None,
+    distinct: bool = False,
 ) -> Union[T, Max[T]]:
     """
     Maps the variable values to their maximum value.
@@ -66,15 +69,19 @@ def max(
     :param variable: The variable for which the maximum value is to be found.
     :param key: A function that extracts a comparison key from each variable value.
     :param default: The value returned when the iterable is empty.
+    :param distinct: Whether to only consider distinct values.
     :return: A Max object that can be evaluated to find the maximum value.
     """
     return _apply_result_processor(
-        Max, variable, _key_func_=key, _default_value_=default
+        Max, variable, _key_func_=key, _default_value_=default, _distinct_=distinct
     )
 
 
 def min(
-    variable: Selectable[T], key: Optional[Callable] = None, default: Optional[T] = None
+    variable: Selectable[T],
+    key: Optional[Callable] = None,
+    default: Optional[T] = None,
+    distinct: bool = False,
 ) -> Union[T, Min[T]]:
     """
     Maps the variable values to their minimum value.
@@ -82,15 +89,19 @@ def min(
     :param variable: The variable for which the minimum value is to be found.
     :param key: A function that extracts a comparison key from each variable value.
     :param default: The value returned when the iterable is empty.
+    :param distinct: Whether to only consider distinct values.
     :return: A Min object that can be evaluated to find the minimum value.
     """
     return _apply_result_processor(
-        Min, variable, _key_func_=key, _default_value_=default
+        Min, variable, _key_func_=key, _default_value_=default, _distinct_=distinct
     )
 
 
 def sum(
-    variable: Selectable[T], key: Optional[Callable] = None, default: Optional[T] = None
+    variable: Union[T, Selectable[T]],
+    key: Optional[Callable] = None,
+    default: Optional[T] = None,
+    distinct: bool = False,
 ) -> Union[T, Sum[T]]:
     """
     Computes the sum of values produced by the given variable.
@@ -98,10 +109,11 @@ def sum(
     :param variable: The variable for which the sum is calculated.
     :param key: A function that extracts a comparison key from each variable value.
     :param default: The value returned when the iterable is empty.
+    :param distinct: Whether to only consider distinct values.
     :return: A Sum object that can be evaluated to find the sum of values.
     """
     return _apply_result_processor(
-        Sum, variable, _key_func_=key, _default_value_=default
+        Sum, variable, _key_func_=key, _default_value_=default, _distinct_=distinct
     )
 
 
@@ -109,6 +121,7 @@ def average(
     variable: Union[Selectable[T], Any],
     key: Optional[Callable] = None,
     default: Optional[T] = None,
+    distinct: bool = False,
 ) -> Union[T, Average[T]]:
     """
     Computes the sum of values produced by the given variable.
@@ -116,22 +129,26 @@ def average(
     :param variable: The variable for which the sum is calculated.
     :param key: A function that extracts a comparison key from each variable value.
     :param default: The value returned when the iterable is empty.
+    :param distinct: Whether to only consider distinct values.
     :return: A Sum object that can be evaluated to find the sum of values.
     """
     return _apply_result_processor(
-        Average, variable, _key_func_=key, _default_value_=default
+        Average, variable, _key_func_=key, _default_value_=default, _distinct_=distinct
     )
 
 
-def count(variable: Optional[Selectable[T]] = None) -> Union[T, Count[T]]:
+def count(
+    variable: Optional[Selectable[T]] = None, distinct: bool = False
+) -> Union[T, Count[T]]:
     """
     Count the number of values produced by the given variable.
 
     :param variable: The variable for which the count is calculated, if not given, the count of all results (by group)
      is returned.
+    :param distinct: Whether to only consider distinct values.
     :return: A Count object that can be evaluated to count the number of values.
     """
-    return _apply_result_processor(Count, variable)
+    return _apply_result_processor(Count, variable, _distinct_=distinct)
 
 
 def _apply_result_processor(

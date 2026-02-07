@@ -1,14 +1,18 @@
 from collections import defaultdict
+from dataclasses import dataclass, field
 
 import pytest
+from typing_extensions import List
 
 import krrood.entity_query_language.entity_result_processors as eql
+from ..dataset.example_classes import NamedNumbers
 from krrood.entity_query_language.entity import (
     variable,
     variable_from,
     entity,
     set_of,
     contains,
+    distinct,
 )
 from krrood.entity_query_language.entity_result_processors import an, a
 from krrood.entity_query_language.failures import (
@@ -25,8 +29,8 @@ from ..dataset.semantic_world_like_classes import Cabinet, Body, Container, Draw
 def test_count(handles_and_containers_world):
     world = handles_and_containers_world
     body = variable(type_=Body, domain=world.bodies)
-    query = an(
-        entity(eql.count(body)).where(
+    query = eql.count(
+        entity(body).where(
             contains(body.name, "Handle"),
         )
     )
@@ -41,6 +45,45 @@ def test_sum(handles_and_containers_world):
     assert eql.sum(heights_var).tolist()[0] == sum(heights)
 
 
+def test_aggregate_distinct(handles_and_containers_world):
+    heights = [1, 2, 3, 4, 4, 5, 5]
+    heights_var = variable(int, domain=heights)
+    assert eql.sum(heights_var, distinct=True).tolist()[0] == sum(set(heights))
+    assert eql.count(heights_var, distinct=True).tolist()[0] == len(set(heights))
+    assert eql.average(heights_var, distinct=True).tolist()[0] == sum(
+        set(heights)
+    ) / len(set(heights))
+    assert eql.max(heights_var, distinct=True).tolist()[0] == max(set(heights))
+
+
+@pytest.fixture
+def test_numbers():
+    test_numbers = [
+        NamedNumbers("A", [1, 2, 3]),
+        NamedNumbers("B", [4, 2]),
+        NamedNumbers("C", [5]),
+    ]
+    return test_numbers
+
+
+def test_grouping_already_grouped_by_object_attribute(test_numbers):
+    test_numbers_var = variable(NamedNumbers, domain=test_numbers)
+
+    assert eql.sum(test_numbers_var.numbers).grouped_by(test_numbers_var).tolist() == [
+        6,
+        6,
+        5,
+    ]
+
+
+def test_distinct_sum(test_numbers):
+    test_numbers_var = variable(NamedNumbers, domain=test_numbers)
+
+    assert distinct(
+        eql.sum(test_numbers_var.numbers).grouped_by(test_numbers_var)
+    ).tolist() == [6, 5]
+
+
 def test_average(handles_and_containers_world):
     heights = [1, 2, 3, 4, 5]
     heights_var = variable(int, domain=heights)
@@ -50,11 +93,19 @@ def test_average(handles_and_containers_world):
 
 
 def test_sum_on_empty_list(handles_and_containers_world):
-    empty_list = []
-    empty_var = variable(int, domain=empty_list)
+    empty_var = variable(int, domain=[])
     query = an(entity(eql.sum(empty_var)))
-    assert len(query.tolist()) == 0
-    assert eql.sum(empty_var).tolist() == []
+    assert query.tolist()[0] is None
+    assert eql.sum(empty_var).tolist()[0] is None
+    assert eql.sum(empty_var, default=0).tolist()[0] == 0
+
+
+def test_max_on_empty_list(handles_and_containers_world):
+    empty_var = variable(int, domain=[])
+    query = an(entity(eql.max(empty_var)))
+    assert query.tolist()[0] is None
+    assert eql.max(empty_var).tolist()[0] is None
+    assert eql.max(empty_var, default=0).tolist()[0] == 0
 
 
 def test_non_aggregated_selectables_with_aggregated_ones(handles_and_containers_world):
@@ -331,17 +382,6 @@ def test_max_min_without_entity():
 
     min_query = eql.min(value)
     assert min_query.tolist()[0] == min(values)
-
-
-def test_max_min_with_empty_list():
-    empty_list = []
-    value = variable(int, domain=empty_list)
-
-    max_query = eql.max(entity(value))
-    assert len(max_query.tolist()) == 0
-
-    min_query = eql.min(entity(value))
-    assert len(min_query.tolist()) == 0
 
 
 @pytest.fixture

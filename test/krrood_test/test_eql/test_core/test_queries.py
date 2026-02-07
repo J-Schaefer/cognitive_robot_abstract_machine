@@ -19,6 +19,7 @@ from krrood.entity_query_language.entity import (
     variable_from,
     concatenate,
     for_all,
+    distinct,
 )
 from krrood.entity_query_language.entity_result_processors import an, a, the, count
 from krrood.entity_query_language.failures import (
@@ -28,6 +29,7 @@ from krrood.entity_query_language.failures import (
     LessThanExpectedNumberOfSolutions,
     NonPositiveLimitValue,
     LiteralConditionError,
+    UnsupportedExpressionTypeForDistinct,
 )
 from krrood.entity_query_language.predicate import (
     HasType,
@@ -1080,3 +1082,39 @@ def test_ordering_the_query_by_the_query_itself(handles_and_containers_world):
         key=lambda b: b.name[-1],
         reverse=False,
     )
+
+
+def test_distinct_on_query_descriptor(handles_and_containers_world):
+    body = variable(Body, domain=handles_and_containers_world.bodies)
+    query = distinct(entity(body), body.name)
+    distinct_bodies = []
+    for b in handles_and_containers_world.bodies:
+        if b.name not in distinct_bodies:
+            distinct_bodies.append(b)
+    assert query.tolist() == distinct_bodies
+
+
+def test_distinct_on_quantifier(handles_and_containers_world):
+    body = variable(Body, domain=handles_and_containers_world.bodies)
+    query = distinct(an(entity(body)), body.name)
+    distinct_bodies = []
+    for b in handles_and_containers_world.bodies:
+        if b.name not in distinct_bodies:
+            distinct_bodies.append(b)
+    assert query.tolist() == distinct_bodies
+
+
+def test_distinct_on_selectable(handles_and_containers_world):
+    body = variable(Body, domain=handles_and_containers_world.bodies)
+    query = distinct(body, body.name)
+    distinct_bodies = []
+    for b in handles_and_containers_world.bodies:
+        if b.name not in distinct_bodies:
+            distinct_bodies.append(b)
+    assert query.tolist() == distinct_bodies
+
+
+def test_unsupported_distinct(handles_and_containers_world):
+    body = variable(Body, domain=handles_and_containers_world.bodies)
+    with pytest.raises(UnsupportedExpressionTypeForDistinct):
+        query = distinct(and_(body, body), body.name)

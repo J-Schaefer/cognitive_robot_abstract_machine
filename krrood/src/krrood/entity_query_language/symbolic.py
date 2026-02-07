@@ -184,25 +184,45 @@ class SymbolicExpression(Generic[T], ABC):
 
     Symbolic expressions form a tree and are evaluated lazily to produce
     bindings for variables, subject to logical constraints.
-
-    :ivar _child_: Optional child expression.
-    :ivar _id_: Unique identifier of this node.
-    :ivar _node_: Backing anytree.Node for visualization and traversal.
-    :ivar _conclusion_: Set of conclusion actions attached to this node.
-    :ivar _is_false_: Internal flag indicating evaluation result for this node.
     """
 
     _child_: Optional[SymbolicExpression] = field(init=False)
+    """
+    Optional child expression of this symbolic expression.
+    """
     _id_: int = field(init=False, repr=False, default=None)
+    """
+    Unique identifier of this node.
+    """
     _node_: RWXNode = field(init=False, default=None, repr=False)
     _id_expression_map_: ClassVar[Dict[int, SymbolicExpression]] = {}
+    """
+    A mapping of symbolic expression IDs to symbolic expressions. This is used to retrieve symbolic expressions by ID
+    """
     _conclusion_: typing.Set[Conclusion] = field(init=False, default_factory=set)
+    """
+    Set of conclusion expressions attached to this node, these are evaluated when the truth value of this node is true
+    during evaluation.
+    """
     _symbolic_expression_stack_: ClassVar[List[SymbolicExpression]] = []
+    """
+    The current stack of symbolic expressions that has been entered using the ``with`` statement.
+    """
     _is_false_: bool = field(init=False, repr=False, default=False)
+    """
+    Internal flag indicating current truth value of evaluation result for this expression.
+    """
     _eval_parent_: Optional[SymbolicExpression] = field(
         default=None, init=False, repr=False
     )
+    """
+    The parent symbolic expression of this expression. This is used to determine the current parent expression during
+    evaluation.
+    """
     _plot_color__: Optional[ColorLegend] = field(default=None, init=False, repr=False)
+    """
+    The color to use for plotting the node of this symbolic expression.
+    """
 
     def __post_init__(self):
         if not self._id_:
@@ -216,12 +236,18 @@ class SymbolicExpression(Generic[T], ABC):
         self,
         child: Optional[SymbolicExpression] = None,
     ):
+        """
+        Update the child expression of this symbolic expression.
+        """
         child = child or self._child_
         self._child_ = self._update_children_(child)[0]
 
     def _update_children_(
         self, *children: SymbolicExpression
     ) -> Tuple[SymbolicExpression, ...]:
+        """
+        Update multiple children expressions of this symbolic expression.
+        """
         children: Dict[int, SymbolicExpression] = dict(enumerate(children))
         for k, v in children.items():
             if not isinstance(v, SymbolicExpression):
@@ -232,6 +258,9 @@ class SymbolicExpression(Generic[T], ABC):
         return tuple(children.values())
 
     def _create_node_(self):
+        """
+        Create the rustworkx node for this symbolic expression.
+        """
         self._node_ = RWXNode(self._name_, data=self, color=self._plot_color_)
 
     def _process_result_(
@@ -300,10 +329,16 @@ class SymbolicExpression(Generic[T], ABC):
         pass
 
     def _add_conclusion_(self, conclusion: Conclusion):
+        """
+        Add a conclusion expression to this symbolic expression.
+        """
         self._conclusion_.add(conclusion)
 
     @property
     def _parent_(self) -> Optional[SymbolicExpression]:
+        """
+        :return: The parent symbolic expression of this expression.
+        """
         if self._eval_parent_ is not None:
             return self._eval_parent_
         elif self._node_.parent is not None:
@@ -312,6 +347,11 @@ class SymbolicExpression(Generic[T], ABC):
 
     @_parent_.setter
     def _parent_(self, value: Optional[SymbolicExpression]):
+        """
+        Set the parent symbolic expression of this expression.
+
+        :param value: The new parent symbolic expression of this expression.
+        """
         self._node_.parent = value._node_ if value is not None else None
         if value is not None and hasattr(value, "_child_"):
             value._child_ = self
@@ -319,7 +359,7 @@ class SymbolicExpression(Generic[T], ABC):
     @cached_property
     def _conditions_root_(self) -> SymbolicExpression:
         """
-        Get the root of the symbolic expression tree that contains conditions.
+        :return: The root of the symbolic expression tree that contains conditions.
         """
         conditions_root = self._root_
         while conditions_root._child_ is not None:
@@ -331,35 +371,53 @@ class SymbolicExpression(Generic[T], ABC):
     @property
     def _root_(self) -> SymbolicExpression:
         """
-        Get the root of the symbolic expression tree.
+        :return: The root of the symbolic expression tree.
         """
         return self._node_.root.data
 
     @property
     @abstractmethod
     def _name_(self) -> str:
+        """
+        :return: The name of this symbolic expression.
+        """
         pass
 
     @property
     def _all_nodes_(self) -> List[SymbolicExpression]:
+        """
+        :return: All nodes in the symbolic expression tree.
+        """
         return [self._root_] + self._root_._descendants_
 
     @property
     def _descendants_(self) -> List[SymbolicExpression]:
+        """
+        :return: All descendants of this symbolic expression.
+        """
         return [d.data for d in self._node_.descendants]
 
     @property
     def _children_(self) -> List[SymbolicExpression]:
+        """
+        :return: All children of this symbolic expression.
+        """
         return [c.data for c in self._node_.children]
 
     @classmethod
     def _current_parent_(cls) -> Optional[SymbolicExpression]:
+        """
+        :return: The current parent symbolic expression in the enclosing context of the ``with`` statement.
+        """
         if cls._symbolic_expression_stack_:
             return cls._symbolic_expression_stack_[-1]
         return None
 
     @cached_property
     def _unique_variables_(self) -> Set[Variable]:
+        """
+        :return: Set of unique variables in this symbolic expression.
+        """
         return make_set(self._all_variable_instances_)
 
     @cached_property
@@ -373,10 +431,18 @@ class SymbolicExpression(Generic[T], ABC):
 
     @property
     def _plot_color_(self) -> ColorLegend:
+        """
+        :return: The color legend for this symbolic expression.
+        """
         return self._plot_color__
 
     @_plot_color_.setter
     def _plot_color_(self, value: ColorLegend):
+        """
+        Set the color legend for this symbolic expression.
+
+        :param value: The new color legend for this symbolic expression.
+        """
         self._plot_color__ = value
         self._node_.color = value
 
@@ -387,9 +453,16 @@ class SymbolicExpression(Generic[T], ABC):
         return optimize_or(self, other)
 
     def _invert_(self):
+        """
+        Invert the symbolic expression.
+        """
         return Not(self)
 
     def __enter__(self) -> Self:
+        """
+        Enter a context where this symbolic expression is the current parent symbolic expression. This updates the
+        current parent symbolic expression, the context stack and returns this expression.
+        """
         node = self
         if (node is self._root_) or (node._parent_ is self._root_):
             node = node._conditions_root_
@@ -397,6 +470,9 @@ class SymbolicExpression(Generic[T], ABC):
         return self
 
     def __exit__(self, *args):
+        """
+        Exit the context and remove this symbolic expression from the context stack.
+        """
         SymbolicExpression._symbolic_expression_stack_.pop()
 
     def __hash__(self):
@@ -738,6 +814,10 @@ class Aggregator(ResultProcessor[T], ABC):
     """
     The default value to be returned if the child results are empty.
     """
+    _distinct_: bool = field(kw_only=True, default=False)
+    """
+    Whether to consider only distinct values from the child results when applying the aggregation function.
+    """
 
     def __post_init__(self):
         if isinstance(self._child_, Aggregator):
@@ -753,12 +833,6 @@ class Aggregator(ResultProcessor[T], ABC):
         Group the results by the given variables.
         """
         return Entity(_selected_variables=[self]).grouped_by(*variables)
-
-    def where(self, *conditions: ConditionType) -> Entity[T]:
-        """
-        Filter the results by the given conditions.
-        """
-        return Entity(_selected_variables=[self]).where(*conditions)
 
     def _process_result_(
         self, result: OperationResult
@@ -828,7 +902,10 @@ class Count(Aggregator[T]):
         self, child_results: Iterable[OperationResult]
     ) -> Iterator[Bindings]:
         for res in child_results:
-            yield {self._binding_id_: len(list(res.value))}
+            if self._distinct_:
+                yield {self._binding_id_: len(set(res.value))}
+            else:
+                yield {self._binding_id_: len(res.value)}
 
 
 @dataclass(eq=False, repr=False)
@@ -867,10 +944,13 @@ class Sum(EntityAggregator[T]):
         self, child_results: Iterable[OperationResult]
     ) -> Iterator[Bindings]:
         for res in child_results:
-            if not res.has_value:
+            if not res.has_value or len(res.value) == 0:
                 yield {self._binding_id_: self._default_value_}
                 continue
-            sum_val = sum(map(self._get_child_value_from_result_, res.value))
+            results = list(map(self._get_child_value_from_result_, res.value))
+            if self._distinct_:
+                results = set(results)
+            sum_val = sum(results)
             yield {self._binding_id_: sum_val}
 
 
@@ -888,8 +968,11 @@ class Average(EntityAggregator[T]):
             if not res.has_value:
                 yield {self._binding_id_: self._default_value_}
                 continue
-            sum_val = sum(map(self._get_child_value_from_result_, res.value))
-            yield {self._binding_id_: sum_val / len(res.value)}
+            results = list(map(self._get_child_value_from_result_, res.value))
+            if self._distinct_:
+                results = set(results)
+            sum_val = sum(results)
+            yield {self._binding_id_: sum_val / len(results)}
 
 
 @dataclass(eq=False, repr=False)
@@ -910,7 +993,10 @@ class Extreme(EntityAggregator[T], CanBehaveLikeAVariable[T], ABC):
     ) -> Iterator[Bindings]:
         for res in child_results:
             try:
-                extreme_val = self._extreme_function_(res.value, key=self._key_func_)
+                results = res.value
+                if self._distinct_:
+                    results = set(results)
+                extreme_val = self._extreme_function_(results, key=self._key_func_)
                 bindings = res.bindings.copy()
                 bindings[self._binding_id_] = extreme_val
                 yield bindings
@@ -975,6 +1061,9 @@ class ResultQuantifier(ResultProcessor[T], ABC):
             self._child_._var_ if isinstance(self._child_, Selectable) else None
         )
         self._node_.wrap_subtree = True
+
+    def _distinct__(self, *on: Selectable):
+        self._child_.distinct(*on)
 
     def _evaluate__(
         self,
@@ -1111,7 +1200,7 @@ A dictionary for grouped bindings which maps a group key to its corresponding bi
 """
 
 
-@dataclass
+@dataclass(eq=False, repr=False)
 class GroupBy(SymbolicExpression[T]):
     query_descriptor: QueryObjectDescriptor[T]
     """
@@ -1171,6 +1260,10 @@ class GroupBy(SymbolicExpression[T]):
 
             self.update_group_from_bindings(groups[group_key], res)
 
+        if len(groups) == 0:
+            for var in self.aggregated_variables:
+                groups[()][var._binding_id_] = []
+
         return groups, group_key_count
 
     def update_group_from_bindings(
@@ -1185,10 +1278,21 @@ class GroupBy(SymbolicExpression[T]):
         for id_, val in results.items():
             if id_ in self.ids_of_variables_to_group_by:
                 group[id_] = val
+            elif self.is_already_grouped(id_):
+                group[id_] = val if is_iterable(val) else [val]
             else:
                 if id_ not in group:
                     group[id_] = []
                 group[id_].append(val)
+
+    @lru_cache
+    def is_already_grouped(self, var_id: int) -> bool:
+        expression = self._id_expression_map_[var_id]
+        return (
+            len(self.variables_to_group_by) == 1
+            and isinstance(expression, DomainMapping)
+            and expression._child_._binding_id_ in self.ids_of_variables_to_group_by
+        )
 
     def get_constrained_values(self, sources: Bindings) -> Iterator[Bindings]:
         """
