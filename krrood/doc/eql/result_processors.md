@@ -69,6 +69,8 @@ The result processors can be evaluated using `.evaluate()` which returns a lazy 
  of the result quantifier `an` takes an optional `limit` argument to limit the number of results returned.
 
 ```{code-cell} ipython3
+from krrood.entity_query_language.failures import NonPositiveLimitValue
+
 body = variable(type_=Body, domain=world.bodies)
 query = an(entity(body).where(contains(body.name, "Handle")))
 print(list(query.evaluate())) # -> 2 results (all handle bodies)

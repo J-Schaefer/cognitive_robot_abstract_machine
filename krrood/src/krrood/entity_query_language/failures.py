@@ -353,7 +353,7 @@ class LiteralConditionError(UsageError):
         >>> query = an(entity(let(Body, None), predicate))
     So make sure that at least one of the arguments to the predicate or symbolic function are variables.
 
-    For further details, see the warning about literal conditions in :doc:`/krrood/doc/eql/logical_operators`.
+    For further details, see the warning about literal conditions in :doc:`/krrood/doc/eql/writing_queries`.
     """
 
     query_descriptor: QueryObjectDescriptor
