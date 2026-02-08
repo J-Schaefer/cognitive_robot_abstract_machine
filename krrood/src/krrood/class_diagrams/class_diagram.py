@@ -195,7 +195,6 @@ class WrappedSpecializedGeneric(WrappedClass):
 
     @property
     def name_with_entire_path(self) -> str:
-        # return f"{module_and_class_name(self.clazz)}[{", ".join(module_and_class_name(p) for p in self.clazz.__parameters__)}]"
         return str(self.clazz)
 
     @cached_property

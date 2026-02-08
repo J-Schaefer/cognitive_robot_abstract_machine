@@ -550,7 +550,7 @@ class WrappedTable:
             and wrapped_field.type_endpoint in self.ormatic.mapped_classes
         ):
             logger.info(f"Parsing as one to many relationship.")
-            self.create_one_to_many_relationship(wrapped_field)
+            self.create_many_to_many_relationship(wrapped_field)
 
         # handle custom types
         elif (
@@ -672,7 +672,7 @@ class WrappedTable:
             ColumnConstructor(rel_name, rel_type, rel_constructor)
         )
 
-    def create_one_to_many_relationship(self, wrapped_field: WrappedField):
+    def create_many_to_many_relationship(self, wrapped_field: WrappedField):
         """
         Creates a many-to-many relationship mapping for the given wrapped field using an association table.
         This allows multiple instances of the source table to reference the same instances of the target table.
