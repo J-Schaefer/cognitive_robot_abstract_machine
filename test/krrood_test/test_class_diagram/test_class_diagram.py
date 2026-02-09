@@ -1,4 +1,5 @@
-from dataclasses import is_dataclass, fields
+from dataclasses import is_dataclass, fields, Field
+from typing import Optional, List
 
 from krrood.class_diagrams.class_diagram import (
     ClassDiagram,
@@ -86,13 +87,13 @@ def test_create_nodes_for_specialized_generic():
         GenericClass[float]
     )
 
-    assert len(generic_float.fields) == 1
+    assert len(generic_float.fields) == 3
 
     float_field = generic_float.fields[0]
     assert float_field.type_endpoint is float
 
     generic_position = diagram.get_wrapped_class(GenericClass[Position])
-    assert len(generic_position.fields) == 1
+    assert len(generic_position.fields) == 3
     position_field = generic_position.fields[0]
     assert position_field.type_endpoint is Position
 
@@ -109,3 +110,12 @@ def test_create_nodes_for_specialized_generic():
     ]
     assert len(inheritance_relations_for_generic_position) == 1
     assert inheritance_relations_for_generic_position[0].source is wrapped_generic_class
+
+
+def test_make_specialized_dataclass():
+    type_ = GenericClass[float]
+    result = make_specialized_dataclass(type_)
+    value, optional_value, container = fields(result)
+    assert value.type == float
+    assert optional_value.type == Optional[float]
+    assert container.type == List[float]

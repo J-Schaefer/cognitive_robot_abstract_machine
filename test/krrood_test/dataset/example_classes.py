@@ -679,6 +679,8 @@ class PolymorphicEnumAssociation:
 @dataclass
 class GenericClass(Generic[T]):
     value: T
+    optional_value: Optional[T] = None
+    container: List[T] = field(default_factory=list)
 
 
 @dataclass
