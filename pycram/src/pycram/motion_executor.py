@@ -103,21 +103,30 @@ class MotionExecutor:
         giskard.execute(self.motion_state_chart)
 
 
-class RealRobot:
+@dataclass
+class ExecutionEnvironment:
     """
-    Management class for executing designators on the real robot. This is intended to be used in a with environment.
-    When importing this class an instance is imported instead.
+    Base class for managing execution context of all actions within. Instances of this class is to be used with a
+    "with" context block
 
     Example:
 
     .. code-block:: python
 
-        with real_robot:
+        with ExecutionEnvironment(ExecutionType.SIMULATED):
             some designators
+
     """
 
-    def __init__(self):
-        self.pre: ExecutionType = ExecutionType.REAL
+    execution_type: ExecutionType
+    """
+    The type of the execution environment 
+    """
+
+    previous_type: ExecutionType = field(init=False, default=None)
+    """
+    Type of the execution environment before setting it, used for nested environments
+    """
 
     def __enter__(self):
         """
@@ -125,7 +134,7 @@ class RealRobot:
         sets it to 'real'
         """
         self.pre = MotionExecutor.execution_type
-        MotionExecutor.execution_type = ExecutionType.REAL
+        MotionExecutor.execution_type = self.execution_type
 
     def __exit__(self, _type, value, traceback):
         """
@@ -136,156 +145,10 @@ class RealRobot:
 
     def __call__(self):
         return self
-
-
-class SimulatedRobot:
-    """
-    Management class for executing designators on the simulated robot. This is intended to be used in
-    a with environment. When importing this class an instance is imported instead.
-
-    Example:
-
-    .. code-block:: python
-
-        with simulated_robot:
-            some designators
-    """
-
-    def __init__(self):
-        self.pre: ExecutionType = ExecutionType.SIMULATED
-
-    def __enter__(self):
-        """
-        Entering function for 'with' scope, saves the previously set :py:attr:`~MotionExecutor.execution_type` and
-        sets it to 'simulated'
-        """
-        self.pre = MotionExecutor.execution_type
-        MotionExecutor.execution_type = ExecutionType.SIMULATED
-
-    def __exit__(self, _type, value, traceback):
-        """
-        Exit method for the 'with' scope, sets the :py:attr:`~MotionExecutor.execution_type` to the previously
-        used one.
-        """
-        MotionExecutor.execution_type = self.pre
-
-    def __call__(self):
-        return self
-
-
-class SemiRealRobot:
-    """
-    Management class for executing designators on the semi-real robot. This is intended to be used in a with environment.
-    When importing this class an instance is imported instead.
-
-    Example:
-
-    .. code-block:: python
-
-        with semi_real_robot:
-            some designators
-    """
-
-    def __init__(self):
-        self.pre: ExecutionType = ExecutionType.SEMI_REAL
-
-    def __enter__(self):
-        """
-        Entering function for 'with' scope, saves the previously set :py:attr:`~MotionExecutor.execution_type` and
-        sets it to 'semi_real'
-        """
-        self.pre = MotionExecutor.execution_type
-        MotionExecutor.execution_type = ExecutionType.SEMI_REAL
-
-    def __exit__(self, type, value, traceback):
-        """
-        Exit method for the 'with' scope, sets the :py:attr:`~MotionExecutor.execution_type` to the previously
-        used one.
-        """
-        MotionExecutor.execution_type = self.pre
-
-    def __call__(self):
-        return self
-
-
-class NoExecution:
-
-    def __init__(self):
-        self.pre: ExecutionType = ExecutionType.SEMI_REAL
-
-    def __enter__(self):
-        """
-        Entering function for 'with' scope, saves the previously set :py:attr:`~MotionExecutor.execution_type` and
-        sets it to 'semi_real'
-        """
-        self.pre = MotionExecutor.execution_type
-        MotionExecutor.execution_type = ExecutionType.NO_EXECUTION
-
-    def __exit__(self, type, value, traceback):
-        """
-        Exit method for the 'with' scope, sets the :py:attr:`~MotionExecutor.execution_type` to the previously
-        used one.
-        """
-        MotionExecutor.execution_type = self.pre
-
-    def __call__(self):
-        return self
-
-
-def with_real_robot(func: Callable) -> Callable:
-    """
-    Decorator to execute designators in the decorated class on the real robot.
-
-    Example:
-
-    .. code-block:: python
-
-        @with_real_robot
-        def plan():
-            some designators
-
-    :param func: Function this decorator is annotating
-    :return: The decorated function wrapped into the decorator
-    """
-
-    def wrapper(*args, **kwargs):
-        pre = MotionExecutor.execution_type
-        MotionExecutor.execution_type = ExecutionType.REAL
-        ret = func(*args, **kwargs)
-        MotionExecutor.execution_type = pre
-        return ret
-
-    return wrapper
-
-
-def with_simulated_robot(func: Callable) -> Callable:
-    """
-    Decorator to execute designators in the decorated class on the simulated robot.
-
-    Example:
-
-    .. code-block:: python
-
-        @with_simulated_robot
-        def plan():
-            some designators
-
-    :param func: Function this decorator is annotating
-    :return: The decorated function wrapped into the decorator
-    """
-
-    def wrapper(*args, **kwargs):
-        pre = MotionExecutor.execution_type
-        MotionExecutor.execution_type = ExecutionType.SIMULATED
-        ret = func(*args, **kwargs)
-        MotionExecutor.execution_type = pre
-        return ret
-
-    return wrapper
 
 
 # These are imported, so they don't have to be initialized when executing with
-simulated_robot = SimulatedRobot()
-real_robot = RealRobot()
-semi_real_robot = SemiRealRobot()
-no_execution = NoExecution()
+simulated_robot = ExecutionEnvironment(ExecutionType.SIMULATED)
+real_robot = ExecutionEnvironment(ExecutionType.REAL)
+semi_real_robot = ExecutionEnvironment(ExecutionType.SEMI_REAL)
+no_execution = ExecutionEnvironment(ExecutionType.NO_EXECUTION)
