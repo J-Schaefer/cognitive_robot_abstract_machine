@@ -139,14 +139,14 @@ class SynchronizerOnCallback(Synchronizer, Callback, ABC):
     The messages that the callback did not trigger due to being paused.
     """
 
-    def _notify(self, origin_world_id: Optional[UUID] = None):
+    def _notify(self, publish_changes: bool = True):
         """
         Wrapper method around world_callback that checks if this time the callback should be triggered.
         """
-        if origin_world_id == self.world._id:
+        if not publish_changes:
             return
 
-        self.world_callback(origin_world_id)
+        self.world_callback(publish_changes=publish_changes)
 
     def _subscription_callback(self, msg):
         if self._is_paused:
@@ -162,7 +162,7 @@ class SynchronizerOnCallback(Synchronizer, Callback, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def world_callback(self, origin_world_id: Optional[UUID] = None):
+    def world_callback(self, publish_changes: bool = True):
         """
         Called when the world notifies and update that is not caused by this synchronizer.
         """
@@ -172,7 +172,7 @@ class SynchronizerOnCallback(Synchronizer, Callback, ABC):
         """
         Applies the missed messages to the world.
         """
-        with self.world.modify_world(self.world._id):
+        with self.world.modify_world(publish_changes=False):
             for msg in self.missed_messages:
                 self.apply_message(msg)
 
@@ -207,11 +207,11 @@ class StateSynchronizer(StateChangeCallback, SynchronizerOnCallback):
             self.update_previous_world_state()
             self.world.notify_state_change()
 
-    def world_callback(self, origin_world_id: Optional[UUID] = None):
+    def world_callback(self, publish_changes: bool = True):
         """
         Publish the current world state to the ROS topic.
         """
-        if origin_world_id == self.world._id:
+        if not publish_changes:
             return
 
         changes = self.compute_state_changes()
@@ -277,14 +277,14 @@ class ModelSynchronizer(
         for callback in running_callbacks:
             callback.pause()
 
-        with self.world.modify_world(self.world._id):
+        with self.world.modify_world(publish_changes=False):
             msg.modifications.apply(self.world)
         for callback in running_callbacks:
             callback.resume()
 
-    def world_callback(self, origin_world_id: Optional[UUID] = None):
+    def world_callback(self, publish_changes: bool = True):
 
-        if origin_world_id == self.world._id:
+        if not publish_changes:
             return
 
         msg = ModificationBlock(

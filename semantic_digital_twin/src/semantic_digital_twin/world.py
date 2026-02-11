@@ -146,6 +146,11 @@ class WorldModelUpdateContextManager:
     desired updates have been performed.
     """
 
+    publish_changes: bool = True
+    """
+    The world id of the world before entering this context. Should only be set by synchronizers
+    """
+
     world: World = field(kw_only=True, repr=False)
     """
     The world to manage updates for.
@@ -154,11 +159,6 @@ class WorldModelUpdateContextManager:
     first: bool = True
     """
     First time flag.
-    """
-
-    origin_world_id: Optional[UUID] = None
-    """
-    The world id of the world before entering this context. Should only be set by synchronizers
     """
 
     def __enter__(self):
@@ -181,7 +181,7 @@ class WorldModelUpdateContextManager:
             )
             self.world.get_world_model_manager().current_model_modification_block = None
             if exc_type is None:
-                self.world._notify_model_change(self.origin_world_id)
+                self.world._notify_model_change(self.publish_changes)
             self.world.world_is_being_modified = False
 
 
@@ -442,7 +442,7 @@ class WorldModelManager:
     """
 
     def update_model_version_and_notify_callbacks(
-        self, origin_world_id: Optional[UUID] = None
+        self, publish_changes: bool = True
     ) -> None:
         """
         Notifies the system of a model change and updates necessary states, caches,
@@ -451,7 +451,7 @@ class WorldModelManager:
         """
         self.version += 1
         for callback in self.model_change_callbacks:
-            callback.notify(origin_world_id=origin_world_id)
+            callback.notify(publish_changes=publish_changes)
 
 
 _LRU_CACHE_SIZE: int = 2048
@@ -1499,26 +1499,26 @@ class World(HasSimulatorProperties):
         return new_world
 
     # %% Change Notifications
-    def notify_state_change(self, origin_world_id: Optional[UUID] = None) -> None:
+    def notify_state_change(self, publish_changes: bool = True) -> None:
         """
         If you have changed the state of the world, call this function to trigger necessary events and increase
         the state version.
         """
         if not self.is_empty():
             self._forward_kinematic_manager.recompute()
-        self.state._notify_state_change(origin_world_id=origin_world_id)
+        self.state._notify_state_change(publish_changes=publish_changes)
 
-    def _notify_model_change(self, origin_world_id: Optional[UUID] = None) -> None:
+    def _notify_model_change(self, publish_changes: bool = True) -> None:
         """
         Notifies the system of a model change and updates the necessary states, caches,
         and forward kinematics expressions while also triggering registered callbacks
         for model changes.
         """
         self._model_manager.update_model_version_and_notify_callbacks(
-            origin_world_id=origin_world_id
+            publish_changes=publish_changes
         )
         self._compile_forward_kinematics_expressions()
-        self.notify_state_change(origin_world_id=origin_world_id)
+        self.notify_state_change(publish_changes=publish_changes)
 
         for callback in self.state.state_change_callbacks:
             callback.update_previous_world_state()
@@ -2004,10 +2004,10 @@ class World(HasSimulatorProperties):
         self._collision_pair_manager.load_collision_srdf(file_path)
 
     def modify_world(
-        self, origin_world_id: Optional[UUID] = None
+        self, publish_changes: bool = True
     ) -> WorldModelUpdateContextManager:
         return WorldModelUpdateContextManager(
-            world=self, origin_world_id=origin_world_id
+            world=self, publish_changes=publish_changes
         )
 
     def reset_state_context(self) -> ResetStateContextManager:

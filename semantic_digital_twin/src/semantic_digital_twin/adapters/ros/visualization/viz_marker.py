@@ -65,7 +65,7 @@ class VizMarkerPublisher(ModelChangeCallback):
         """
         TFPublisher(self.world, self.node)
 
-    def _notify(self, origin_world_id: Optional[UUID] = None):
+    def _notify(self, publish_changes: bool = True):
         self.markers = MarkerArray()
         for body in self.world.bodies:
             marker_ns = str(body.name)
