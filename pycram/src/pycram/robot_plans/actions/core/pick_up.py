@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from typing_extensions import Union, Optional, Type, Any, Iterable
 
-from krrood.entity_query_language.entity import and_
+from krrood.entity_query_language.entity import and_, not_
 from krrood.entity_query_language.predicate import Symbol
 from krrood.entity_query_language.symbolic import SymbolicExpression
 from semantic_digital_twin.datastructures.definitions import GripperState
@@ -27,6 +27,7 @@ from ....datastructures.pose import PoseStamped
 from ....failures import ObjectNotGraspedError
 from ....failures import ObjectNotInGraspingArea
 from ....language import SequentialPlan
+from ....querying.predicates import GripperIsFree
 from ....view_manager import ViewManager
 from ....robot_plans.actions.base import ActionDescription
 from ....utils import translate_pose_along_local_axis
@@ -189,28 +190,28 @@ class PickUpAction(ActionDescription):
             ),
         ).perform()
 
-    def pre_condition(self, bound=True) -> SymbolicExpression:
-        variables = self.get_variables(bound)
-        condition = and_(
-            GripperIsFree(variables[self.arm]),
+    def pre_condition(self, unbound=False) -> SymbolicExpression:
+        variables = self.get_variables(unbound)
+        return and_(
+            manipulator := ViewManager.get_end_effector_view(
+                variables[self.arm], self.robot_view
+            ),
+            GripperIsFree(manipulator),
             reachable(
                 self.object_designator.global_pose,
                 self.robot_view.root,
-                variables[self.arm],
+                manipulator.tool_frame,
             ),
         )
-        return condition
 
-    def validate(
-        self, result: Optional[Any] = None, max_wait_time: Optional[timedelta] = None
-    ):
-        """
-        Check if picked up object is in contact with the gripper.
-        """
-        if not has_gripper_grasped_body(self.arm, self.object_designator):
-            raise ObjectNotGraspedError(
-                self.object_designator, World.robot, self.arm, self.grasp_description
-            )
+    def post_condition(self, unbound=False) -> SymbolicExpression:
+        variables = self.get_variables(unbound)
+        return and_(
+            manipulator := ViewManager.get_end_effector_view(
+                variables[self.arm], self.robot_view
+            ),
+            not_(GripperIsFree(manipulator)),
+        )
 
     @classmethod
     def description(

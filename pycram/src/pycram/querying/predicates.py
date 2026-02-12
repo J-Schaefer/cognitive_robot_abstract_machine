@@ -19,6 +19,8 @@ class GripperOccupancy:
                 self.manipulator.tool_frame
             )
         )
+        if self.manipulator.tool_frame in bodies_under_tcp:
+            bodies_under_tcp.remove(self.manipulator.tool_frame)
         return condition(bodies_under_tcp)
 
 

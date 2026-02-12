@@ -7,10 +7,10 @@ from dataclasses import dataclass, fields
 
 from typing_extensions import Any, Optional, Callable, TypeVar, Dict, Type
 
-from krrood.entity_query_language.entity import variable
+from krrood.entity_query_language.entity import variable, evaluate_condition
 from krrood.entity_query_language.symbolic import Variable, SymbolicExpression
 from ...designator import DesignatorDescription
-from ...failures import PlanFailure
+from ...failures import PlanFailure, ConditionNotSatisfied
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +114,18 @@ class ActionDescription(DesignatorDescription):
     def get_variables(self, unbound=False) -> Dict[T, Variable[T] | T]:
         # Maybe use python-box for a better interface
         return self.get_unbound_variables() if unbound else self.get_bound_variables()
+
+    def evaluate_pre_condition(self) -> bool:
+        evaluation = evaluate_condition(self.pre_condition())
+        if evaluation:
+            return True
+        raise ConditionNotSatisfied(True, self.__class__, self.pre_condition())
+
+    def evaluate_post_condition(self) -> bool:
+        evaluation = evaluate_condition(self.post_condition())
+        if evaluation:
+            return True
+        raise ConditionNotSatisfied(False, self.__class__, self.post_condition())
 
 
 ActionType = TypeVar("ActionType", bound=ActionDescription)

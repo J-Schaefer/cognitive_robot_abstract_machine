@@ -42,6 +42,7 @@ from .symbolic import (
     ResultQuantifier,
     Attribute,
     OperationResult,
+    LogicalBinaryOperator,
 )
 
 from .predicate import (
@@ -323,3 +324,14 @@ def get_true_statements(statement):
     :return: The true statements of this condition.
     """
     return get_conditioned_statements(statement, lambda x: any([r.is_true for r in x]))
+
+
+def evaluate_condition(condition: ConditionType) -> bool:
+    """
+    Evaluates the condition to True or False.
+
+    :param condition: The condition to evaluate.
+    :return: True if there is a possible solution, False otherwise.
+    """
+    results = list(condition._evaluate__(None))
+    return any([r.is_true for r in results])
