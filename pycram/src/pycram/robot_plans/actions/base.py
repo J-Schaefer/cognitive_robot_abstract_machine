@@ -11,7 +11,6 @@ from krrood.entity_query_language.entity import variable
 from krrood.entity_query_language.symbolic import Variable, SymbolicExpression
 from ...designator import DesignatorDescription
 from ...failures import PlanFailure
-from ...has_parameters import HasParameters
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +18,7 @@ T = TypeVar("T")
 
 
 @dataclass
-class ActionDescription(DesignatorDescription, HasParameters):
+class ActionDescription(DesignatorDescription):
     _pre_perform_callbacks = []
     _post_perform_callbacks = []
 
