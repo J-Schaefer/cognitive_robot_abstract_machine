@@ -26,6 +26,7 @@ from semantic_digital_twin.reasoning.robot_predicates import (
     robot_holds_body,
     blocking,
     is_body_in_gripper,
+    bodies_in_gripper,
     is_pose_free_for_robot,
 )
 from semantic_digital_twin.robots.abstract_robot import Camera, ParallelGripper
@@ -515,3 +516,28 @@ def test_is_pose_free_for_robot(pr2_apartment_state_reset):
             2.1, -2.1, 0, reference_frame=pr2_apartment_state_reset.root
         ),
     )
+
+
+def test_bodies_in_gripper(pr2_apartment_world):
+    world = deepcopy(pr2_apartment_world)
+    tcp = world.get_body_by_name("l_gripper_tool_frame")
+    pr2 = PR2.from_world(world)
+
+    with world.modify_world():
+        body = Body(
+            name=PrefixedName("mock_milk"),
+            collision=ShapeCollection([Box(scale=Scale(0.05, 0.05, 0.3))]),
+        )
+
+        connection = FixedConnection(tcp, body)
+        world.add_connection(connection)
+
+    pr2.root.parent_connection.origin = HomogeneousTransformationMatrix.from_xyz_rpy(
+        2, -2, 0
+    )
+
+    bodies = bodies_in_gripper(pr2.left_arm.manipulator)
+
+    assert len(bodies) == 1
+    assert bodies[0].name.name == "mock_milk"
+    assert bodies[0] == body
