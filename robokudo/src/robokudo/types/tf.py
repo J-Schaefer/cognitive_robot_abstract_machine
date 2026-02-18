@@ -5,7 +5,7 @@ in 3D space. It includes both timestamped and non-timestamped variants.
 
 The module supports:
 
-* 6-DOF poses (translation + rotation)
+* 6-DOF poses (translation and rotation)
 * 3-DOF positions (translation only)
 * Reference frame specifications
 * Timestamped variants
@@ -14,6 +14,8 @@ The module supports:
 from dataclasses import dataclass, field
 
 from typing_extensions import List
+
+from builtin_interfaces.msg import Time
 
 from . import core
 
@@ -47,18 +49,11 @@ class Position(core.Type):
     """
 
     translation: List[float] = field(default_factory=list)
-    """
-    Translation in x,y,z order
-    """
 
 
 @dataclass
 class StampedPose(Pose):
     """Timestamped 6-DOF pose with reference frame.
-
-    Extends Pose with:
-    * Reference frame ID
-    * Timestamp
     """
 
     frame: str = str("")
@@ -66,19 +61,12 @@ class StampedPose(Pose):
     Reference frame identifier
     """
 
-    timestamp: int = int(0)
-    """
-    Time stamp in seconds
-    """
+    timestamp: Time = field(default_factory=Time)
 
 
 @dataclass
 class StampedPosition(Position):
     """Timestamped 3-DOF position with reference frame.
-
-    Extends Position with:
-    * Reference frame ID
-    * Timestamp
     """
 
     frame: str = str("")
@@ -86,10 +74,7 @@ class StampedPosition(Position):
     Reference frame identifier
     """
 
-    timestamp: int = int(0)
-    """
-    Time stamp in seconds
-    """
+    timestamp: Time = field(default_factory=Time)
 
 
 @dataclass
