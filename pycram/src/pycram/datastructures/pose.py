@@ -746,6 +746,9 @@ class PoseStamped:
         }
         return any(r[0] for r in result.values())
 
+    def __hash__(self):
+        return id(self)
+
 
 @dataclass
 class Transform(PyCramPose):

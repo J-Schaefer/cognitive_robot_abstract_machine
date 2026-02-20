@@ -4,6 +4,7 @@ from math import factorial
 import pytest
 
 import krrood.entity_query_language.entity_result_processors as eql
+from krrood.entity_query_language.symbolic import SymbolicExpression
 from ...dataset.example_classes import VectorsWithProperty
 from krrood.entity_query_language.entity import (
     and_,
@@ -22,6 +23,7 @@ from krrood.entity_query_language.entity import (
     distinct,
     get_false_statements,
     get_true_statements,
+    evaluate_condition,
 )
 from krrood.entity_query_language.entity_result_processors import an, a, the, count
 from krrood.entity_query_language.failures import (
@@ -1146,3 +1148,17 @@ def test_get_true_statements(handles_and_containers_world):
     assert len(true_statements) == 2
     assert true_statements[0] == condition1
     assert true_statements[1] == condition2
+
+
+def test_evaluate_condition(handles_and_containers_world):
+    body = variable(Body, domain=handles_and_containers_world.bodies)
+    condition1 = body.name == "Handle1"
+    condition2 = body.size == 1
+
+    statement = and_(condition1, condition2)
+
+    evaluation = evaluate_condition(statement)
+
+    assert evaluation
+
+    assert evaluate_condition(True)

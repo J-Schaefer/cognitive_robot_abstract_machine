@@ -63,9 +63,6 @@ class TransportAction(ActionDescription):
     List to save the callbacks which should be called before performing the action.
     """
 
-    def __post_init__(self):
-        super().__post_init__()
-
     def inside_container(self) -> List[Body]:
         bodies = []
         for body in self.world.bodies:
@@ -195,9 +192,6 @@ class PickAndPlaceAction(ActionDescription):
     """
     List to save the callbacks which should be called before performing the action.
     """
-
-    def __post_init__(self):
-        super().__post_init__()
 
     def execute(self) -> None:
         SequentialPlan(
@@ -342,9 +336,6 @@ class MoveAndPickUpAction(ActionDescription):
     """
     List to save the callbacks which should be called before performing the action.
     """
-
-    def __post_init__(self):
-        super().__post_init__()
 
     def execute(self):
         obj_pose = PoseStamped.from_spatial_type(self.object_designator.global_pose)

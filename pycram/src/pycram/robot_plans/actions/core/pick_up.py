@@ -28,6 +28,7 @@ from ....datastructures.pose import PoseStamped
 from ....failures import ObjectNotGraspedError
 from ....failures import ObjectNotInGraspingArea
 from ....language import SequentialPlan
+from ....pose_validator import reachability_validator
 from ....querying.predicates import GripperIsFree, GripperIsNotFree
 from ....view_manager import ViewManager
 from ....robot_plans.actions.base import ActionDescription
@@ -192,10 +193,12 @@ class PickUpAction(ActionDescription):
         )
         return and_(
             GripperIsFree(manipulator),
-            reachable(
-                self.object_designator.global_pose,
-                self.robot_view.root,
+            reachability_validator(
+                PoseStamped.from_spatial_type(self.object_designator.global_pose),
                 manipulator.tool_frame,
+                self.robot_view,
+                self.world,
+                self.robot_view.full_body_controlled,
             ),
         )
 

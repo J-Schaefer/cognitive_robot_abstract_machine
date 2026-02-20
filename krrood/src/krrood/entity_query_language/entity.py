@@ -333,5 +333,7 @@ def evaluate_condition(condition: ConditionType) -> bool:
     :param condition: The condition to evaluate.
     :return: True if there is a possible solution, False otherwise.
     """
+    if type(condition) is bool:
+        return condition
     results = list(condition._evaluate__(None))
     return any([r.is_true for r in results])

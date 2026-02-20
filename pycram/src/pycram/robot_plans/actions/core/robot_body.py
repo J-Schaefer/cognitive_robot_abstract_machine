@@ -100,9 +100,6 @@ class SetGripperAction(ActionDescription):
                 self.context, MoveGripperMotion(gripper=arm, motion=self.motion)
             ).perform()
 
-    def pre_condition(self):
-        pass
-
     @classmethod
     def description(
         cls,

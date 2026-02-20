@@ -71,14 +71,6 @@ class OpenAction(ActionDescription):
             ),
         ).perform()
 
-    def pre_condition(self) -> bool:
-        """
-        Check if the container is opened, this assumes that the container state can be read accurately from the
-        real world.
-        """
-
-        return None
-
     @classmethod
     def description(
         cls,

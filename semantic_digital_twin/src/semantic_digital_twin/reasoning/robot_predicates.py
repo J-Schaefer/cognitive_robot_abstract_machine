@@ -140,7 +140,7 @@ def bodies_in_gripper(gripper: ParallelGripper, sample_size: int = 100) -> List[
     finger_points = trimesh.sample.sample_surface(finger_mesh, sample_size)[0]
     thumb_points = trimesh.sample.sample_surface(thumb_mesh, sample_size)[0]
 
-    rt = RayTracer(gripper._world)
+    rt = gripper._world.ray_tracer
     rt.update_scene()
 
     points, index_ray, bodies = rt.ray_test(finger_points, thumb_points)
@@ -163,25 +163,6 @@ def is_body_in_gripper(
 
     :return: The percentage of rays between the fingers that hit the body.
     """
-    #
-    # # Retrieve meshes in local frames
-    # thumb_mesh = gripper.thumb.tip.collision.combined_mesh.copy()
-    # finger_mesh = gripper.finger.tip.collision.combined_mesh.copy()
-    # body_mesh = body.collision.combined_mesh.copy()
-    #
-    # # Transform copies of the meshes into the world frame
-    # body_mesh.apply_transform(body.global_pose.to_np())
-    # thumb_mesh.apply_transform(gripper.thumb.tip.global_pose.to_np())
-    # finger_mesh.apply_transform(gripper.finger.tip.global_pose.to_np())
-    #
-    # # get random points from thumb mesh
-    # finger_points = trimesh.sample.sample_surface(finger_mesh, sample_size)[0]
-    # thumb_points = trimesh.sample.sample_surface(thumb_mesh, sample_size)[0]
-    #
-    # rt = RayTracer(gripper._world)
-    # rt.update_scene()
-    #
-    # points, index_ray, bodies = rt.ray_test(finger_points, thumb_points)
     bodies = bodies_in_gripper(gripper, sample_size)
     return len([b for b in bodies if b == body]) / sample_size
 

@@ -3,7 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import timedelta
 
+import numpy as np
+
+from krrood.entity_query_language.entity import and_, not_, or_
+from krrood.entity_query_language.symbolic import SymbolicExpression
 from semantic_digital_twin.datastructures.definitions import GripperState
+from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
 from semantic_digital_twin.world_description.connections import Connection6DoF
 from semantic_digital_twin.world_description.world_entity import Body
 from typing_extensions import Union, Optional, Type, Any, Iterable
@@ -21,6 +26,7 @@ from ....datastructures.partial_designator import PartialDesignator
 from ....datastructures.pose import PoseStamped
 from ....failures import ObjectNotPlacedAtTargetLocation, ObjectStillInContact
 from ....language import SequentialPlan
+from ....querying.predicates import GripperIsFree
 from ....view_manager import ViewManager
 from ....robot_plans.actions.base import ActionDescription
 from ....utils import translate_pose_along_local_axis
@@ -50,9 +56,6 @@ class PlaceAction(ActionDescription):
     """
     List to save the callbacks which should be called before performing the action.
     """
-
-    def __post_init__(self):
-        super().__post_init__()
 
     def execute(self) -> None:
         arm = ViewManager.get_arm_view(self.arm, self.robot_view)
@@ -100,42 +103,30 @@ class PlaceAction(ActionDescription):
 
         SequentialPlan(self.context, MoveTCPMotion(retract_pose, self.arm)).perform()
 
-    def validate(
-        self, result: Optional[Any] = None, max_wait_time: Optional[timedelta] = None
-    ):
-        """
-        Check if the object is placed at the target location.
-        """
-        self.validate_loss_of_contact()
-        self.validate_placement_location()
+    def pre_condition(self, bound=True) -> SymbolicExpression:
+        variables = self.bound_variables if bound else self.unbound_variables
+        manipulator = ViewManager.get_end_effector_view(
+            variables[self.arm], self.robot_view
+        )
+        return or_(
+            not_(GripperIsFree(manipulator)),
+            is_body_in_gripper(self.object_designator, manipulator) > 0.9,
+        )
 
-    def validate_loss_of_contact(self):
-        """
-        Check if the object is still in contact with the robot after placing it.
-        """
-        contact_links = self.object_designator.get_contact_points_with_body(
-            World.robot
-        ).get_all_bodies()
-        if contact_links:
-            raise ObjectStillInContact(
-                self.object_designator,
-                contact_links,
-                self.target_location,
-                World.robot,
-                self.arm,
-            )
-
-    def validate_placement_location(self):
-        """
-        Check if the object is placed at the target location.
-        """
-        pose_error_checker = PoseErrorChecker(World.conf.get_pose_tolerance())
-        if not pose_error_checker.is_error_acceptable(
-            self.object_designator.pose, self.target_location
-        ):
-            raise ObjectNotPlacedAtTargetLocation(
-                self.object_designator, self.target_location, World.robot, self.arm
-            )
+    def post_condition(self, bound=True) -> SymbolicExpression:
+        variables = self.bound_variables if bound else self.unbound_variables
+        manipulator = ViewManager.get_end_effector_view(
+            variables[self.arm], self.robot_view
+        )
+        return and_(
+            GripperIsFree(manipulator),
+            is_body_in_gripper(self.object_designator, manipulator) < 0.1,
+            np.allclose(
+                self.object_designator.global_pose,
+                self.target_location.to_spatial_type(),
+                atol=0.03,
+            ),
+        )
 
     @classmethod
     def description(

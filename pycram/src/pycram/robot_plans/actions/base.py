@@ -102,11 +102,11 @@ class ActionDescription(DesignatorDescription, ABC):
         return func
 
     @cached_property
-    def bound_variables(self) -> Dict[Any, Variable]:
+    def bound_variables(self) -> Dict[T, Variable[T] | T]:
         return self._create_variables(True)
 
     @cached_property
-    def unbound_variables(self) -> Dict[Any, Variable]:
+    def unbound_variables(self) -> Dict[T, Variable[T] | T]:
         return self._create_variables(False)
 
     @property

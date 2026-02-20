@@ -12,6 +12,7 @@ from giskardpy.motion_statechart.graph_node import EndMotion
 from giskardpy.motion_statechart.motion_statechart import MotionStatechart
 from giskardpy.motion_statechart.tasks.cartesian_tasks import CartesianPose
 from giskardpy.qp.qp_controller_config import QPControllerConfig
+from krrood.entity_query_language.predicate import symbolic_function
 from semantic_digital_twin.collision_checking.collision_detector import (
     CollisionCheck,
     Collision,
@@ -88,6 +89,7 @@ def visibility_validator(
     return hit_bodies[0] == gen_body if len(hit_bodies) > 0 else False
 
 
+@symbolic_function
 def reachability_validator(
     target_pose: PoseStamped,
     tip_link: KinematicStructureEntity,
