@@ -2,20 +2,19 @@
 
 This module provides annotators for writing and publishing annotations.
 """
-import copy
+
 import os
 import shutil
 from timeit import default_timer
 
-import py_trees
+from std_msgs.msg import String
 import rospy
-import std_msgs
+from ..utils import serialization as serializer
+from py_trees.common import Status
+from .core import BaseAnnotator
 
-import robokudo.io.storage
-import robokudo.utils.serialization as serializer
 
-
-class AnnotationStorageWriter(robokudo.annotators.core.BaseAnnotator):
+class AnnotationStorageWriter(BaseAnnotator):
     """Annotator for writing annotations to storage in JSON format.
 
     This annotator writes the current CAS annotations to files in a specified
@@ -25,36 +24,38 @@ class AnnotationStorageWriter(robokudo.annotators.core.BaseAnnotator):
     :type counter: int
     """
 
-    class Descriptor(robokudo.annotators.core.BaseAnnotator.Descriptor):
+    class Descriptor(BaseAnnotator.Descriptor):
         """Configuration descriptor for annotation storage writer."""
 
         class Parameters:
-            """Parameters for configuring annotation storage.
-
-            :ivar basic_path: Base directory for storing annotations, defaults to "annotations"
-            :type basic_path: str
-            :ivar suffix: File extension for annotation files, defaults to "json"
-            :type suffix: str
-            """
+            """Parameters for configuring annotation storage."""
 
             def __init__(self):
-                self.basic_path = "annotations"
-                self.suffix = "json"
+                self.basic_path: str = "annotations"
+                """Base directory for storing annotations, defaults to "annotations"""
 
-        parameters = Parameters()  # overwrite the parameters explicitly to enable auto-completion
+                self.suffix: str = "json"
+                """File extension for annotation files, defaults to "json"""
 
-    def __init__(self, name="AnnotationStorageWriter", descriptor=Descriptor()):
+        parameters = (
+            Parameters()
+        )  # overwrite the parameters explicitly to enable auto-completion
+
+    def __init__(
+        self,
+        name: str = "AnnotationStorageWriter",
+        descriptor: Descriptor = Descriptor(),
+    ):
         """Initialize the annotation storage writer. Minimal one-time init!
 
         :param name: Name of the annotator instance, defaults to "AnnotationStorageWriter"
-        :type name: str, optional
         :param descriptor: Configuration descriptor, defaults to Descriptor()
-        :type descriptor: AnnotationStorageWriter.Descriptor, optional
         """
         super().__init__(name, descriptor)
         self.rk_logger.debug("%s.__init__()" % self.__class__.__name__)
 
         self.counter = -1
+        """Counter for generating sequential filenames"""
 
     def update(self):
         """Write current CAS annotations to storage.
@@ -63,7 +64,6 @@ class AnnotationStorageWriter(robokudo.annotators.core.BaseAnnotator):
         in the configured directory. Files are numbered sequentially.
 
         :return: SUCCESS after writing annotations
-        :rtype: py_trees.common.Status
         """
         start_timer = default_timer()
 
@@ -80,16 +80,18 @@ class AnnotationStorageWriter(robokudo.annotators.core.BaseAnnotator):
 
         os.makedirs(dir_path, exist_ok=True)
 
-        json_path = os.path.join(dir_path, "{}.{}".format(self.counter, self.descriptor.parameters.suffix))
+        json_path = os.path.join(
+            dir_path, "{}.{}".format(self.counter, self.descriptor.parameters.suffix)
+        )
         with open(json_path, "w") as f:
             f.write(json_data_string)
 
         end_timer = default_timer()
-        self.feedback_message = f'Processing took {(end_timer - start_timer):.4f}s'
-        return py_trees.Status.SUCCESS
+        self.feedback_message = f"Processing took {(end_timer - start_timer):.4f}s"
+        return Status.SUCCESS
 
 
-class AnnotationPublisherWriter(robokudo.annotators.core.BaseAnnotator):
+class AnnotationPublisherWriter(BaseAnnotator):
     """Annotator for publishing annotations via ROS topics.
 
     This annotator publishes the current CAS annotations as JSON-encoded
@@ -99,55 +101,54 @@ class AnnotationPublisherWriter(robokudo.annotators.core.BaseAnnotator):
     :type pub: rospy.Publisher
     """
 
-    class Descriptor(robokudo.annotators.core.BaseAnnotator.Descriptor):
+    class Descriptor(BaseAnnotator.Descriptor):
         """Configuration descriptor for annotation publisher."""
 
         class Parameters:
-            """Parameters for configuring annotation publishing.
-
-            :ivar topic_name: Name of the ROS topic to publish on, defaults to "/annotations"
-            :type topic_name: str
-            """
+            """Parameters for configuring annotation publishing."""
 
             def __init__(self):
-                self.topic_name = "/annotations"
+                self.topic_name: str = "/annotations"
+                """Name of the ROS topic to publish on, defaults to "/annotations"""
 
-        parameters = Parameters()  # overwrite the parameters explicitly to enable auto-completion
+        parameters = (
+            Parameters()
+        )  # overwrite the parameters explicitly to enable auto-completion
 
-    def __init__(self, name="AnnotationPublisherWriter", descriptor=Descriptor()):
+    def __init__(
+        self,
+        name: str = "AnnotationPublisherWriter",
+        descriptor: "AnnotationPublisherWriter.Descriptor" = Descriptor(),
+    ):
         """Initialize the annotation publisher. Minimal one-time init!
 
         :param name: Name of the annotator instance, defaults to "AnnotationPublisherWriter"
-        :type name: str, optional
         :param descriptor: Configuration descriptor, defaults to Descriptor()
-        :type descriptor: AnnotationPublisherWriter.Descriptor, optional
         """
         super().__init__(name, descriptor)
         self.rk_logger.debug("%s.__init__()" % self.__class__.__name__)
 
         self.pub = None
 
-    def setup(self, timeout):
+    def setup(self, timeout: float):
         """Set up the ROS publisher. Useful for delayed initialization. For example ROS pub/sub, drivers.
 
         :param timeout: Maximum time to wait for setup completion
-        :type timeout: float
         :return: True if setup was successful
-        :rtype: bool
         """
         self.rk_logger.debug("%s.setup()" % self.__class__.__name__)
 
-        self.pub = rospy.Publisher(self.descriptor.parameters.topic_name,
-                                   std_msgs.msg.String, queue_size=10)
+        self.pub = rospy.Publisher(
+            self.descriptor.parameters.topic_name, String, queue_size=10
+        )
 
-    def update(self):
+    def update(self) -> Status:
         """Publish current CAS annotations.
 
         Serializes the current annotations to JSON and publishes them
         on the configured ROS topic.
 
         :return: SUCCESS after publishing annotations
-        :rtype: py_trees.common.Status
         """
         start_timer = default_timer()
 
@@ -158,5 +159,5 @@ class AnnotationPublisherWriter(robokudo.annotators.core.BaseAnnotator):
         self.pub.publish(json_data_string)
 
         end_timer = default_timer()
-        self.feedback_message = f'Processing took {(end_timer - start_timer):.4f}s'
-        return py_trees.Status.SUCCESS
+        self.feedback_message = f"Processing took {(end_timer - start_timer):.4f}s"
+        return Status.SUCCESS
