@@ -147,7 +147,7 @@ class CollectionReaderAnnotator(robokudo.annotators.core.BaseAnnotator):
             # Special case: If there is already a query present in this CAS, we need to temporarily save it and set
             # it in the new CAS
             query = None
-            if robokudo.cas.CASViews.QUERY in pipeline.cas.views:
+            if pipeline.cas.contains(robokudo.cas.CASViews.QUERY):
                 query = pipeline.cas.get(robokudo.cas.CASViews.QUERY)
 
             # Create a fresh CAS for the pipeline
