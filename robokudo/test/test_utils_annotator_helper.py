@@ -50,7 +50,7 @@ class TestUtilsAnnotatorHelper(object):
         cam_to_world.translation = [0.0, 0.0, 0.0]
         cam_to_world.timestamp = None  # rospy.Time[1741809308248347990] would be an example value if needed
 
-        cas.views[CASViews.VIEWPOINT_CAM_TO_WORLD] = cam_to_world
+        cas.set(CASViews.VIEWPOINT_CAM_TO_WORLD, cam_to_world)
         return cas
 
     @pytest.fixture()
@@ -66,7 +66,7 @@ class TestUtilsAnnotatorHelper(object):
         cam_to_world.translation = [2.6818742474793744, 1.9778799779168073, 0.9607137539544703]
         cam_to_world.timestamp = None  # rospy.Time[1741809308248347990] would be an example value if needed
 
-        cas.views[CASViews.VIEWPOINT_CAM_TO_WORLD] = cam_to_world
+        cas.set(CASViews.VIEWPOINT_CAM_TO_WORLD, cam_to_world)
         return cas
 
     ######################
@@ -256,7 +256,7 @@ class TestUtilsAnnotatorHelper(object):
         scalex, scaley = scale_factor
 
         cas = annotator_in_pipeline.get_cas()
-        cas.views[robokudo.cas.CASViews.COLOR2DEPTH_RATIO] = (scalex, scaley)
+        cas.set(robokudo.cas.CASViews.COLOR2DEPTH_RATIO, (scalex, scaley))
         annotator_in_pipeline.cam_intrinsics = copy.deepcopy(kinect_intrinsics)
 
         scale_cam_intrinsics(annotator_in_pipeline)

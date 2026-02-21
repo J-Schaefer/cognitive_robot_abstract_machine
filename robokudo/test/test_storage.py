@@ -28,8 +28,8 @@ def cas_data():
     """
     Mock CAS data for testing.
     """
-    cas.views[CASViews.COLOR_IMAGE] = np.random.rand(100, 100, 3),
-    cas.views[CASViews.DEPTH_IMAGE] = np.random.rand(100, 100),
+    cas.set(CASViews.COLOR_IMAGE, np.random.rand(100, 100, 3))
+    cas.set(CASViews.DEPTH_IMAGE, np.random.rand(100, 100))
 
     return cas
 
@@ -153,8 +153,8 @@ class TestStorage:
         storage_instance.load_annotations_from_mongo_in_cas(retrieved_cas_record, retrieved_cas)
 
         # Compare the most important views: COLOR and DEPTH Image
-        assert np.array_equal(cas_data.views[CASViews.COLOR_IMAGE], retrieved_cas.views[CASViews.COLOR_IMAGE])
-        assert np.array_equal(cas_data.views[CASViews.DEPTH_IMAGE], retrieved_cas.views[CASViews.DEPTH_IMAGE])
+        assert np.array_equal(cas_data.get(CASViews.COLOR_IMAGE), retrieved_cas.get(CASViews.COLOR_IMAGE))
+        assert np.array_equal(cas_data.get(CASViews.DEPTH_IMAGE), retrieved_cas.get(CASViews.DEPTH_IMAGE))
 
         assert len(retrieved_cas.annotations) == 1
         retrieved_oh = retrieved_cas.annotations[0]

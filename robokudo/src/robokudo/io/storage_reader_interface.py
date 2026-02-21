@@ -95,7 +95,7 @@ class StorageReaderInterface(robokudo.io.camera_interface.CameraInterface):
         # Restore annotations
         self.storage.load_annotations_from_mongo_in_cas(cas_frame, cas)
 
-        if cas.views[CASViews.DEPTH_IMAGE] is None:
+        if cas.get(CASViews.DEPTH_IMAGE) is None:
             # no depth image available
             AnnotatorPredefinedParameters.global_with_depth = False
 

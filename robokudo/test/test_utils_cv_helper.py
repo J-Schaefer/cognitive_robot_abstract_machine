@@ -130,7 +130,7 @@ class TestUtilsCVHelper(object):
 
         image = np.zeros((height, width, 3), dtype=np.uint8)
 
-        cas.views[robokudo.cas.CASViews.COLOR2DEPTH_RATIO] = (scalex, scaley)
+        cas.set(robokudo.cas.CASViews.COLOR2DEPTH_RATIO, (scalex, scaley))
 
         annotator_in_pipeline.cam_intrinsics = copy.deepcopy(kinect_intrinsics)
 
@@ -144,7 +144,7 @@ class TestUtilsCVHelper(object):
         self, annotator_in_pipeline: BaseAnnotator
     ):
         cas = annotator_in_pipeline.get_cas()
-        cas.views[robokudo.cas.CASViews.COLOR2DEPTH_RATIO] = None
+        cas.set(robokudo.cas.CASViews.COLOR2DEPTH_RATIO, None)
         image = np.zeros((640, 480, 3), dtype=np.uint8)
         assert pytest.raises(
             RuntimeError, get_scaled_color_image_for_depth_image, cas, image
