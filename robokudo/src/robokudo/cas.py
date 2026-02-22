@@ -65,12 +65,6 @@ class CASViews:
     CLOUD: str = "cloud"
     """Point cloud data"""
 
-    CLOUD_ORGANIZED: str = "cloud_organized"
-    """Organized point cloud data"""
-
-    TIMESTAMP: str = "timestamp"
-    """CAS creation timestamp, for percept timestamp use `CAM_INFO`"""
-
     QUERY: str = "query"
     """Query information"""
 
