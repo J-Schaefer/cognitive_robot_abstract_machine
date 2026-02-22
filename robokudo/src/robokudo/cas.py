@@ -30,6 +30,10 @@ from .types.tf import StampedTransform
 
 if TYPE_CHECKING:
     from .types.core import Annotation
+    from semantic_digital_twin.spatial_types.spatial_types import (
+        HomogeneousTransformationMatrix,
+        Pose,
+    )
 
 
 class CASViews:
@@ -79,18 +83,6 @@ class CASViews:
     CAM_TO_WORLD_TRANSFORM: str = "cam_to_world_transform"
     """Camera to world. 
     Type: semantic_digital_twin.spatial_types.spatial_types.HomogeneousTransformationMatrix"""
-
-    WORLD_TO_CAM_TRANSFORM: str = "viewpoint_world_to_cam"
-    """World to camera transform.
-    Type: semantic_digital_twin.spatial_types.spatial_types.HomogeneousTransformationMatrix"""
-
-    CAM_TO_WORLD_POSE: str = "cam_to_world_pose"
-    """Camera to world transform.
-    Type: semantic_digital_twin.spatial_types.spatial_types.Pose"""
-
-    WORLD_TO_CAM_POSE: str = "world_to_cam_pose"
-    """World to camera transform.
-    Type: semantic_digital_twin.spatial_types.spatial_types.Pose"""
 
     OBJECT_IMAGE: str = "object_image"
     """Object image data. This view is used in imagistic reasoning pipelines where a 
@@ -206,6 +198,14 @@ class CAS:
     @viewpoint_world_to_cam.setter
     def viewpoint_world_to_cam(self, value: StampedTransform) -> None:
         self.views[CASViews.VIEWPOINT_WORLD_TO_CAM] = value
+
+    @property
+    def cam_to_world_transform(self) -> Optional[HomogeneousTransformationMatrix]:
+        return self.views.get(CASViews.CAM_TO_WORLD_TRANSFORM)
+
+    @cam_to_world_transform.setter
+    def cam_to_world_transform(self, value: HomogeneousTransformationMatrix) -> None:
+        self.views[CASViews.CAM_TO_WORLD_TRANSFORM] = value
 
     @property
     def query(self) -> Optional[Any]:
