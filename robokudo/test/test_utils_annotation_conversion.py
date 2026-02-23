@@ -18,16 +18,27 @@ from robokudo.utils.annotation_conversion import PoseAnnotationToStampedPoseAnno
     BoundingBox3DForShapeSizeConverter, Shape2ODConverter, Cuboid2ODConverter, Sphere2ODConverter, Location2ODConverter
 from robokudo_msgs.msg import ObjectDesignator, ShapeSize
 
+from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
+
 
 class TestUtilsAnnotationConversion(object):
     @pytest.fixture
     def cas_with_tf(self):
         cas = CAS()
 
-        tf = StampedTransform()
-        tf.rotation = (-0.5, 0.5, -0.5, 0.5)
-        tf.translation = (0.5, 0.5, 0.5)
-        cas.set(CASViews.VIEWPOINT_CAM_TO_WORLD, tf)
+        # tf = StampedTransform()
+        # tf.rotation = (-0.5, 0.5, -0.5, 0.5)
+        # tf.translation = (0.5, 0.5, 0.5)
+        # cas.set(CASViews.VIEWPOINT_CAM_TO_WORLD, tf)
+        cas.cam_to_world_transform = HomogeneousTransformationMatrix.from_xyz_quaternion(
+            pos_x=0.5,
+            pos_y=0.5,
+            pos_z=0.5,
+            quat_x=-0.5,
+            quat_y=0.5,
+            quat_z=-0.5,
+            quat_w=0.5
+        )
 
         kinect_cam_info = sensor_msgs.msg.CameraInfo()
         kinect_cam_info.header.frame_id = "some_weird_non_default_frame_id"
@@ -167,7 +178,8 @@ class TestUtilsAnnotationConversion(object):
         assert converter.can_convert(Annotation()) == False
 
     def test_pose_2_od_converter_convert_in_cam(self, cas_with_tf: CAS):
-        cas_with_tf.set(CASViews.VIEWPOINT_CAM_TO_WORLD, None)
+        # cas_with_tf.set(CASViews.VIEWPOINT_CAM_TO_WORLD, None)
+        cas_with_tf.cam_to_world_transform = None
         kinect_cam_info = cas_with_tf.get(CASViews.CAM_INFO)
 
         od = ObjectDesignator()
@@ -195,7 +207,7 @@ class TestUtilsAnnotationConversion(object):
         assert pose.pose.orientation.w == pose_annotation.rotation[3]
 
     def test_pose_2_od_converter_convert_in_world(self, cas_with_tf: CAS):
-        tf = cas_with_tf.get(CASViews.VIEWPOINT_CAM_TO_WORLD)
+        cam_to_world_quat = cas_with_tf.cam_to_world_transform.to_quaternion().to_list()
         kinect_cam_info = cas_with_tf.get(CASViews.CAM_INFO)
 
         od = ObjectDesignator()
@@ -209,7 +221,7 @@ class TestUtilsAnnotationConversion(object):
 
         converter.convert(pose_annotation, cas_with_tf, od)
 
-        new_rotation = (R.from_quat(tf.rotation) * R.from_quat(pose_annotation.rotation)).as_quat(True)
+        new_rotation = (R.from_quat(cam_to_world_quat) * R.from_quat(pose_annotation.rotation)).as_quat(True)
 
         assert len(od.pose) == 1
         pose: PoseStamped = od.pose[0]
@@ -234,7 +246,7 @@ class TestUtilsAnnotationConversion(object):
         assert converter.can_convert(other_ann) == False
 
     def test_position_2_od_converter_convert(self, cas_with_tf: CAS):
-        tf = cas_with_tf.get(CASViews.VIEWPOINT_CAM_TO_WORLD)
+        cam_to_world_quat = cas_with_tf.cam_to_world_transform.to_quaternion().to_list()
 
         od = ObjectDesignator()
 
@@ -251,10 +263,18 @@ class TestUtilsAnnotationConversion(object):
         assert pose.pose.position.x == position_annotation.translation[2] + 0.5
         assert pose.pose.position.y == -position_annotation.translation[0] + 0.5
         assert pose.pose.position.z == -position_annotation.translation[1] + 0.5
-        assert np.isclose(pose.pose.orientation.x, tf.rotation[0])
-        assert np.isclose(pose.pose.orientation.y, tf.rotation[1])
-        assert np.isclose(pose.pose.orientation.z, tf.rotation[2])
-        assert np.isclose(pose.pose.orientation.w, tf.rotation[3])
+        actual_quat = np.array(
+            [
+                pose.pose.orientation.x,
+                pose.pose.orientation.y,
+                pose.pose.orientation.z,
+                pose.pose.orientation.w,
+            ]
+        )
+        expected_quat = np.array(cam_to_world_quat)
+        assert np.allclose(actual_quat, expected_quat) or np.allclose(
+            actual_quat, -expected_quat
+        )
 
     def test_stamped_position_2_od_converter_can_convert(self):
         converter = StampedPosition2ODConverter()
@@ -262,7 +282,7 @@ class TestUtilsAnnotationConversion(object):
         assert converter.can_convert(Annotation()) == False
 
     def test_stamped_position_2_od_converter_convert(self, cas_with_tf: CAS):
-        tf = cas_with_tf.get(CASViews.VIEWPOINT_CAM_TO_WORLD)
+        cam_to_world_quat = cas_with_tf.cam_to_world_transform.to_quaternion().to_list()
         od = ObjectDesignator()
 
         converter = StampedPosition2ODConverter()
@@ -283,10 +303,18 @@ class TestUtilsAnnotationConversion(object):
         assert pose.pose.position.x == stamped_pose_annotation.translation[2] + 0.5
         assert pose.pose.position.y == -stamped_pose_annotation.translation[0] + 0.5
         assert pose.pose.position.z == -stamped_pose_annotation.translation[1] + 0.5
-        assert pose.pose.orientation.x == tf.rotation[0]
-        assert pose.pose.orientation.y == tf.rotation[1]
-        assert pose.pose.orientation.z == tf.rotation[2]
-        assert pose.pose.orientation.w == tf.rotation[3]
+        actual_quat = np.array(
+            [
+                pose.pose.orientation.x,
+                pose.pose.orientation.y,
+                pose.pose.orientation.z,
+                pose.pose.orientation.w,
+            ]
+        )
+        expected_quat = np.array(cam_to_world_quat)
+        assert np.allclose(actual_quat, expected_quat) or np.allclose(
+            actual_quat, -expected_quat
+        )
 
     def test_bounding_box_3d_for_shape_size_converter_can_convert(self):
         converter = BoundingBox3DForShapeSizeConverter()
