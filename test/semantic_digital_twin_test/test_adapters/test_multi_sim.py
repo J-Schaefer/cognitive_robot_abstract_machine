@@ -307,7 +307,7 @@ class MujocoSimTestCase(unittest.TestCase):
         start_time = time.time()
         new_body = Body(name=PrefixedName("test_body"))
         box_origin = HomogeneousTransformationMatrix.from_xyz_rpy(
-            x=0.2, y=0.4, z=-0.3, roll=0, pitch=0.5, yaw=0, reference_frame=new_body
+            x=0.2, y=0.4, z=3.0, roll=0, pitch=0.5, yaw=0, reference_frame=new_body
         )
         box = Box(
             origin=box_origin,

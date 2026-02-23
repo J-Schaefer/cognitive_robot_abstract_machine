@@ -2064,6 +2064,17 @@ class ConnectionRevoluteSpawner(ConnectionSpawner, ABC):
     """
 
 
+class Connection6DOFSpawner(ConnectionSpawner, ABC):
+    """
+    A spawner to spawn a Connection6DoF object in the simulator.
+    """
+
+    entity_type: ClassVar[Type[Connection]] = Connection6DoF
+    """
+    The type of the entity to spawn.
+    """
+
+
 class ActuatorSpawner(EntitySpawner):
     """
     A spawner to spawn an Actuator object in the simulator.
@@ -2225,6 +2236,26 @@ class MujocoRevoluteJointSpawner(MujocoConnectionSpawner, ConnectionRevoluteSpaw
     mujoco_joint_converter: ClassVar[Type[MujocoJointConverter]] = (
         MujocoRevoluteJointConverter
     )
+
+
+class MujocoFreejointSpawner(MujocoEntitySpawner, Connection6DOFSpawner):
+    """
+    A spawner to spawn a Connection6DoF object in the MuJoCo simulator.
+    """
+
+    def _spawn_connection(
+        self, simulator: MujocoSimulator, connection: Connection
+    ) -> bool:
+        result = simulator.add_entity(
+            entity_name=connection.name.name,
+            entity_type="joint",
+            entity_properties={"type": mujoco.mjtJoint.mjJNT_FREE},
+            parent_name=connection.child.name.name,
+        )
+        return (
+            result.type
+            == SimulatorCallbackResult.ResultType.SUCCESS_AFTER_EXECUTION_ON_MODEL
+        )
 
 
 class MujocoActuatorSpawner(MujocoEntitySpawner, ActuatorSpawner):
