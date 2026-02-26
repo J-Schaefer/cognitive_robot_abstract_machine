@@ -11,13 +11,11 @@ from types import NoneType
 from typing_extensions import Dict, List, Any, ClassVar, Type, Optional, Union
 
 import numpy
-from mujoco_simulator import MujocoSimulator
+from physics_simulators.mujoco_simulator import MujocoSimulator
 import mujoco
-from base_simulator import (
+from physics_simulators.base_simulator import (
     BaseSimulator,
     SimulatorState,
-    SimulatorViewer,
-    SimulatorAttribute,
     SimulatorCallbackResult,
     SimulatorConstraints,
 )
@@ -2386,7 +2384,6 @@ class MultiSim(ABC):
     def __init__(
         self,
         world: World,
-        viewer: SimulatorViewer = None,
         headless: bool = False,
         step_size: float = 1e-3,
         **kwargs,
@@ -2402,7 +2399,6 @@ class MultiSim(ABC):
         self.builder_class().build_world(world=world, file_path=self.default_file_path)
         self.simulator = self.simulator_class(
             file_path=self.default_file_path,
-            viewer=viewer,
             headless=headless,
             step_size=step_size,
             **kwargs,
@@ -2411,7 +2407,6 @@ class MultiSim(ABC):
             world=world,
             simulator=self.simulator,
         )
-        self._viewer = viewer
 
     def start_simulation(self, constraints: Optional[SimulatorConstraints] = None):
         """
@@ -2450,112 +2445,6 @@ class MultiSim(ABC):
         Resets the simulation. This will reset the physics simulation to the initial state.
         """
         self.simulator.reset()
-
-    def set_write_objects(self, write_objects: Dict[str, Dict[str, List[float]]]):
-        """
-        Sets the objects to be written to the simulator.
-        For example, to set the position and quaternion of an object, you can use the following format:
-        {
-            "object_name": {
-                "position": [x, y, z],
-                "quaternion": [w, x, y, z]
-            }
-        }
-
-        :param write_objects: The objects to be written to the simulator.
-        """
-        self._viewer.write_objects = write_objects
-        if self.simulator.state == SimulatorState.PAUSED:
-            self.simulator.step()
-
-    def set_read_objects(self, read_objects: Dict[str, Dict[str, List[float]]]):
-        """
-        Sets the objects to be read from the simulator.
-
-        For example, to read the position and quaternion of an object, you can use the following format:
-        {
-            "object_name": {
-                "position": [0.0, 0.0, 0.0], # Default value
-                "quaternion": [1.0, 0.0, 0.0], # Default value
-            }
-        }
-        :param read_objects: The objects to be read from the simulator.
-        """
-        self._viewer.read_objects = read_objects
-        if self.simulator.state == SimulatorState.PAUSED:
-            self.simulator.step()
-
-    def get_read_objects(self) -> Dict[str, Dict[str, SimulatorAttribute]]:
-        """
-        Gets the objects that are being read from the simulator.
-        For example, if you have set the read objects as follows:
-        {
-            "object_name": {
-                "position": [0.0, 0.0, 0.0],
-                "quaternion": [1.0, 0.0, 0.0, 0.0],
-            }
-        }
-        You will get the following format:
-        {
-            "object_name": {
-                "position": MultiverseAttribute(...),
-                "quaternion": MultiverseAttribute(...),
-            }
-        }
-        where MultiverseAttribute contains the values of the attribute via the .values() method.
-        It will return the values that are being read from the simulator in every simulation step.
-
-        :return: The objects that are being read from the simulator.
-        """
-        if self.simulator.state == SimulatorState.PAUSED:
-            self.simulator.step()
-        return self._viewer.read_objects
-
-    def is_stable(
-        self, body_names: List[str], max_simulation_steps: int = 100, atol: float = 1e-2
-    ) -> bool:
-        """
-        Checks if an object is stable in the world. Stable meaning that it's pose will not change after simulating
-        physics in the World. This function will pause the simulation, set the read objects to the given body names,
-        unpause the simulation, and check if the pose of the objects change after a certain number of simulation steps.
-        If the pose of the objects change, the function will return False. If the pose of the objects do not change,
-        the function will return True. After checking, the function will restore the read objects and the simulation state.
-
-        :param body_names: The names of the bodies to check for stability
-        :param max_simulation_steps: The maximum number of simulation steps to run
-        :param atol: The absolute tolerance for comparing the pose
-        :return: True if the object is stable, False otherwise
-        """
-
-        origin_read_objects = self.get_read_objects()
-        origin_state = self.simulator.state
-
-        self.pause_simulation()
-        self.set_read_objects(
-            read_objects={
-                body_name: {
-                    "position": [0.0, 0.0, 0.0],
-                    "quaternion": [1.0, 0.0, 0.0, 0.0],
-                }
-                for body_name in body_names
-            }
-        )
-        initial_body_state = numpy.array(self._viewer.read_data)
-        current_simulation_step = self.simulator.current_number_of_steps
-        self.unpause_simulation()
-        stable = True
-        while (
-            self.simulator.current_number_of_steps
-            < current_simulation_step + max_simulation_steps
-        ):
-            if numpy.abs(initial_body_state - self._viewer.read_data).max() > atol:
-                stable = False
-                break
-            time.sleep(1e-3)
-        self._viewer.read_objects = origin_read_objects
-        if origin_state == SimulatorState.PAUSED:
-            self.pause_simulation()
-        return stable
 
     def is_running(self):
         return self.simulator.state == SimulatorState.RUNNING

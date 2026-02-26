@@ -6,12 +6,11 @@ from typing import Optional, Tuple, List
 
 import numpy
 
-from base_simulator import (
+from physics_simulators.base_simulator import (
     BaseSimulator,
     SimulatorState,
     SimulatorConstraints,
     SimulatorStopReason,
-    SimulatorViewer,
     SimulatorCallback,
     SimulatorCallbackResult,
 )
@@ -28,11 +27,9 @@ class BaseSimulatorTestCase(unittest.TestCase):
 
     def test_initialize_simulator(
         self,
-        viewer: Optional[SimulatorViewer] = None,
         callbacks: Optional[List[SimulatorCallback]] = None,
     ) -> BaseSimulator:
         simulator = self.Simulator(
-            viewer=viewer,
             file_path=self.file_path,
             world_path=self.world_path,
             robots_path=self.robots_path,
@@ -46,67 +43,6 @@ class BaseSimulatorTestCase(unittest.TestCase):
         self.assertIsNone(simulator.stop_reason)
         self.assertIsNone(simulator.simulation_thread)
         return simulator
-
-    def test_initialize_viewer(
-        self,
-        write_objects: Optional = None,
-        read_objects: Optional = None,
-        number_of_envs=2,
-    ) -> SimulatorViewer:
-        if write_objects is None:
-            write_attrs = {
-                "cmd_joint_angular_position": [1.0],
-                "cmd_joint_angular_velocity": [2.0],
-            }
-            write_objects = {
-                "actuator1": write_attrs,
-                "actuator2": write_attrs,
-            }
-        if read_objects is None:
-            read_attrs = {
-                "joint_angular_position": [1.0],
-                "joint_angular_velocity": [2.0],
-            }
-            read_objects = {
-                "joint1": read_attrs,
-                "joint2": read_attrs,
-            }
-        viewer = SimulatorViewer(write_objects=write_objects, read_objects=read_objects)
-        viewer.initialize_data(number_of_envs=number_of_envs)
-
-        write_data = numpy.array(
-            [
-                [
-                    i
-                    for attrs in write_objects.values()
-                    for attr in attrs.values()
-                    for i in attr
-                ]
-                for _ in range(number_of_envs)
-            ]
-        )
-        read_data = numpy.array(
-            [
-                [
-                    i
-                    for attrs in read_objects.values()
-                    for attr in attrs.values()
-                    for i in attr
-                ]
-                for _ in range(number_of_envs)
-            ]
-        )
-        self.assertTrue(numpy.array_equal(viewer.write_data, write_data))
-        self.assertTrue(numpy.array_equal(viewer.read_data, read_data))
-        return viewer
-
-    def test_initialize_with_viewer(
-        self,
-    ) -> Tuple[BaseSimulator, SimulatorViewer]:
-        viewer = self.test_initialize_viewer()
-        simulator = self.test_initialize_simulator(viewer=viewer)
-        self.assertEqual(simulator._viewer, viewer)
-        return simulator, viewer
 
     def test_start_and_stop_simulator(self) -> BaseSimulator:
         simulator = self.test_initialize_simulator()

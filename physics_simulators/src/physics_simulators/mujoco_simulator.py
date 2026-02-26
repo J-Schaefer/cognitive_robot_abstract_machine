@@ -8,10 +8,9 @@ import mujoco
 import mujoco.viewer
 import numpy
 
-from base_simulator import (
+from physics_simulators.base_simulator import (
     BaseSimulator,
     SimulatorRenderer,
-    SimulatorViewer,
     SimulatorCallback,
     SimulatorCallbackResult,
     SimulatorState,
@@ -42,10 +41,7 @@ class MujocoSimulator(BaseSimulator):
     def __init__(
         self,
         file_path: str,
-        viewer: Optional[SimulatorViewer] = None,
-        number_of_envs: int = 1,
         headless: bool = False,
-        real_time_factor: float = 1.0,
         step_size: float = 1e-3,
         callbacks: Optional[List[SimulatorCallback]] = None,
         **kwargs,
@@ -54,10 +50,7 @@ class MujocoSimulator(BaseSimulator):
         root = ET.parse(file_path).getroot()
         self.name = root.attrib.get("model", self.name)
         super().__init__(
-            viewer,
-            number_of_envs,
             headless,
-            real_time_factor,
             step_size,
             callbacks,
             **kwargs,
@@ -103,78 +96,6 @@ class MujocoSimulator(BaseSimulator):
         else:
             self._renderer = SimulatorRenderer()
 
-    def _process_objects(self, objects, ids_dict):
-        """
-        Process objects for updating `read_ids` or `write_ids`.
-
-        :param objects: Dictionary of objects and attributes.
-        :param ids_dict: Dictionary to store processed IDs.
-        """
-        attr_map = {
-            "position": "xpos",
-            "quaternion": "xquat",
-            "joint_angular_position": "qpos",
-            "joint_linear_position": "qpos",
-            "joint_angular_velocity": "qvel",
-            "joint_linear_velocity": "qvel",
-            "joint_torque": "qfrc_applied",
-            "joint_force": "qfrc_applied",
-            "cmd_joint_angular_position": "ctrl",
-            "cmd_joint_angular_velocity": "ctrl",
-            "cmd_joint_torque": "ctrl",
-            "cmd_joint_linear_position": "ctrl",
-            "cmd_joint_linear_velocity": "ctrl",
-            "cmd_joint_force": "ctrl",
-            "energy": "energy",
-        }
-        attr_size = {
-            "xpos": 3,
-            "xquat": 4,
-            "qpos": 1,
-            "qvel": 1,
-            "qfrc_applied": 1,
-            "ctrl": 1,
-            "energy": 2,
-        }
-        i = 0
-        ids_dict.clear()
-        for name, attrs in objects.items():
-            for attr_name in attrs.keys():
-                mj_attr_name = attr_map[attr_name]
-                if mj_attr_name not in ids_dict:
-                    ids_dict[mj_attr_name] = [[], []]
-
-                if attr_name in {"position", "quaternion", "energy"}:
-                    mj_attr_id = self._mj_model.body(name).id
-                    if attr_name == "energy" and name != "world":
-                        raise NotImplementedError("Not supported")
-                elif attr_name in {"joint_angular_position", "joint_linear_position"}:
-                    mj_attr_id = self._mj_model.joint(name).qposadr[0]
-                elif attr_name in {
-                    "joint_angular_velocity",
-                    "joint_linear_velocity",
-                    "joint_torque",
-                    "joint_force",
-                }:
-                    mj_attr_id = self._mj_model.joint(name).dofadr[0]
-                elif attr_name in {
-                    "cmd_joint_angular_position",
-                    "cmd_joint_angular_velocity",
-                    "cmd_joint_torque",
-                    "cmd_joint_linear_position",
-                    "cmd_joint_linear_velocity",
-                    "cmd_joint_force",
-                }:
-                    mj_attr_id = self._mj_data.actuator(name).id
-                else:
-                    raise ValueError(f"Unknown attribute {attr_name} for {name}")
-
-                ids_dict[mj_attr_name][0].append(mj_attr_id)
-                ids_dict[mj_attr_name][1] += [
-                    j for j in range(i, i + attr_size[mj_attr_name])
-                ]
-                i += attr_size[mj_attr_name]
-
     def step_callback(self):
         def _do_step():
             if self.state == SimulatorState.RUNNING:
@@ -191,52 +112,6 @@ class MujocoSimulator(BaseSimulator):
 
     def reset_callback(self):
         mujoco.mj_resetDataKeyframe(self._mj_model, self._mj_data, 0)
-
-    def write_data_to_simulator(self, write_data: numpy.ndarray):
-        if write_data.shape[0] > 1:
-            raise NotImplementedError("Multiple environments is not supported yet")
-        for attr, indices in self._write_ids.items():
-            if attr in {"xpos", "xquat"}:
-                for i, body_id in enumerate(indices[0]):
-                    jntid = self._mj_model.body(body_id).jntadr[0]
-                    mocapid = self._mj_model.body(body_id).mocapid[0]
-                    if jntid != -1:
-                        jnt = self._mj_model.jnt(jntid)
-                        assert jnt.type == mujoco.mjtJoint.mjJNT_FREE
-                        qpos_adr = jnt.qposadr[0]
-                        if attr == "xpos":
-                            self._mj_data.qpos[qpos_adr : qpos_adr + 3] = write_data[0][
-                                indices[1][3 * i : 3 * i + 3]
-                            ]
-                        elif attr == "xquat":
-                            self._mj_data.qpos[qpos_adr + 3 : qpos_adr + 7] = (
-                                write_data[0][indices[1][4 * i : 4 * i + 4]]
-                            )
-                    elif mocapid != -1:
-                        if attr == "xpos":
-                            self._mj_data.mocap_pos[mocapid] = write_data[0][
-                                indices[1][3 * i : 3 * i + 3]
-                            ]
-                        elif attr == "xquat":
-                            self._mj_data.mocap_quat[mocapid] = write_data[0][
-                                indices[1][4 * i : 4 * i + 4]
-                            ]
-            elif attr == "energy":
-                raise NotImplementedError("Not supported")
-            else:
-                getattr(self._mj_data, attr)[indices[0]] = write_data[0][indices[1]]
-
-    def read_data_from_simulator(self, read_data: numpy.ndarray):
-        if read_data.shape[1] == 0:
-            return
-        if read_data.shape[0] > 1:
-            raise NotImplementedError("Multiple environments is not supported yet")
-        for attr, indices in tuple(self._read_ids.items()):
-            if attr == "energy":
-                read_data[0][indices[1]] = self._mj_data.energy
-            else:
-                attr_values = getattr(self._mj_data, attr)
-                read_data[0][indices[1]] = attr_values[indices[0]].reshape(-1)
 
     def _fix_prefix_and_recompile(
         self, body_spec: mujoco.MjsBody, dummy_prefix: str, body_name: str
