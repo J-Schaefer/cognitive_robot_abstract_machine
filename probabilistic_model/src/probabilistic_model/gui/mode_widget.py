@@ -1,0 +1,274 @@
+from typing import List, Optional, Union
+from PySide6.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QFrame,
+)
+from PySide6.QtCore import Qt
+
+from .controller import ModelController
+from .variable_constraint_widget import VariableConstraintWidget
+from random_events.product_algebra import SimpleEvent, Event
+
+
+class ModeWidget(QWidget):
+    """
+    The Mode page widget of the GUI.
+    Calculates and displays the Most Probable Explanation (MPE).
+    """
+
+    def __init__(self, controller: ModelController, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.controller = controller
+        self.evidence_widgets: List[VariableConstraintWidget] = []
+        self.modes: List[SimpleEvent] = []
+        self.likelihood: float = 0.0
+        self.current_mode_index: int = 0
+        self.init_ui()
+
+    def init_ui(self):
+        main_layout = QVBoxLayout(self)
+
+        title_label = QLabel("Most Probable Explanation")
+        title_label.setStyleSheet("font-size: 24pt; font-weight: bold;")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(title_label)
+
+        # argmax P(Q | E) header
+        header_layout = QHBoxLayout()
+        header_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        argmax_label = QLabel("argmax P")
+        argmax_label.setStyleSheet("font-size: 20pt;")
+        header_layout.addWidget(argmax_label)
+
+        q_label = QLabel("(Q | E)")
+        q_label.setStyleSheet("font-size: 30pt;")
+        header_layout.addWidget(q_label)
+
+        main_layout.addLayout(header_layout)
+
+        # Evidence Section
+        evidence_section = self.create_evidence_section()
+        main_layout.addWidget(evidence_section)
+
+        # Calculate Button
+        self.calculate_button = QPushButton("Calculate Mode")
+        self.calculate_button.setStyleSheet("font-size: 14pt; padding: 10px;")
+        self.calculate_button.clicked.connect(self.on_calculate)
+        main_layout.addWidget(self.calculate_button)
+
+        # Results area
+        self.result_container = QWidget()
+        self.result_layout = QVBoxLayout(self.result_container)
+
+        # Navigation
+        nav_layout = QHBoxLayout()
+        self.prev_button = QPushButton("<")
+        self.prev_button.setFixedWidth(50)
+        self.prev_button.clicked.connect(self.show_prev_mode)
+        self.prev_button.setEnabled(False)
+        nav_layout.addWidget(self.prev_button)
+
+        self.mode_info_label = QLabel("Click Calculate to see results")
+        self.mode_info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.mode_info_label.setStyleSheet("font-size: 14pt; font-weight: bold;")
+        nav_layout.addWidget(self.mode_info_label)
+
+        self.next_button = QPushButton(">")
+        self.next_button.setFixedWidth(50)
+        self.next_button.clicked.connect(self.show_next_mode)
+        self.next_button.setEnabled(False)
+        nav_layout.addWidget(self.next_button)
+
+        self.result_layout.addLayout(nav_layout)
+
+        # Mode Details
+        self.mode_details_scroll = QScrollArea()
+        self.mode_details_scroll.setWidgetResizable(True)
+        self.mode_details_container = QWidget()
+        self.mode_details_layout = QVBoxLayout(self.mode_details_container)
+        self.mode_details_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.mode_details_scroll.setWidget(self.mode_details_container)
+        self.result_layout.addWidget(self.mode_details_scroll)
+
+        main_layout.addWidget(self.result_container)
+
+    def create_evidence_section(self) -> QWidget:
+        section = QWidget()
+        layout = QVBoxLayout(section)
+
+        header_layout = QHBoxLayout()
+        header_label = QLabel("Evidence (|)")
+        header_label.setStyleSheet("font-size: 16pt; font-weight: bold;")
+        header_layout.addWidget(header_label)
+
+        add_button = QPushButton("+")
+        add_button.setFixedWidth(30)
+        add_button.clicked.connect(self.add_evidence_row)
+        header_layout.addWidget(add_button)
+
+        layout.addLayout(header_layout)
+
+        self.evidence_scroll_area = QScrollArea()
+        self.evidence_scroll_area.setWidgetResizable(True)
+        self.evidence_scroll_area.setMaximumHeight(200)
+        self.evidence_container = QWidget()
+        self.evidence_rows_layout = QVBoxLayout(self.evidence_container)
+        self.evidence_rows_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.evidence_scroll_area.setWidget(self.evidence_container)
+
+        layout.addWidget(self.evidence_scroll_area)
+
+        # Add initial row if model is already loaded
+        if self.controller.model:
+            self.add_evidence_row()
+
+        return section
+
+    def add_evidence_row(self):
+        if not self.controller.model:
+            return
+
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 5, 0, 5)
+
+        var_widget = VariableConstraintWidget(
+            self.controller.model.variables, self.controller.priors
+        )
+        self.evidence_widgets.append(var_widget)
+        row_layout.addWidget(var_widget)
+
+        remove_button = QPushButton("-")
+        remove_button.setFixedWidth(30)
+        remove_button.clicked.connect(
+            lambda: self.remove_evidence_row(row_widget, var_widget)
+        )
+        row_layout.addWidget(remove_button)
+
+        self.evidence_rows_layout.addWidget(row_widget)
+
+    def remove_evidence_row(
+        self, row_widget: QWidget, var_widget: VariableConstraintWidget
+    ):
+        self.evidence_widgets.remove(var_widget)
+        row_widget.deleteLater()
+
+    def build_evidence_event(self) -> Event:
+        simple_event = SimpleEvent()
+        for widget in self.evidence_widgets:
+            constraint = widget.get_constraint()
+            if constraint:
+                var, val = constraint
+                if var in simple_event:
+                    simple_event[var] = simple_event[var].intersection_with(val)
+                else:
+                    simple_event[var] = val
+
+        if not simple_event:
+            return Event()
+
+        return Event(simple_event)
+
+    def on_calculate(self):
+        if not self.controller.model:
+            self.mode_info_label.setText("No model loaded")
+            return
+
+        evidence_event = self.build_evidence_event()
+        result = self.controller.calculate_mode(evidence_event)
+
+        if result is None:
+            self.mode_info_label.setText("Unsatisfiable")
+            self.clear_mode_details()
+            self.modes = []
+            self.prev_button.setEnabled(False)
+            self.next_button.setEnabled(False)
+            return
+
+        mode_event, likelihood = result
+        self.modes = mode_event.simple_sets
+        self.likelihood = likelihood
+        self.current_mode_index = 0
+        self.update_mode_display()
+
+    def update_mode_display(self):
+        if not self.modes:
+            return
+
+        self.mode_info_label.setText(
+            f"Result {self.current_mode_index + 1}/{len(self.modes)} (Likelihood: {self.likelihood:.5f})"
+        )
+        self.prev_button.setEnabled(self.current_mode_index > 0)
+        self.next_button.setEnabled(self.current_mode_index < len(self.modes) - 1)
+
+        self.display_mode(self.modes[self.current_mode_index])
+
+    def clear_mode_details(self):
+        while self.mode_details_layout.count():
+            item = self.mode_details_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+    def display_mode(self, simple_event: SimpleEvent):
+        self.clear_mode_details()
+
+        # Display each variable and its restriction
+        # Sort variables by name for consistency
+        sorted_vars = sorted(simple_event.keys(), key=lambda v: v.name)
+
+        for var in sorted_vars:
+            restriction = simple_event[var]
+
+            row = QFrame()
+            row.setFrameShape(QFrame.Shape.StyledPanel)
+            row_layout = QHBoxLayout(row)
+
+            var_label = QLabel(var.name)
+            var_label.setFixedWidth(150)
+            var_label.setStyleSheet("font-weight: bold;")
+            row_layout.addWidget(var_label)
+
+            # Reusing the existing VariableConstraintWidget for display
+            display_widget = VariableConstraintWidget(
+                self.controller.model.variables, self.controller.priors
+            )
+            display_widget.set_constraint(var, restriction)
+            display_widget.setEnabled(False)  # Make it read-only
+            row_layout.addWidget(display_widget)
+
+            self.mode_details_layout.addWidget(row)
+
+    def show_prev_mode(self):
+        if self.current_mode_index > 0:
+            self.current_mode_index -= 1
+            self.update_mode_display()
+
+    def show_next_mode(self):
+        if self.current_mode_index < len(self.modes) - 1:
+            self.current_mode_index += 1
+            self.update_mode_display()
+
+    def refresh(self):
+        """Called when a new model is loaded."""
+        # Clear evidence rows
+        for w in self.evidence_widgets:
+            # The parent widget of VariableConstraintWidget is the row_widget
+            w.parentWidget().deleteLater()
+        self.evidence_widgets.clear()
+
+        # Clear results
+        self.clear_mode_details()
+        self.modes = []
+        self.mode_info_label.setText("Click Calculate to see results")
+        self.prev_button.setEnabled(False)
+        self.next_button.setEnabled(False)
+
+        # Add initial row
+        self.add_evidence_row()
