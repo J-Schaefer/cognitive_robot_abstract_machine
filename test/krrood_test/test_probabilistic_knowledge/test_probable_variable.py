@@ -10,6 +10,7 @@ from krrood.entity_query_language.query.match import (
 from krrood.probabilistic_knowledge.parameterizer import (
     DataAccessObjectParameterizer,
     copy_partial_object,
+    MatchParameterizer,
 )
 from krrood.rustworkx_utils import RWXNode
 from random_events.interval import singleton, open, closed, closed_open
@@ -154,3 +155,7 @@ def test_probable_variable_with_concrete_kwarg():
 
     instance = MatchToInstanceTranslator(prob_q).translate()
     assert instance.orientation == Orientation(x=0.0, y=0.0, z=0.0, w=1.0)
+
+    parameters = MatchParameterizer(instance).parameterize()
+    assert len(parameters.variables) == 7
+    assert len(parameters.assignments) == 4
