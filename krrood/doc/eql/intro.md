@@ -11,20 +11,85 @@ kernelspec:
   name: python3
 ---
 
-# Introduction to EQL
+# The Philosophy of EQL
+## EQL is Relational
 
-Entity Query Language (EQL) is a Pythonic, intuitive, and expressive relational query language. It is not only a query
-language, but also a description language that lets you write description-logic-style statements directly in Python. You
-can also use any user-defined Python function inside a query.
+Entity Query Language (EQL) embraces the relational model. It rethinks relational querying in native Python terms.
 
-Unlike SQL, EQL does not require explicit joins. It works naturally with Python’s built-in data structures, which can be
-nested arbitrarily.
+EQL does not attempt to replace Python with a domain-specific language. It makes Python itself the query language.
 
-EQL operates directly on user-defined objects, without the need for an additional representation layer such as an 
-Object-Relational Mapper (ORM).
+Where SQL requires explicit joins and table navigation, EQL treats relationships as natural object references.
+Traversal replaces joins. Structure replaces ceremony.
 
-The core idea behind EQL is simple: express your intent with minimal extra detail. If you want to find an object with
-certain properties, you describe it directly using standard Python syntax.
+## EQL is Pythonic First
+
+EQL is not a string-based query system. Queries are written directly in Python syntax, using real objects, real functions, and real control flow.
+
+There is no artificial boundary between “query language” and “application language.”
+If you can write a Python function, you can use it inside a query.
+
+EQL assumes that Python is expressive enough — and builds on that expressiveness rather than hiding it.
+
+## EQL Eliminates the Representation Layer
+
+Traditional systems often introduce an additional abstraction layer such as an ORM. EQL does not.
+
+EQL operates directly on user-defined objects.
+There is no need to map entities into tables, nor to maintain a separate relational representation.
+
+Objects remain objects. The data model you design is the data model you query.
+
+## EQL Prefers Intent Over Ceremony
+
+The core principle of EQL is minimal extra detail.
+
+If you want an object with certain properties, you describe those properties directly. You do not describe how to retrieve it, how to join it, or how to reconstruct it.
+
+EQL focuses on **what you want** not **how to assemble it**, in other words, the query **expresses intent**,
+not **execution strategy**.
+
+## EQL Supports Structural Depth
+
+Python’s built-in data structures — lists, dictionaries, nested objects — are first-class citizens in EQL.
+
+There is no restriction to flat relational tables. Structures may be nested arbitrarily.
+
+EQL treats relational querying as a structural operation over objects.
+
+## EQL as a Description Language
+
+EQL is not only a query language.
+It is also a description language.
+
+You can write description-logic-style statements directly in Python, allowing declarative constraints, structural matching, and semantic expression within the same framework.
+
+This unifies:
+
+- Querying
+
+- Structural description
+
+- Logical constraint
+
+into a single, consistent language model.
+
+## In Summary
+
+EQL stands for:
+
+- Direct object querying
+
+- Native Python expressiveness
+
+- No artificial ORM layer
+
+- Structural traversal instead of joins
+
+- Intent-driven declarative style
+
+It does not attempt to make Python behave like SQL.
+
+It assumes Python is already powerful enough — and builds a relational model that fits naturally inside it.
 
 ## The "Hello World" of EQL
 
