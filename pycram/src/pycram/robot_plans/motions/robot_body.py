@@ -6,10 +6,10 @@ from semantic_digital_twin.spatial_types import Vector3
 from semantic_digital_twin.spatial_types.spatial_types import Pose
 from semantic_digital_twin.robots.abstract_robot import Camera
 
-from .base import BaseMotion
+from pycram.robot_plans.motions.base import BaseMotion
 from giskardpy.motion_statechart.tasks.joint_tasks import JointPositionList, JointState
 
-from ...view_manager import ViewManager
+from pycram.view_manager import ViewManager
 
 
 @dataclass

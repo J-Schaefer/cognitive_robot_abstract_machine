@@ -10,13 +10,13 @@ from scipy.spatial.transform import Rotation as R
 from typing_extensions import Optional, Union, List
 
 from semantic_digital_twin.robots.abstract_robot import Manipulator, AbstractRobot
-from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix, Quaternion
-from semantic_digital_twin.spatial_types.spatial_types import Pose, Point3, Vector3
+from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
+from semantic_digital_twin.spatial_types.spatial_types import Pose, Point3, Vector3, Quaternion
 from semantic_digital_twin.world_description.world_entity import Body, KinematicStructureEntity
-from .dataclasses import Rotations
-from .enums import Grasp, AxisIdentifier, ApproachDirection, VerticalAlignment, Arms
-from ..tf_transformations import quaternion_multiply
-from ..utils import translate_pose_along_local_axis, rotate_pose_by_quaternion
+from pycram.datastructures.dataclasses import Rotations
+from pycram.datastructures.enums import Grasp, AxisIdentifier, ApproachDirection, VerticalAlignment, Arms
+from pycram.tf_transformations import quaternion_multiply
+from pycram.utils import translate_pose_along_local_axis, rotate_pose_by_quaternion
 
 
 @dataclass
@@ -30,8 +30,8 @@ class GraspDescription:
     """
     The direction from which the body should be grasped. These are the four directions in the x-y plane (FRONT, BACK, LEFT, RIGHT).
     """
-    vertical_alignment: VerticalAlignment
 
+    vertical_alignment: VerticalAlignment
     """
     The alignment of the gripper with the body in the z-axis (TOP, BOTTOM).
     """
@@ -75,7 +75,7 @@ class GraspDescription:
                 body
             ).bounding_box()
 
-            approach_axis = np.array(self.approach_direction.axis.value, dtype=np.bool)
+            approach_axis = np.array(self.approach_direction.axis.value, dtype=bool)
 
             # Pre-pose calculation
             offset = (
@@ -96,9 +96,11 @@ class GraspDescription:
 
         # Lift pose calculation
         map_T_grasp = world.transform(pose.to_homogeneous_matrix(), world.root)
+
         grasp_T_lift = HomogeneousTransformationMatrix.from_xyz_rpy(z=self.manipulation_offset)
         map_T_lift = map_T_grasp @ grasp_T_lift
         pose_frame_T_lift = world.transform(map_T_lift, pose_frame)
+
         lift_pose = rotate_pose_by_quaternion(pose_frame_T_lift.to_pose(), grasp_orientation)
 
         sequence = [pre_pose, grasp_pose, lift_pose]
@@ -224,7 +226,9 @@ class GraspDescription:
         """
         edge_offset = -self.edge_offset(body) if grasp_edge else 0
         orientation = self.grasp_orientation()
-        grasp_pose = Pose(Point3(edge_offset, 0, 0), orientation, reference_frame=body)
+        grasp_pose = Pose(Point3(
+            edge_offset, 0, 0), orientation, reference_frame=body
+        )
 
         return grasp_pose
 

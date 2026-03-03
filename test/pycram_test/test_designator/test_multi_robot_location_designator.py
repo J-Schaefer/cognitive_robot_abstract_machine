@@ -100,7 +100,7 @@ def immutable_multiple_robot_simple_apartment(
     world, view = setup_multi_robot_simple_apartment
     state = deepcopy(world.state.data)
     yield world, view, Context(world, view)
-    world.state.data = state
+    world.state.data[:] = state
     world.notify_state_change()
 
 
@@ -178,6 +178,7 @@ def test_visibility_costmap_location(immutable_multiple_robot_simple_apartment):
 
 def test_visibility_pose_costmap_location(immutable_multiple_robot_simple_apartment):
     world, robot_view, context = immutable_multiple_robot_simple_apartment
+    VizMarkerPublisher(_world=world, node=rclpy.create_node("d")).with_tf_publisher()
     plan = SequentialPlan(
         context,
         ParkArmsActionDescription(Arms.BOTH),
@@ -387,9 +388,12 @@ def test_accessing_location(immutable_model_world):
 def test_giskard_location_pose(immutable_model_world):
     world, robot_view, context = immutable_model_world
     location_desig = GiskardLocation(
-        Pose(Point3.from_iterable([2.1, 2, 1]), reference_frame=world.root), Arms.RIGHT
+        Pose(Point3.from_iterable([1.9, 2, 1]), reference_frame=world.root), Arms.RIGHT
     )
-    plan = SequentialPlan(context, NavigateActionDescription(location_desig))
+    plan = SequentialPlan(
+        context,
+        NavigateActionDescription(location_desig),
+    )
 
     location = location_desig.resolve()
     assert len(location.to_position().to_list()) == 4

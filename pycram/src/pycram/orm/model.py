@@ -7,12 +7,11 @@ from krrood.ormatic.dao import AlternativeMapping, T, to_dao
 from sqlalchemy import TypeDecorator, types
 from typing_extensions import Optional
 
-from ..datastructures.dataclasses import ExecutionData
-from ..datastructures.enums import TaskStatus
-from ..designator import DesignatorDescription
-from ..failures import PlanFailure
-from ..language import TryInOrderNode, ParallelNode, TryAllNode, CodeNode, MonitorNode
-from ..plan import (
+from pycram.datastructures.dataclasses import ExecutionData
+from pycram.datastructures.enums import TaskStatus
+from pycram.designator import DesignatorDescription
+from pycram.failures import PlanFailure
+from pycram.plan import (
     ActionDescriptionNode,
     MotionNode,
     PlanNode,
@@ -20,7 +19,7 @@ from ..plan import (
     DesignatorNode,
     Plan,
 )
-from ..robot_plans import ActionDescription, BaseMotion
+from pycram.robot_plans import ActionDescription, BaseMotion
 
 
 # ----------------------------------------------------------------------------------------------------------------------

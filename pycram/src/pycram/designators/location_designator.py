@@ -1,6 +1,7 @@
 import logging
 from copy import deepcopy
 from dataclasses import dataclass, field
+from typing import Optional, List, Union, Iterator, Iterable, Tuple
 
 import numpy as np
 import rustworkx as rx
@@ -11,16 +12,17 @@ from random_events.product_algebra import Event, SimpleEvent
 from random_events.variable import Continuous
 from scipy.spatial import ConvexHull
 from sortedcontainers import SortedSet
-from typing_extensions import List, Union, Iterable, Optional, Iterator, Tuple
 
 from giskardpy.executor import Executor
-from giskardpy.model.collision_matrix_manager import CollisionRequest
+from giskardpy.motion_statechart.context import MotionStatechartContext
 from giskardpy.motion_statechart.goals.collision_avoidance import (
-    CollisionAvoidance,
+    ExternalCollisionAvoidance,
 )
 from giskardpy.motion_statechart.goals.templates import Sequence
+from giskardpy.motion_statechart.graph_node import EndMotion
 from giskardpy.motion_statechart.motion_statechart import MotionStatechart
 from giskardpy.motion_statechart.tasks.cartesian_tasks import CartesianPose
+from giskardpy.qp.exceptions import InfeasibleException
 from giskardpy.qp.qp_controller_config import QPControllerConfig
 from probabilistic_model.distributions import (
     DiracDeltaDistribution,
@@ -35,6 +37,9 @@ from probabilistic_model.probabilistic_circuit.rx.probabilistic_circuit import (
     SumUnit,
     ProbabilisticCircuit,
     ProductUnit,
+)
+from semantic_digital_twin.collision_checking.collision_rules import (
+    AvoidExternalCollisions,
 )
 from semantic_digital_twin.datastructures.variables import SpatialVariables
 from semantic_digital_twin.robots.abstract_robot import AbstractRobot
@@ -53,8 +58,8 @@ from semantic_digital_twin.world_description.shape_collection import (
     BoundingBoxCollection,
 )
 from semantic_digital_twin.world_description.world_entity import Body
-from ..config.action_conf import ActionConfig
-from ..costmaps import (
+from pycram.config.action_conf import ActionConfig
+from pycram.costmaps import (
     OccupancyCostmap,
     VisibilityCostmap,
     SemanticCostmap,
@@ -63,23 +68,23 @@ from ..costmaps import (
     OrientationGenerator,
     RingCostmap,
 )
-from ..datastructures.enums import (
+from pycram.datastructures.enums import (
     Arms,
     Grasp,
     ApproachDirection,
     VerticalAlignment,
 )
-from ..datastructures.grasp import GraspDescription, GraspPose
-from ..datastructures.partial_designator import PartialDesignator
-from ..designator import LocationDesignatorDescription
-from ..failures import RobotInCollision
-from ..pose_validator import (
+from pycram.datastructures.grasp import GraspDescription, GraspPose
+from pycram.datastructures.partial_designator import PartialDesignator
+from pycram.designator import LocationDesignatorDescription
+from pycram.failures import RobotInCollision
+from pycram.pose_validator import (
     visibility_validator,
     collision_check,
     pose_sequence_reachability_validator,
 )
-from ..utils import link_pose_for_joint_config
-from ..view_manager import ViewManager
+from pycram.utils import link_pose_for_joint_config
+from pycram.view_manager import ViewManager
 
 logger = logging.getLogger("pycram")
 
@@ -293,8 +298,7 @@ class CostmapLocation(LocationDesignatorDescription):
                 test_robot.root.parent_connection.origin = pose_candidate
 
                 collisions = collision_check(
-                    test_robot,
-                    allowed_collision=params_box.ignore_collision_with,
+                    robot=test_robot,
                     world=test_world,
                 )
 
@@ -554,7 +558,7 @@ class AccessingLocation(LocationDesignatorDescription):
                 )
                 test_robot.root.parent_connection.origin = pose_candidate
                 try:
-                    collision_check(test_robot, [], test_world)
+                    collision_check(test_robot, test_world)
                 except RobotInCollision:
                     continue
 
@@ -1110,7 +1114,7 @@ class ProbabilisticSemanticLocation(LocationDesignatorDescription):
                 # for example with the arms
                 test_robot.root.parent_connection.origin = nav_pose
                 try:
-                    collision_check(test_robot, [], test_world)
+                    collision_check(test_robot, test_world)
                 except RobotInCollision:
                     continue
 
@@ -1503,9 +1507,7 @@ class ProbabilisticCostmapLocation(LocationDesignatorDescription):
                 test_robot.root.parent_connection.origin = pose_candidate
 
                 try:
-                    collision_check(
-                        test_robot, params_box.ignore_collision_with, self.test_world
-                    )
+                    collision_check(test_robot, self.test_world)
                 except RobotInCollision:
                     continue
 
@@ -1652,16 +1654,6 @@ class GiskardLocation(LocationDesignatorDescription):
         :param end_effector: The end effector which should be controlled by Giskard
         :return: The Giskard executor for the pose sequence
         """
-        # Temp workaround until we fix multiple formats
-        giskard_coll_request = CollisionRequest(
-            body_group1=robot_view.bodies_with_collisions,
-            body_group2=list(
-                set(world.bodies_with_enabled_collision)
-                - set(robot_view.bodies_with_collisions)
-            ),
-            distance=0.1,
-        )
-
         pose_seq = Sequence(
             nodes=[
                 CartesianPose(
@@ -1672,17 +1664,23 @@ class GiskardLocation(LocationDesignatorDescription):
                 for pose in pose_sequence
             ]
         )
-
-        collision_avoidance = CollisionAvoidance(
-            collision_entries=[giskard_coll_request]
-        )
+        with world.modify_world():
+            world.collision_manager.clear_temporary_rules()
+            world.collision_manager.add_temporary_rule(
+                AvoidExternalCollisions(
+                    robot=robot_view, buffer_zone_distance=0.1, violated_distance=0.0
+                )
+            )
         msc = MotionStatechart()
-        msc.add_nodes([pose_seq, collision_avoidance])
+        msc.add_nodes([pose_seq, ExternalCollisionAvoidance(robot=robot_view)])
+        msc.add_node(EndMotion.when_true(pose_seq))
 
         executor = Executor(
-            world,
-            controller_config=QPControllerConfig(
-                target_frequency=50, prediction_horizon=4, verbose=False
+            MotionStatechartContext(
+                world=world,
+                qp_controller_config=QPControllerConfig(
+                    target_frequency=50, prediction_horizon=4, verbose=False
+                ),
             ),
         )
         executor.compile(msc)
@@ -1699,11 +1697,13 @@ class GiskardLocation(LocationDesignatorDescription):
 
             test_world = deepcopy(self.world)
             test_world.name = "Test World"
+
             test_robot = self.robot_view.__class__.from_world(test_world)
             test_ee = test_world._get_world_entity_by_hash(
                 hash(ee.manipulator.tool_frame)
             )
-            test_robot.setup_collision_config()
+            with test_world.modify_world():
+                test_robot._setup_collision_rules()
 
             for candidate in reachability_map:
 
@@ -1734,7 +1734,7 @@ class GiskardLocation(LocationDesignatorDescription):
 
                     try:
                         executor.tick_until_end()
-                    except TimeoutError as e:
+                    except (TimeoutError, InfeasibleException) as e:
                         pass
 
                     dist = test_ee.global_pose.to_position().euclidean_distance(

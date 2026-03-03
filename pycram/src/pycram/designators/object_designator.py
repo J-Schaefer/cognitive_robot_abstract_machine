@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import dataclasses
 
+from krrood.entity_query_language.utils import is_iterable
 from semantic_digital_twin.world_description.world_entity import Body
 from typing_extensions import TYPE_CHECKING, Iterable, Iterator, Union
 
-from ..datastructures.partial_designator import PartialDesignator
-from ..external_interfaces.robokudo import *
-from ..plan import Plan
+from pycram.external_interfaces.robokudo import *
+from pycram.plan import Plan
 
 
 if TYPE_CHECKING:
@@ -47,7 +47,7 @@ class ResolutionStrategyObject(ObjectDesignatorDescription):
             def __iter__(self):
                 if callable(self.method):
                     yield self.method()
-                elif isinstance(self.method(), Iterable):
+                elif is_iterable(self.method()):
                     for i in self.method():
                         yield i
 

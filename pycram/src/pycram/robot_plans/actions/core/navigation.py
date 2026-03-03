@@ -8,15 +8,15 @@ from typing_extensions import Union, Optional, Type, Any, Iterable
 
 from semantic_digital_twin.spatial_types.spatial_types import Pose
 from semantic_digital_twin.robots.abstract_robot import Camera
-from ..base import ActionDescription
-from ...motions.robot_body import LookingMotion
-from ...motions.navigation import MoveMotion
-from ....config.action_conf import ActionConfig
-from ....datastructures.partial_designator import PartialDesignator
-from ....failures import LookAtGoalNotReached
-from ....failures import NavigationGoalNotReachedError
-from ....language import SequentialPlan
-from ....validation.error_checkers import PoseErrorChecker
+from pycram.robot_plans.actions.base import ActionDescription
+from pycram.robot_plans.motions.robot_body import LookingMotion
+from pycram.robot_plans.motions.navigation import MoveMotion
+from pycram.config.action_conf import ActionConfig
+from pycram.datastructures.partial_designator import PartialDesignator
+from pycram.failures import NavigationGoalNotReachedError
+from pycram.language import SequentialPlan
+from pycram.validation.error_checkers import PoseErrorChecker
+from semantic_digital_twin.world import World
 
 
 @dataclass

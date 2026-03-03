@@ -5,8 +5,9 @@ from inspect import signature
 
 from typing_extensions import List, Tuple, Any, Dict, TypeVar, Iterator, Iterable, Type
 
-from ..plan import PlanNode
-from ..utils import lazy_product
+from krrood.adapters.json_serializer import leaf_types
+from pycram.plan import PlanNode
+from pycram.utils import lazy_product
 
 T = TypeVar("T")
 

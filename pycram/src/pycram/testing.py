@@ -4,6 +4,8 @@ import time
 import unittest
 from copy import deepcopy
 
+import numpy as np
+
 from semantic_digital_twin.adapters.mesh import STLParser
 from semantic_digital_twin.adapters.urdf import URDFParser
 from semantic_digital_twin.robots.pr2 import PR2
@@ -12,11 +14,12 @@ from semantic_digital_twin.semantic_annotations.semantic_annotations import (
 )
 from semantic_digital_twin.spatial_types.spatial_types import (
     HomogeneousTransformationMatrix,
+    Pose,
 )
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.connections import OmniDrive
-from .datastructures.dataclasses import Context
-from .plan import Plan
+from pycram.datastructures.dataclasses import Context
+from pycram.plan import Plan
 
 logger = logging.getLogger(__name__)
 
@@ -124,3 +127,57 @@ class SemanticWorldTestCase(unittest.TestCase):
             )
         ).parse()
         cls.apartment_world.merge_world(cls.pr2_sem_world)
+
+
+def _make_sine_scan_poses(
+    anchor: Pose,
+    lanes: int = 6,
+    lane_spacing: float = 0.03,
+    y_span: float = 0.18,
+    amplitude: float = 0.005,
+    wiggles: float = 1.0,
+    points_per_lane: int = 16,
+    lane_axis: str = "z",
+) -> list[Pose]:
+    x0 = anchor.x
+    y0 = anchor.y
+    z0 = anchor.z
+    q = anchor.to_quaternion()
+
+    y_min = y0 - 0.5 * y_span
+    y_max = y0 + 0.5 * y_span
+    poses: list[Pose] = []
+
+    if lane_axis not in ("x", "z"):
+        raise ValueError(f"lane_axis must be 'x' or 'z', got: {lane_axis}")
+
+    for i in range(lanes):
+        yc = np.linspace(y_min, y_max, points_per_lane).flatten()
+        if i % 2 == 1:
+            yc = yc[::-1]
+
+        phase = 2.0 * np.pi * wiggles * (yc - y_min) / max(y_span, 1e-9)
+        wiggle = amplitude * np.sin(phase)
+        if lane_axis == "x":
+            lane_center = x0 + i * lane_spacing
+            xc = lane_center + wiggle
+            zc = np.full_like(yc, z0, dtype=float)
+        else:
+            lane_center = z0 + i * lane_spacing
+            zc = lane_center + wiggle
+            xc = np.full_like(yc, x0, dtype=float)
+
+        for x, y, z in zip(xc, yc, zc):
+            poses.append(
+                Pose.from_xyz_quaternion(
+                    float(x),
+                    float(y),
+                    float(z),
+                    q.x,
+                    q.y,
+                    q.z,
+                    q.w,
+                    reference_frame=anchor.reference_frame,
+                )
+            )
+    return poses

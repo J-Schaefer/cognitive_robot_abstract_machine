@@ -4,12 +4,12 @@ from threading import Lock, RLock
 from typing import Any
 
 from semantic_digital_twin.spatial_types.spatial_types import Pose
-from ..ros import create_action_client
-from ..ros import get_node_names
+from pycram.ros import create_action_client
+from pycram.ros import get_node_names
 
 from typing_extensions import List, Callable, Optional
 
-from ..designator import ObjectDesignatorDescription
+from pycram.designator import ObjectDesignatorDescription
 
 logger = logging.getLogger(__name__)
 

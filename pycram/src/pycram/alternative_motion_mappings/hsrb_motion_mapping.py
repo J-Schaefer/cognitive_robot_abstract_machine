@@ -6,10 +6,10 @@ from giskardpy.motion_statechart.ros2_nodes.ros_tasks import (
     NavigateActionServerTask,
 )
 from semantic_digital_twin.robots.hsrb import HSRB
-from ..datastructures.enums import ExecutionType
-from ..robot_plans import MoveMotion
+from pycram.datastructures.enums import ExecutionType
+from pycram.robot_plans import MoveMotion
 
-from ..robot_plans.motions.base import AlternativeMotion
+from pycram.robot_plans.motions.base import AlternativeMotion
 
 
 class HSRBMoveMotion(MoveMotion, AlternativeMotion[HSRB]):

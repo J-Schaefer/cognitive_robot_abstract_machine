@@ -20,15 +20,16 @@ from ..dataset.ormatic_interface import (
     PrismaticConnectionDAO,
     BodyDAO,
 )
-from krrood.entity_query_language.entity import (
-    variable,
+from krrood.entity_query_language.factories import (
     entity,
-    contains,
+    variable,
     and_,
     or_,
+    contains,
     in_,
+    an,
+    the,
 )
-from krrood.entity_query_language.entity_result_processors import an, the
 from krrood.ormatic.dao import to_dao
 from krrood.ormatic.eql_interface import eql_to_sql
 
@@ -163,7 +164,7 @@ def test_the_quantifier(session, database):
         return query
 
     with pytest.raises(MultipleSolutionFound):
-        result = get_query(positions).evaluate()
+        result = get_query(positions).tolist()
 
     translator = eql_to_sql(get_query(), session)
     query_by_hand = select(KRROODPositionDAO).where(KRROODPositionDAO.y == 2)
@@ -196,11 +197,8 @@ def test_equal(session, database):
     prismatic_connection = variable(
         PrismaticConnection,
         domain=world.connections,
-        name="prismatic_connection",
     )
-    fixed_connection = variable(
-        FixedConnection, domain=world.connections, name="fixed_connection"
-    )
+    fixed_connection = variable(FixedConnection, domain=world.connections)
 
     # Write the query body
     query = an(
@@ -249,19 +247,14 @@ def test_complicated_equal(session, database):
 
     # Query for the kinematic tree of the drawer which has more than one component.
     # Declare the placeholders
-    parent_container = variable(
-        type_=Container, domain=world.bodies, name="parent_connection"
-    )
+    parent_container = variable(type_=Container, domain=world.bodies)
     prismatic_connection = variable(
         type_=PrismaticConnection,
         domain=world.connections,
-        name="prismatic_connection",
     )
-    drawer_body = variable(type_=Container, domain=world.bodies, name="drawer_body")
-    fixed_connection = variable(
-        type_=FixedConnection, domain=world.connections, name="fixed_connection"
-    )
-    handle = variable(type_=Handle, domain=world.bodies, name="handle")
+    drawer_body = variable(type_=Container, domain=world.bodies)
+    fixed_connection = variable(type_=FixedConnection, domain=world.connections)
+    handle = variable(type_=Handle, domain=world.bodies)
 
     # Write the query body - this was previously failing with "Attribute chain ended on a relationship"
     query = the(
@@ -287,7 +280,7 @@ def test_contains(session, database):
     session.add(BodyDAO(name="Body3", size=1))
     session.commit()
 
-    b = variable(type_=Body, domain=[], name="b")
+    b = variable(type_=Body, domain=[])
     query = an(
         entity(b).where(
             contains("Body1TestName", b.name),

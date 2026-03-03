@@ -11,12 +11,11 @@ from semantic_digital_twin.spatial_types import (
     Quaternion,
 )
 from semantic_digital_twin.spatial_types.spatial_types import Pose
-from ..core.navigation import LookAtActionDescription, NavigateActionDescription
-from ....config.action_conf import ActionConfig
-from ....datastructures.partial_designator import PartialDesignator
-from ....language import SequentialPlan
-from ....robot_plans.actions.base import ActionDescription
-from ....tf_transformations import quaternion_from_euler
+from pycram.robot_plans.actions.core.navigation import LookAtActionDescription, NavigateActionDescription
+from pycram.config.action_conf import ActionConfig
+from pycram.datastructures.partial_designator import PartialDesignator
+from pycram.language import SequentialPlan
+from pycram.robot_plans.actions.base import ActionDescription
 
 
 @dataclass

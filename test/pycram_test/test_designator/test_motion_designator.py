@@ -3,6 +3,7 @@ from copy import deepcopy
 import numpy as np
 import pytest
 
+from giskardpy.motion_statechart.tasks.cartesian_tasks import CartesianPose
 from giskardpy.motion_statechart.tasks.joint_tasks import JointPositionList
 from pycram.datastructures.dataclasses import Context
 from pycram.datastructures.enums import (

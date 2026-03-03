@@ -4,10 +4,10 @@ import enum
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from types import NoneType, MethodType, FunctionType
+from typing import Dict, Iterable, Set
 
-from random_events.product_algebra import SimpleEvent
-from random_events.set import Set
-from random_events.variable import Continuous, Integer, Symbolic, Variable
+import numpy as np
 from sqlalchemy import inspect, Column
 from sqlalchemy.orm import Relationship
 from typing_extensions import List, Optional, assert_never, Any, Tuple, Type
@@ -16,10 +16,22 @@ from probabilistic_model.probabilistic_circuit.rx.helper import fully_factorized
 from probabilistic_model.probabilistic_circuit.rx.probabilistic_circuit import (
     ProbabilisticCircuit,
 )
-from ..adapters.json_serializer import list_like_classes
-from ..class_diagrams.class_diagram import WrappedClass
-from ..class_diagrams.wrapped_field import WrappedField
-from ..ormatic.dao import DataAccessObject, get_dao_class, to_dao
+from random_events.variable import Continuous, Integer, Variable
+from krrood.probabilistic_knowledge.object_access_variable import (
+    ObjectAccessVariable,
+    AttributeAccessLike,
+)
+from krrood.adapters.json_serializer import list_like_classes
+from krrood.class_diagrams.class_diagram import WrappedClass
+from krrood.class_diagrams.wrapped_field import WrappedField
+from krrood.entity_query_language.core.base_expressions import SymbolicExpression
+from krrood.entity_query_language.core.mapped_variable import Selectable
+from krrood.entity_query_language.factories import variable, variable_from
+from krrood.ormatic.dao import (
+    DataAccessObject,
+    to_dao,
+)
+from krrood.ormatic.utils import leaf_types
 
 
 @dataclass
@@ -28,36 +40,38 @@ class Parameterization:
     A class that contains the variables and simple event resulting from parameterizing a DataAccessObject.
     """
 
-    variables: List[Variable] = field(default_factory=list)
+    variables: List[ObjectAccessVariable] = field(default_factory=list)
     """
     A list of random event variables that are being parameterized.
     """
-    simple_event: SimpleEvent = field(default_factory=lambda: SimpleEvent({}))
+
+    assignments: Dict[ObjectAccessVariable, Any] = field(default_factory=dict)
     """
-    A SimpleEvent containing the values of the variables.
+    A dict containing the assignments of the variables to concrete values.
+    This may contain less variables than `variables` if some variables are not being specified (using ...).
+    These assignments are intended for conditioning probabilistic models.
     """
 
-    def fill_missing_variables(self):
-        self.simple_event.fill_missing_variables(self.variables)
+    @property
+    def random_events_variables(self) -> List[Variable]:
+        return [v.variable for v in self.variables]
 
-    def extend_variables(self, variables: List[Variable]):
+    @property
+    def assignments_for_conditioning(self) -> Dict[Variable, Any]:
+        return {v.variable: value for v, value in self.assignments.items()}
+
+    def extend_variables(self, variables: List[ObjectAccessVariable]):
         """
         Update the variables by extending them with the given variables.
         """
         self.variables.extend(variables)
-
-    def update_simple_event(self, simple_event: SimpleEvent):
-        """
-        Update the simple event by extending it with the given simple event.
-        """
-        self.simple_event.update(simple_event)
 
     def create_fully_factorized_distribution(self) -> ProbabilisticCircuit:
         """
         Create a fully factorized probabilistic circuit over the variables in the parameterization.
         """
         distribution_variables = [
-            v for v in self.variables if not isinstance(v, Integer)
+            v for v in self.random_events_variables if not isinstance(v, Integer)
         ]
 
         return fully_factorized(
@@ -68,96 +82,161 @@ class Parameterization:
             },
         )
 
-    def merge_parameterization(self, other: Parameterization):
+    def parameterize_object_with_sample(
+        self, obj: Any, sample: Dict[ObjectAccessVariable, Any]
+    ) -> Any:
         """
-        Update the parameterization with another parameterization by extending the variables and updating the simple event.
+        Parameterize an object with a sample.
 
-        :param other: The parameterization to update with.
+        :param obj: The object to parameterize.
+        :param sample: The sample to parameterize the object with.
+        :return: A new copy of the object with the parameters.
         """
-        self.variables.extend(other.variables)
-        self.simple_event.update(other.simple_event)
+        for variable, value in sample.items():
+            variable.set_value(obj, value)
+        return obj
+
+    def get_variable_by_name(self, name: str) -> ObjectAccessVariable:
+        """
+        Get an ObjectAccessVariable by its name.
+
+        :param name: The name of the variable to retrieve.
+        :return: The variable with the specified name.
+        """
+        [result] = [v for v in self.variables if v.variable.name == name]
+        return result
+
+    def create_assignment_from_variables_and_sample(
+        self, variables: Iterable[Variable], sample: np.ndarray
+    ) -> Dict[ObjectAccessVariable, Any]:
+        """
+        The sample has to be constructed from a circuit that matches the variables of this parameterizer.
+        """
+        result = {}
+        for variable, value in zip(variables, sample):
+            object_access_variable = self.get_variable_by_name(variable.name)
+
+            if not object_access_variable.variable.is_numeric:
+                value = [
+                    domain_value.element
+                    for domain_value in object_access_variable.variable.domain
+                    if hash(domain_value) == value
+                ][0]
+            else:
+                value = value.item()
+            result[object_access_variable] = value
+
+        return result
 
 
 @dataclass
-class Parameterizer:
+class DataAccessObjectParameterizer:
     """
-    A class that can be used to parameterize a DataAccessObject into random event variables and a simple event
+    A class that can be used to parameterize an object into object access variables and an assignment event
     containing the values of the variables.
-    The resulting variables and simple event can then be used to create a probabilistic circuit.
+
+    For this, the target object first is converted into a DataAccessObject. Use the Ellipsis (...) to signal that a
+    field should be parameterized. Use None to signal that a field should not be parameterized.
+
+    For example
+
+    .. code-block:: python
+        dao = to_dao(Position(x=..., y=0.69, z=None))
+        parameterization = Parameterizer(dao).parameterize()
+
+    will create 2 variables for the `x` and `y` fields of the Position class and an assignment containing ``{y: 0.69}``.
+    `z` will not be parameterized as its set to `None`.
+
+    The resulting variables and assignments can then be used to create probabilistic models.
     """
 
-    parameterization: Parameterization = field(default_factory=Parameterization)
+    data_access_object: DataAccessObject
     """
-    Parameterization containing the variables and simple event resulting from parameterizing a DataAccessObject.
+    The data access object to parameterize.
     """
 
-    def parameterize(self, object: Any, prefix: str) -> Parameterization:
+    def __post_init__(self):
+        if type(self.data_access_object) in list_like_classes:
+            raise NotImplementedError(
+                "Parameterization of list-like types is not supported directly."
+            )
+
+    def parameterize(self) -> Parameterization:
         """
         Create variables for all fields of an object.
 
-        :param object: The object to parameterize.
-        :param prefix: The prefix to use for variable names.
-
         :return: Parameterization containing the variables and simple event.
         """
-        if type(object) in list_like_classes:
-            for i, value in enumerate(object):
-                self.parameterize(value, f"{prefix}[{i}]")
-            return self.parameterization
-        else:
-            dao = to_dao(object)
-            return self.parameterize_dao(dao, prefix)
 
-    def parameterize_dao(self, dao: DataAccessObject, prefix: str) -> Parameterization:
+        parameterization = Parameterization()
+
+        dao_variable = variable(type(self.data_access_object), None)
+        self._parameterize_dao(self.data_access_object, dao_variable, parameterization)
+
+        return parameterization
+
+    def _parameterize_dao(
+        self,
+        dao: DataAccessObject,
+        dao_variable: Selectable,
+        parameterization: Parameterization,
+    ):
         """
         Create variables for all fields of a DataAccessObject.
 
-        :param dao: The DataAccessObject to parameterize.
-        :param prefix: The prefix to use for variable names.
+        :param dao: The DataAccessObject to extract the parameters from.
+        :param dao_variable: The EQL variable corresponding to the DataAccessObject for symbolic access.
 
-        :return: A Parameterization containing the variables and simple event.
         """
         sql_alchemy_mapper = inspect(dao).mapper
 
         for wrapped_field in WrappedClass(dao.original_class()).fields:
-            for relationship in sql_alchemy_mapper.relationships:
-                self._process_relationship(relationship, wrapped_field, dao, prefix)
 
-            for column in sql_alchemy_mapper.columns:
-                variables, attribute_values = self._process_column(
-                    column, wrapped_field, dao, prefix
+            relationship = sql_alchemy_mapper.relationships.get(
+                wrapped_field.name, None
+            )
+            if relationship is not None:
+                self._process_relationship(
+                    relationship, wrapped_field, dao, dao_variable, parameterization
                 )
-                self._update_variables_and_event(variables, attribute_values)
+                continue
 
-        self.parameterization.fill_missing_variables()
-        return self.parameterization
+            column = sql_alchemy_mapper.columns.get(wrapped_field.name, None)
+            if column is not None:
+                variables, attribute_values = self._process_column(
+                    column, wrapped_field, dao, dao_variable
+                )
+                self._update_variables_and_assignments(
+                    variables, attribute_values, parameterization
+                )
 
-    def _update_variables_and_event(
-        self, variables: List[Variable], attribute_values: List[Any]
+    def _update_variables_and_assignments(
+        self,
+        variables: List[ObjectAccessVariable],
+        attribute_values: List[Any],
+        parameterization: Parameterization,
     ):
         """
-        Update the current parameterization by the given variables and attribute values.
+        Update the parameterization by the given variables and attribute values in-place.
 
         :param variables: The variables to add to the variables list.
         :param attribute_values: The attribute values to add to the simple event.
         """
         for variable, attribute_value in zip(variables, attribute_values):
-            if variable is None:
-                continue
-            self.parameterization.extend_variables([variable])
-            if attribute_value is None:
+
+            parameterization.extend_variables([variable])
+            if attribute_value == Ellipsis:
                 continue
 
-            self.parameterization.update_simple_event(
-                SimpleEvent({variable: attribute_value})
-            )
+            parameterization.assignments[variable] = attribute_value
 
     def _process_relationship(
         self,
         relationship: Relationship,
         wrapped_field: WrappedField,
         dao: DataAccessObject,
-        prefix: str,
+        dao_variable: Selectable,
+        parameterization: Parameterization,
     ):
         """
         Process a SQLAlchemy relationship and add variables and events for it.
@@ -170,28 +249,30 @@ class Parameterizer:
         :param prefix: The prefix to use for variable names.
         """
         attribute_name = relationship.key
-
-        # %% Skip attributes that are not of interest.
-        if not self._is_attribute_of_interest(attribute_name, dao, wrapped_field):
-            return
-
         attribute_dao = getattr(dao, attribute_name)
+        symbolic_attribute_access = getattr(dao_variable, attribute_name)
+
+        if attribute_dao is None:
+            return
 
         # %% one to many relationships
         if wrapped_field.is_one_to_many_relationship:
-            for value in attribute_dao:
-                self.parameterize_dao(
-                    dao=value.target, prefix=f"{prefix}.{attribute_name}"
+            for index, value in enumerate(attribute_dao):
+                if value.target is None:
+                    continue
+                self._parameterize_dao(
+                    dao=value.target,
+                    dao_variable=symbolic_attribute_access[index].target,
+                    parameterization=parameterization,
                 )
             return
 
         # %% one to one relationships
         if wrapped_field.is_one_to_one_relationship:
-            if attribute_dao is None:
-                attribute_dao = get_dao_class(wrapped_field.type_endpoint)()
-            self.parameterize_dao(
+            self._parameterize_dao(
                 dao=attribute_dao,
-                prefix=f"{prefix}.{attribute_name}",
+                dao_variable=symbolic_attribute_access,
+                parameterization=parameterization,
             )
             return
 
@@ -203,15 +284,14 @@ class Parameterizer:
         column: Column,
         wrapped_field: WrappedField,
         dao: DataAccessObject,
-        prefix: str,
-    ) -> Tuple[List[Variable], List[Any]]:
+        dao_variable: Selectable,
+    ) -> Tuple[List[ObjectAccessVariable], List[Any]]:
         """
-        Process a SQLAlchemy column and create variables and events for it.
+        Process an SQLAlchemy column and create variables and events for it.
 
         :param column: The SQLAlchemy column to process.
         :param wrapped_field: The WrappedField potentially corresponding to the column.
         :param dao: The DataAccessObject containing the column.
-        :param prefix: The prefix to use for variable names.
 
         :return: A tuple containing a list of variables and a list of corresponding attribute values.
         """
@@ -222,21 +302,20 @@ class Parameterizer:
             return [], []
 
         attribute = getattr(dao, attribute_name)
+        symbolic_attribute_access = getattr(dao_variable, attribute_name)
 
-        # %% one to many relationships
         if wrapped_field.is_collection_of_builtins:
             variables = [
                 self._create_variable_from_type(
-                    wrapped_field.type_endpoint, f"{prefix}.{value}"
+                    wrapped_field.type_endpoint, symbolic_attribute_access[index]
                 )
-                for value in attribute
+                for index, value in enumerate(attribute)
             ]
             return variables, attribute
 
-        # %% one to one relationships
         if wrapped_field.is_builtin_type or wrapped_field.is_enum:
             var = self._create_variable_from_type(
-                wrapped_field.type_endpoint, f"{prefix}.{attribute_name}"
+                wrapped_field.type_endpoint, symbolic_attribute_access
             )
             return [var], [attribute]
 
@@ -262,17 +341,15 @@ class Parameterizer:
         :return: True if the attribute is of interest, False otherwise.
         """
         return (
-            attribute_name
-            and wrapped_field.public_name == attribute_name
-            and not wrapped_field.type_endpoint in (datetime, uuid.UUID, str)
-            and not (wrapped_field.is_optional and getattr(dao, attribute_name) is None)
+            not wrapped_field.type_endpoint in (datetime, uuid.UUID, str)
+            and getattr(dao, attribute_name) is not None
         )
 
     def _column_attribute_name(
         self, column: Column, dao: DataAccessObject
     ) -> Optional[str]:
         """
-        Get the attribute name corresponding to a SQLAlchemy Column, if it is not a primary key, foreign key, or polymorphic type.
+        Get the attribute name corresponding to a SQLAlchemy Column if it is not a primary key, foreign key, or polymorphic type.
 
         :return: The attribute name or None if the column is not of interest.
         """
@@ -289,34 +366,153 @@ class Parameterizer:
     def _create_variable_from_type(
         self,
         field_type: Type[enum.Enum] | Type[bool] | Type[int] | Type[float],
-        name: str,
-    ) -> Variable:
+        symbolic_access_variable: AttributeAccessLike,
+    ) -> ObjectAccessVariable:
         """
-        Create a random event variable based on its type.
+        Create an object access variable based on a python type.
 
         :param field_type: The type of the field for which to create the variable. Usually accessed through WrappedField.type_endpoint.
-        :param name: The name of the variable.
+        :param symbolic_access_variable: The EQL statement that accesses the field.
 
-        :return: A random event variable or raise error if the type is not supported.
+        :return: A object access variable or raise error if the type is not supported.
         """
+        return ObjectAccessVariable.from_attribute_access_and_type(
+            symbolic_access_variable,
+            field_type,
+        )
 
-        if issubclass(field_type, enum.Enum):
-            return Symbolic(name, Set.from_iterable(list(field_type)))
-        elif issubclass(field_type, bool):
-            return Symbolic(name, Set.from_iterable([True, False]))
-        elif issubclass(field_type, int):
-            return Integer(name)
-        elif issubclass(field_type, float):
-            return Continuous(name)
-        else:
-            assert_never(field_type)
 
-    def create_fully_factorized_distribution(
+@dataclass
+class MatchParameterizer:
+    """
+    Create a parameterization for a given object.
+    """
+
+    instance: Any
+    """
+    The instance that should be used for the parameterization.
+    """
+
+    def __post_init__(self) -> None:
+        if type(self.instance) in list_like_classes:
+            raise NotImplementedError(
+                "Parameterization of list-like types is not supported directly."
+            )
+
+    def parameterize(self) -> Parameterization:
+
+        parametrization = Parameterization()
+
+        obj_variable = variable(type(self.instance), [])
+
+        self._parameterize(self.instance, obj_variable, parametrization)
+
+        return parametrization
+
+    def _parameterize(
+        self, obj: Any, obj_variable: Selectable, parametrization: Parameterization
+    ) -> None:
+
+        for key in obj.__dir__():
+            if key.startswith("_"):
+                continue
+            try:
+                value = getattr(obj, key)
+            except Exception:
+                continue
+
+            if value is None:
+                continue
+
+            attribute_access_variable = getattr(obj_variable, key)
+            self._parameterize_value(
+                obj, key, value, attribute_access_variable, parametrization
+            )
+
+    def _parameterize_value(
         self,
-    ) -> ProbabilisticCircuit:
-        """
-        Create a fully factorized probabilistic circuit over the given variables.
+        obj: Any,
+        key: str,
+        value: Any,
+        attribute_access_variable: AttributeAccessLike,
+        parametrization: Parameterization,
+    ):
 
-        :return: A fully factorized probabilistic circuit.
-        """
-        return self.parameterization.create_fully_factorized_distribution()
+        if isinstance(value, SymbolicExpression):
+            object_access_variable = ObjectAccessVariable.from_expression(
+                attribute_access_variable, value
+            )
+            parametrization.variables.append(object_access_variable)
+
+        elif isinstance(value, type(Ellipsis)):
+            # get type hint
+            wrapped_class = WrappedClass(type(obj))
+            [wrapped_field] = [f for f in wrapped_class.fields if f.name == key]
+            object_access_variable = (
+                ObjectAccessVariable.from_attribute_access_and_type(
+                    attribute_access_variable, wrapped_field.type_endpoint
+                )
+            )
+            parametrization.variables.append(object_access_variable)
+
+        elif isinstance(value, leaf_types):
+            object_access_variable = (
+                ObjectAccessVariable.from_attribute_access_and_type(
+                    attribute_access_variable, type(value)
+                )
+            )
+            parametrization.variables.append(object_access_variable)
+            parametrization.assignments[object_access_variable] = value
+
+        elif isinstance(value, list_like_classes):
+            for index, element in enumerate(value):
+                self._parameterize(
+                    element, attribute_access_variable[index], parametrization
+                )
+
+        elif not isinstance(value, (NoneType, MethodType, FunctionType)):
+            self._parameterize(value, attribute_access_variable, parametrization)
+
+
+def copy_partial_object(instance: Any, seen_objects: Dict[int, Any] = None) -> Any:
+    """
+    Copy a partial object. A partial object is an object that has been created by its __new__ method and probably
+    doesn't contain all values to be treated as a full object of its type. Partial objects are very likely to be
+    generated by generative models or expression (e. g. Match, ProbabilisticBackend).
+
+    :param instance: The object to be copied
+    :param seen_objects: Set of objects already seen
+    :return: The copy
+    """
+
+    if seen_objects is None:
+        seen_objects = dict()
+
+    result = type(instance).__new__(type(instance))
+    seen_objects[id(instance)] = result
+
+    for key in instance.__dir__():
+        if key.startswith("_"):
+            continue
+        try:
+            value = getattr(instance, key)
+        except Exception:
+            continue
+
+        if id(value) in seen_objects:
+            setattr(result, key, seen_objects[id(value)])
+
+        elif isinstance(value, leaf_types) or value is None:
+            setattr(result, key, value)
+
+        elif isinstance(value, list_like_classes):
+            container = [
+                copy_partial_object(element, seen_objects) for element in value
+            ]
+            setattr(result, key, type(value)(*container))
+
+        elif not isinstance(value, (MethodType, FunctionType)):
+            copied_value = copy_partial_object(value, seen_objects)
+            setattr(result, key, copied_value)
+
+    return result

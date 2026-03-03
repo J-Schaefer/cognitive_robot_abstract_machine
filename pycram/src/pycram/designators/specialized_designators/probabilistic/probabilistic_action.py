@@ -33,10 +33,15 @@ from semantic_digital_twin.world_description.world_entity import Body
 from sqlalchemy import select
 from typing_extensions import Optional, List
 
-from ....robot_plans import MoveAndPickUpAction
-from ....datastructures.enums import Arms, Grasp, VerticalAlignment, ApproachDirection
-from ....datastructures.grasp import GraspDescription
-from ....datastructures.partial_designator import PartialDesignator
+from pycram.robot_plans import MoveAndPickUpAction
+from pycram.datastructures.enums import (
+    Arms,
+    Grasp,
+    VerticalAlignment,
+    ApproachDirection,
+)
+from pycram.datastructures.grasp import GraspDescription
+from pycram.datastructures.partial_designator import PartialDesignator
 
 
 class Variables(enum.Enum):
@@ -96,7 +101,7 @@ class MoveAndPickUpVariables(Variables):
 @dataclass
 class MoveAndPickUpParameterizer(ProbabilisticAction):
     """
-    Action that moves the agent to an object and picks it up using probability tools to parameterize.
+    Action that moves the agent to an object and picks it up using probability tools to generate parameterizations.
     """
 
     variables = MoveAndPickUpVariables
@@ -166,6 +171,7 @@ class MoveAndPickUpParameterizer(ProbabilisticAction):
         z_event = SimpleEvent(
             {SpatialVariables.z.value: singleton(0.0)}
         ).as_composite_set()
+        z_event = SimpleEvent({SpatialVariables.z.value: 0.0}).as_composite_set()
         z_event.fill_missing_variables(xy)
         free_space.fill_missing_variables(SortedSet([SpatialVariables.z.value]))
         free_space &= z_event

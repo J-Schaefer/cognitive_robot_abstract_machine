@@ -31,7 +31,7 @@ from typing_extensions import (
     TYPE_CHECKING,
 )
 
-from .enums import (
+from pycram.datastructures.enums import (
     JointType,
     Grasp,
     ApproachDirection,
@@ -39,7 +39,7 @@ from .enums import (
 )
 
 if TYPE_CHECKING:
-    from ..plan import Plan
+    from pycram.plan import Plan
 
 
 @dataclass

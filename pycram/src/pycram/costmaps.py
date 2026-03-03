@@ -33,7 +33,7 @@ from semantic_digital_twin.spatial_types.spatial_types import Pose, Point3, Vect
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.geometry import Color
 from semantic_digital_twin.world_description.world_entity import Body
-from .tf_transformations import quaternion_from_euler, quaternion_multiply
+from pycram.tf_transformations import quaternion_from_euler, quaternion_multiply
 
 try:
     from nav_msgs.msg import OccupancyGrid, MapMetaData

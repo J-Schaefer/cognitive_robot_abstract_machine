@@ -2,15 +2,16 @@ from copy import deepcopy
 
 import numpy as np
 import pytest
-import rclpy
 from rustworkx import NoEdgeBetweenNodes
 
 from giskardpy.utils.utils_for_tests import compare_axis_angle, compare_orientations
 from pycram.datastructures.dataclasses import Context
 from pycram.datastructures.enums import Arms, ApproachDirection, VerticalAlignment
 from pycram.datastructures.grasp import GraspDescription
+from pycram.datastructures.trajectory import PoseTrajectory
 from pycram.language import SequentialPlan
 from pycram.motion_executor import simulated_robot
+from pycram.testing import _make_sine_scan_poses
 from pycram.view_manager import ViewManager
 from pycram.robot_plans import (
     ParkArmsActionDescription,
@@ -19,6 +20,7 @@ from pycram.robot_plans import (
     PickUpActionDescription,
     PlaceActionDescription,
     SetGripperActionDescription,
+    FollowTCPPathActionDescription,
 )
 from semantic_digital_twin.adapters.ros.visualization.viz_marker import (
     VizMarkerPublisher,
@@ -26,6 +28,7 @@ from semantic_digital_twin.adapters.ros.visualization.viz_marker import (
 from semantic_digital_twin.datastructures.definitions import (
     JointStateType,
     GripperState,
+    StaticJointState,
 )
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.tracy import Tracy
@@ -77,7 +80,8 @@ def immutable_tracy_block_world(tracy_block_world):
     state = deepcopy(tracy_block_world.state.data)
     view = tracy_block_world.get_semantic_annotations_by_type(Tracy)[0]
     yield tracy_block_world, view, Context(tracy_block_world, view)
-    tracy_block_world.state.data = state
+    tracy_block_world.state.data[:] = state
+    tracy_block_world.notify_state_change()
 
 
 @pytest.fixture
@@ -99,7 +103,7 @@ def test_park_arms_tracy(immutable_tracy_block_world):
     joints = []
     states = []
     for arm in view.arms:
-        joint_state = arm.get_joint_state_by_type(JointStateType.PARK)
+        joint_state = arm.get_joint_state_by_type(StaticJointState.PARK)
         joints.extend(joint_state.connections)
         states.extend(joint_state.target_values)
     for connection, value in zip(joints, states):
@@ -270,3 +274,31 @@ def test_place_multi(mutable_tracy_block_world):
 
     assert len(plan.nodes) == len(plan.all_nodes)
     assert len(plan.edges) == len(plan.all_nodes) - 1
+
+
+def test_move_tcp_follows_sine_waypoints(immutable_tracy_block_world):
+    world, view, context = immutable_tracy_block_world
+    right_arm = ViewManager.get_arm_view(Arms.RIGHT, view)
+    anchor = Pose(Point3.from_iterable([0.85, -0.25, 0.95]), reference_frame=world.root)
+    anchor_T = anchor.to_homogeneous_matrix()
+    offset_T = HomogeneousTransformationMatrix.from_xyz_axis_angle(
+        z=-0.03,
+        axis=(0, 1, 0),
+        angle=np.pi / 2,
+        reference_frame=world.root,
+    )
+    target_pose = (anchor_T @ offset_T).to_pose()
+    waypoints = PoseTrajectory(_make_sine_scan_poses(target_pose, lane_axis="z"))
+
+    plan = SequentialPlan(
+        context,
+        FollowTCPPathActionDescription(target_locations=waypoints, arm=Arms.RIGHT),
+    )
+    with simulated_robot:
+        plan.perform()
+
+    tip_pose = right_arm.manipulator.tool_frame.global_pose
+    expected = waypoints.poses[-1]
+
+    assert np.allclose(tip_pose.to_position(), expected.to_position(), atol=0.01)
+    assert np.allclose(tip_pose.to_quaternion(), expected.to_quaternion(), atol=0.01)
