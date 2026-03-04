@@ -18,19 +18,13 @@ filters beyond simple attribute checks.
 
 ## The Conjunction (AND)
 
-You can combine conditions using the `&` or `and_()` operator or by passing multiple arguments to `.where()`.
+You can combine conditions using the `and_()` operator or by passing multiple arguments to `.where()`.
 Both methods are equivalent.
 
 ### 1. Multiple conditions in `.where()`
 ```python
 # Select robots that are named 'R2D2' AND have battery > 50
 query = entity(r).where(r.name == "R2D2", r.battery > 50)
-```
-
-### 2. Using the `&` operator
-```python
-# This produces the same result
-query = entity(r).where((r.name == "R2D2") & (r.battery > 50))
 ```
 
 ### 2. Using the `and_()` operator
@@ -45,15 +39,11 @@ Using multiple arguments in `.where()` is generally cleaner for simple (unnested
 
 ## The Disjunction (OR)
 
-Use the `|` or `or_()` operator to specify that at least one of the conditions must be met.
+Use the `or_()` operator to specify that at least one of the conditions must be met.
 
 ```python
 # Select robots that are either 'R2D2' OR have battery < 10
-query = entity(r).where((r.name == "R2D2") | (r.battery < 10))
-```
-
-```{warning}
-Always use parentheses around your conditions when using `&` or `|` to ensure correct operator precedence.
+query = entity(r).where(or_(r.name == "R2D2", r.battery < 10))
 ```
 
 ## The Negation (NOT)
@@ -73,7 +63,8 @@ Negation can be particularly useful for "anti-joins" or excluding specific subse
 
 Let's build a query that combines all these operators.
 
-```{code-cell} ipython3
+[//]: # (```{code-cell} ipython3)
+```python3
 from dataclasses import dataclass
 from krrood.entity_query_language.factories import variable, entity, an, Symbol, not_
 
@@ -94,7 +85,7 @@ r = variable(ExampleRobot, domain=robots)
 
 # We want robots that are (ONLINE and (battery > 50)) OR (NOT ONLINE and battery < 30)
 query = an(entity(r).where(
-    (r.online & (r.battery > 50)) | (not_(r.online) & (r.battery < 30))
+    or_(and_(r.online , r.battery > 50), and_(not_(r.online) , r.battery < 30))
 ))
 
 for robot in query.evaluate():
