@@ -74,10 +74,6 @@ class DetectAction(ActionDescription):
 
         return query.from_world()
 
-    @staticmethod
-    def pre_condition(variables, context, kwargs: Dict[str, Any]) -> None:
-        return visible(context.robot.get_default_camera(), kwargs["object_designator"])
-
     @classmethod
     def description(
         cls,

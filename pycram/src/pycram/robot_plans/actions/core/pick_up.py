@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from datetime import timedelta
 
+import numpy as np
 from typing_extensions import Union, Optional, Any, Iterable, Dict
 
 from krrood.entity_query_language.entity import and_, not_, or_
@@ -82,7 +83,6 @@ class ReachAction(ActionDescription):
     ) -> SymbolicExpression:
         manipulator = ViewManager.get_end_effector_view(variables["arm"], context.robot)
         return and_(
-            GripperIsFree(manipulator),
             reachability_validator(
                 PoseStamped.from_spatial_type(kwargs["object_designator"].global_pose),
                 manipulator.tool_frame,
@@ -95,9 +95,17 @@ class ReachAction(ActionDescription):
     @staticmethod
     def post_condition(
         variables, context: Context, kwargs: Dict[str, Any]
-    ) -> SymbolicExpression:
-        manipulator = ViewManager.get_end_effector_view(variables["arm"], context.robot)
-        return and_(is_body_in_gripper(kwargs["object_designator"], manipulator) > 0.9)
+    ) -> SymbolicExpression | bool:
+        manipulator = ViewManager.get_end_effector_view(kwargs["arm"], context.robot)
+        return is_body_in_gripper(
+            kwargs["object_designator"], manipulator
+        ) > 0.9 or np.allclose(
+            kwargs["object_designator"].global_pose.to_position(),
+            ViewManager.get_end_effector_view(
+                kwargs["arm"], context.robot
+            ).tool_frame.global_pose.to_position(),
+            atol=3e-2,
+        )
 
     @classmethod
     def description(

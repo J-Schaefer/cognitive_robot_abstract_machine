@@ -3,14 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 
+import numpy as np
 from sympy import true
 
-from krrood.entity_query_language.entity import entity, variable, and_
+from krrood.entity_query_language.entity import entity, variable, and_, or_
 from krrood.entity_query_language.entity_result_processors import an
 from krrood.entity_query_language.symbolic import Variable, SymbolicExpression
 from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
 from semantic_digital_twin.robots.abstract_robot import AbstractRobot
 from semantic_digital_twin.datastructures.definitions import GripperState
+from semantic_digital_twin.world_description.connections import ActiveConnection1DOF
 from semantic_digital_twin.world_description.world_entity import Body, Connection
 from typing_extensions import Union, Optional, Type, Any, Iterable, Dict
 
@@ -80,7 +82,7 @@ class OpenAction(ActionDescription):
     def pre_condition(
         variables, context: Context, kwargs: Dict[str, Any]
     ) -> SymbolicExpression:
-        manipulator = ViewManager.get_end_effector_view(variables["arm"])
+        manipulator = ViewManager.get_end_effector_view(variables["arm"], context.robot)
 
         return and_(
             GripperIsFree(manipulator),
@@ -96,9 +98,17 @@ class OpenAction(ActionDescription):
     @staticmethod
     def post_condition(
         variables, context: Context, kwargs: Dict[str, Any]
-    ) -> SymbolicExpression:
-        manipulator = ViewManager.get_end_effector_view(variables["arm"])
-        return is_body_in_gripper(kwargs["object_designator"], manipulator) > 0.9
+    ) -> SymbolicExpression | bool:
+        manipulator = ViewManager.get_end_effector_view(kwargs["arm"], context.robot)
+        return is_body_in_gripper(
+            kwargs["object_designator"], manipulator
+        ) > 0.9 or np.allclose(
+            kwargs["object_designator"].global_pose.to_position(),
+            ViewManager.get_end_effector_view(
+                kwargs["arm"], context.robot
+            ).tool_frame.global_pose.to_position(),
+            atol=3e-2,
+        )
 
     @classmethod
     def description(
@@ -160,26 +170,12 @@ class CloseAction(ActionDescription):
     @staticmethod
     def post_condition(
         variables, context: Context, kwargs: Dict[str, Any]
-    ) -> SymbolicExpression:
-        manipulator = ViewManager.get_end_effector_view(variables["arm"])
+    ) -> SymbolicExpression | bool:
+        close_connection = kwargs[
+            "object_designator"
+        ].get_first_parent_connection_of_type(ActiveConnection1DOF)
 
-        return and_(
-            GripperIsFree(manipulator),
-            reachability_validator(
-                PoseStamped.from_spatial_type(kwargs["object_designator"].global_pose),
-                manipulator.tool_frame,
-                context.robot,
-                context.world,
-                context.robot.full_body_controlled,
-            ),
-        )
-
-    @staticmethod
-    def pre_condition(
-        variables, context: Context, kwargs: Dict[str, Any]
-    ) -> SymbolicExpression:
-        manipulator = ViewManager.get_end_effector_view(variables["arm"])
-        return is_body_in_gripper(kwargs["object_designator"], manipulator) > 0.9
+        return bool(close_connection.position < 0.1)
 
     @classmethod
     def description(

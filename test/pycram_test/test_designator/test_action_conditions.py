@@ -100,7 +100,7 @@ def test_pick_up_pre_conditions(mutable_model_world):
         pick_action.evaluate_pre_condition()
 
     pre_condition = pick_action.pre_condition(
-        pick_action.bound_variables, context, pick_action.kwargs
+        pick_action.bound_variables, context, pick_action.slots
     )
     # post_condition = pick_action.post_condition()
     #

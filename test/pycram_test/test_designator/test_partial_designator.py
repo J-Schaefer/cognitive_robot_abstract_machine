@@ -57,7 +57,7 @@ def test_partial_desig_call():
         "arm": Arms.RIGHT,
         "grasp_description": grasp_description,
         "object_designator": None,
-    } == new_partial_desig.kwargs
+    } == new_partial_desig.slots
 
 
 def test_partial_desig_missing_params():

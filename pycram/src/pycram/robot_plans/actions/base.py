@@ -99,24 +99,6 @@ class ActionDescription(DesignatorDescription, ABC):
     # def unbound_variables(self) -> Dict[T, Variable[T] | T]:
     #     return self._create_variables(False)
 
-    @property
-    def kwargs(self) -> Dict[str, Any]:
-        return {f.name: getattr(self, f.name) for f in self.fields}
-
-    @classmethod
-    @property
-    def fields(cls) -> List[Field]:
-        """
-        The fields of this action, returns only the fields defined in the class and not inherit fields of parents
-
-        :return: The fields of this action
-        """
-        self_fields = list(fields(cls))
-        [self_fields.remove(parent_field) for parent_field in fields(ActionDescription)]
-        for field in self_fields:
-            field.type = cls.get_type_hints()[field.name]
-        return self_fields
-
     def _create_variables(self) -> Dict[str, Variable[T] | T]:
         """
         Creates krrood variables for all parameter of this action
@@ -135,7 +117,7 @@ class ActionDescription(DesignatorDescription, ABC):
         condition = self.pre_condition(
             self.bound_variables,
             self.context,
-            {f.name: getattr(self, f.name) for f in self.fields},
+            self.slots,
         )
         evaluation = evaluate_condition(condition)
         if evaluation:
@@ -146,7 +128,7 @@ class ActionDescription(DesignatorDescription, ABC):
         condition = self.post_condition(
             self.bound_variables,
             self.context,
-            {f.name: getattr(self, f.name) for f in self.fields},
+            self.slots,
         )
         evaluation = evaluate_condition(condition)
         if evaluation:
