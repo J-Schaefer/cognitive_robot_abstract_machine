@@ -1,4 +1,4 @@
----
+from krrood.entity_query_language.factories import inferencefrom probabilistic_model.scripts.nyga_speed_comparison import variable---
 jupytext:
   text_representation:
     extension: .md
@@ -24,34 +24,11 @@ A Rule Tree is built using three main components:
 3.  **ConclusionSelectors**: Logical branches that control rule evaluation flow and choose which conclusions are applied.
 Examples: `refinement()`,`alternative()`, and `next_rule()`.
 
-## Conclusion Selectors
-
-### 1. `refinement()`
-Narrows the context with an additional condition. It behaves like a logical **AND** but is used specifically to 
-specialize a rule.
-
-```python
-with refinement(body.size > 1):
-    # This only happens if the body is big
-    add(views, inference(Door)(handle=handle, body=body))
-```
-
-### 2. `alternative()`
-Provides a sibling branch that is only evaluated if the previous branches didn't match. It behaves like an **Else-If**.
-
-```python
-with alternative(body.is_fixed):
-    add(views, inference(Drawer)(...))
-```
-
-```{hint}
-Use `refinement` for specialization (exceptions) and `alternative` for mutually exclusive cases.
-```
 
 ## The `with query:` Context
 
-To build a rule tree, you use the query object as a context manager. Any `Add`, `refinement`, or `alternative` inside
-this block becomes part of that query's rule structure.
+To build a rule tree, you use the query object as a context manager. Any `add`, `refinement`, or `alternative` inside
+this block becomes part of that query's rule structure. We further discuss what each of these components do below.
 
 ```python
 query = an(entity(views).where(...))
@@ -64,6 +41,61 @@ with query:
 
 ```{warning}
 Rule trees are for **inference** (adding data). For simple filtering, stick to `.where()` and standard queries.
+```
+
+## Conclusion Selectors
+
+### 0. Query
+One usually starts with a query that selects a `deduced_variable()`, and optionally add some conditions in the `where()`
+clause. So in the example bellow we want to deduce views of type `View`, and we have a `FixedConnection` that connects
+a `Body` to a `Handle` as the initial condition.
+```python
+views = deduced_variable(View)
+handle = variable(ExampleHandle, domain=None)
+body = variable(ExampleBody, domain=None)
+fixed = variable(ExampleFixedConnection, domain=None)
+query = an(entity(views).where(fixed.parent == body, fixed.child == handle))
+````
+
+### 1. Default Conclusion
+The default conclusion is the one that is applied if none of the other branches match. So in the example bellow, we
+ want to deduce a `Drawer` by default for every solution of the query.
+```python
+with query:
+    add(views, inference(ExampleDrawer)(handle=handle, body=body))
+```
+
+### 2. Refining the condition using `refinement()`
+Narrows the context with an additional condition. It behaves like a logical **AND** but is used specifically to 
+specialize a rule. So in the example bellow, we want to deduce a `Door` instead of a `Drawer` if in addition to the
+default condition the body size is greater than 1 meter.
+
+```python
+with query:
+    add(views, inference(ExampleDrawer)(handle=handle, body=body))
+    with refinement(body.size > 1):
+        # This only happens if the body is big
+        add(views, inference(ExampleDoor)(handle=handle, body=body))
+```
+
+### 3. Defining alternative conclusions using `alternative()`
+Provides a sibling branch that is only evaluated if the previous branches didn't match. It behaves like an **Else-If**.
+So in the example bellow, if the body and the handle are not connected through a fixed connection, but
+through a revolute connection, we want to deduce a `DoorWithRevoluteHandle`. The conclusion of the `alternative()`
+branch is only applied if the previous branches didn't match. So in this case, the condition when the where clause doesn't
+succeed for some combination of body and handle. There are multiple ways the condition of the `where` can be False, one 
+if fixed connection parent is not equal to body or if the fixed connection child is not equal to handle.
+
+```python
+with query:
+    add(views, inference(ExampleDrawer)(handle=handle, body=body))
+    revolute = variable(ExampleRevoluteConnection, domain=None)
+    with alternative(revolute.parent == body, revolute.child == handle):
+        add(views, inference(ExampleDoorWithRevoluteHandle)(handle=handle, body=body))
+```
+
+```{hint}
+Use `refinement` for specialization (exceptions) and `alternative` for mutually exclusive cases.
 ```
 
 ## Full Example: Categorizing Connections
