@@ -44,7 +44,10 @@ class WhereExpressionToRandomEventTranslator:
     """
 
     def __post_init__(self):
-        if not is_disjunctive_normal_form(self.conditions_root):
+
+        if self.conditions_root is not None and not is_disjunctive_normal_form(
+            self.conditions_root
+        ):
             raise WhereExpressionNotInDisjunctiveNormalForm(self.conditions_root)
 
     @property

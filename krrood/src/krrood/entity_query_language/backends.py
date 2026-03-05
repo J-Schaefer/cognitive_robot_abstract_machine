@@ -134,10 +134,13 @@ class ProbabilisticBackend(GenerativeBackend):
             raise NoSolutionFound(expression.expression)
 
         # apply conditions from the where statements
-        truncated, _ = conditioned.truncated(parameters.truncation_event)
+        if parameters.truncation_event:
+            truncated, _ = conditioned.truncated(parameters.truncation_event)
 
-        if truncated is None:
-            raise NoSolutionFound(expression.expression)
+            if truncated is None:
+                raise NoSolutionFound(expression.expression)
+        else:
+            truncated = conditioned
 
         samples = truncated.sample(self.number_of_samples)
 

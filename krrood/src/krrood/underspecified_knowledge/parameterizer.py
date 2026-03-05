@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import typing
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -299,14 +300,14 @@ class ParametrizationVariable:
     def random_events_variable(self) -> Optional[random_events.variable.Variable]:
         if not self.is_leaf:
             return None
-        if not self.type_hint in leaf_types:
-            return None
+
         if isinstance(self.value, SymbolicExpression):
             return random_events.variable.Symbolic(
                 self.name,
                 Set.from_iterable(self.value.tolist()),
             )
-
+        if not issubclass(self.type_hint, leaf_types + (enum.Enum,)):
+            return None
         return variable_from_name_and_type(self.name, self.type_hint)
 
     def __repr__(self):
@@ -330,9 +331,12 @@ class UnderspecifiedParameters:
     The UnderspecifiedToCallableAndKwargsTranslator that extracts the factory from the statement
     """
 
-    _random_event_compiler: WhereExpressionToRandomEventTranslator = field(init=False)
+    _random_event_compiler: Optional[WhereExpressionToRandomEventTranslator] = field(
+        init=False
+    )
     """
-    The translator that extracts a random event from the where conditions
+    The translator that extracts a random event from the where conditions.
+    Only exists if the statement has a where condition.
     """
 
     factory: CallableAndKwargs = field(init=False)
@@ -340,19 +344,23 @@ class UnderspecifiedParameters:
     The factory for constructing new objects from samples.
     """
 
-    truncation_event: Event = field(init=False)
+    truncation_event: Optional[Event] = field(init=False, default=None)
     """
-    The where condition as random event"""
+    The where condition as random event.
+    Only exists if the statement has a where condition.
+    """
 
     def __post_init__(self):
         self._factory_compiler = UnderspecifiedToCallableAndKwargsTranslator(
             self.statement
         )
         self.factory = self._factory_compiler.translate()
+
         self._random_event_compiler = WhereExpressionToRandomEventTranslator(
             and_(*self.statement._where_expressions), self.factory.flat_variables
         )
-        self.truncation_event = self._random_event_compiler.translate()
+        if self.statement._where_expressions:
+            self.truncation_event = self._random_event_compiler.translate()
 
     @property
     def assignments_for_conditioning(
@@ -365,7 +373,7 @@ class UnderspecifiedParameters:
         return {
             v.random_events_variable: v.value
             for v in self._random_event_compiler.leaf_variables_with_topology
-            if v.value is not None and not isinstance(v.value, type(Ellipsis))
+            if v.value is not None and isinstance(v.value, leaf_types)
         }
 
     @property
