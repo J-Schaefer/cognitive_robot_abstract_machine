@@ -245,7 +245,7 @@ class WhereExpressionToRandomEventTranslator:
         )
 
 
-def is_disjunctive_normal_form(condition_root: Comparator) -> bool:
+def is_disjunctive_normal_form(condition_root: SymbolicExpression) -> bool:
     """
     Checks if the given query is disjunctive normal form (DNF).
 

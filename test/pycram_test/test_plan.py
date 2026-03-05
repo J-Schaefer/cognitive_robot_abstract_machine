@@ -22,7 +22,7 @@ from pycram.datastructures.pose import (
 )
 from pycram.language import ParallelPlan, CodeNode
 from pycram.motion_executor import simulated_robot
-from pycram.orm.ormatic_interface import *
+from pycram.orm.ormatic_interface import *  # type: ignore
 from pycram.plan import PlanNode, Plan, ActionDescriptionNode, ActionNode, MotionNode
 from pycram.robot_plans import *
 from semantic_digital_twin.adapters.urdf import URDFParser

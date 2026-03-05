@@ -11,7 +11,6 @@ from krrood.entity_query_language.query.match import (
     UnderspecifiedVariable,
 )
 from krrood.parametrization.parameterizer import UnderspecifiedFactory
-
 from krrood.parametrization.random_events_translator import (
     WhereExpressionToRandomEventTranslator,
     is_disjunctive_normal_form,
@@ -19,13 +18,11 @@ from krrood.parametrization.random_events_translator import (
 from random_events.interval import singleton, open, closed, closed_open
 from random_events.product_algebra import SimpleEvent, Event
 from random_events.variable import Continuous
-from semantic_digital_twin.spatial_types import Vector3
-
 from ..dataset.example_classes import Pose, Position, Orientation
 from ..dataset.ormatic_interface import *  # type: ignore
 
 
-def test_parameterizer_with_where():
+def test_underspecification_with_where():
     underspecified_pose = underspecified(Pose)(
         position=underspecified(Position)(x=..., y=..., z=...),
         orientation=underspecified(Orientation)(x=..., y=..., z=..., w=...),

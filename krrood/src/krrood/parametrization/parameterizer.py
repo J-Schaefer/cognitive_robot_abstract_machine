@@ -11,11 +11,9 @@ from typing_extensions import Any, List, get_args
 
 import random_events.variable
 from krrood.adapters.json_serializer import list_like_classes, leaf_types
-from krrood.patterns.callable_with_kwargs import HasFactoryAndKwargs
 from krrood.class_diagrams.utils import get_type_hint_of_keyword_argument
 from krrood.entity_query_language.core.base_expressions import SymbolicExpression
 from krrood.entity_query_language.core.mapped_variable import (
-    MappedVariable,
     CanBehaveLikeAVariable,
 )
 from krrood.entity_query_language.factories import variable, and_
