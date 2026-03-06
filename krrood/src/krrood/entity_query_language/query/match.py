@@ -11,7 +11,7 @@ import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import assert_never
+from typing import assert_never, Any
 
 import rustworkx as rx
 from inspect import ismethod, isclass
@@ -23,8 +23,12 @@ from typing_extensions import (
     Generic,
     TYPE_CHECKING,
     Self,
+    Dict,
+    Generator,
+    Iterator,
 )
 
+from krrood.adapters.json_serializer import list_like_classes
 from krrood.entity_query_language.core.base_expressions import (
     Selectable,
 )
@@ -32,6 +36,7 @@ from krrood.entity_query_language.core.mapped_variable import (
     Attribute,
     FlatVariable,
     CanBehaveLikeAVariable,
+    MappedVariable,
 )
 from krrood.entity_query_language.core.variable import Literal, DomainType
 from krrood.entity_query_language.failures import (
@@ -146,6 +151,18 @@ class AbstractMatchExpression(Generic[T], ABC):
     def __hash__(self):
         return hash(self.id)
 
+    @property
+    def descendants(self) -> Iterator[AbstractMatchExpression]:
+        yield from self.children
+        for child in self.children:
+            yield from child.descendants
+
+    @property
+    def literals(self) -> Iterator[AttributeMatch]:
+        for expression in self.descendants:
+            if isinstance(expression.assigned_variable, Literal):
+                yield expression
+
 
 @dataclass(eq=False)
 class Match(AbstractMatchExpression[T], HasFactoryAndKwargs[T]):
@@ -196,6 +213,7 @@ class Match(AbstractMatchExpression[T], HasFactoryAndKwargs[T]):
             raise ValueError("Match instance has already been called")
         self.kwargs = kwargs
         self._has_been_called = True
+        # _ = self.expression
         return self
 
     @property
@@ -219,7 +237,7 @@ class Match(AbstractMatchExpression[T], HasFactoryAndKwargs[T]):
     def _resolve(
         self,
         variable: Optional[Selectable] = None,
-        parent: Optional[Match] = None,
+        parent: Optional[MatchVariable] = None,
     ):
         """
         Resolve the match by creating the variable and conditions expressions.
@@ -229,16 +247,44 @@ class Match(AbstractMatchExpression[T], HasFactoryAndKwargs[T]):
         :param parent: The parent match if this is a nested match.
         :return:
         """
+
+        parent = parent or self
         self.update_fields(variable, parent)
         for attr_name, attr_assigned_value in self.kwargs.items():
+            if isinstance(attr_assigned_value, (list, tuple)) and any(
+                isinstance(element, AbstractMatchExpression)
+                for element in attr_assigned_value
+            ):
+                self._resolve_list_like_value(attr_name, attr_assigned_value, parent)
+                continue
             attr_match = AttributeMatch(
-                parent=parent or self,
+                parent=parent,
                 attribute_name=attr_name,
                 assigned_value=attr_assigned_value,
             )
             attr_match.resolve()
             self.children.append(attr_match)
             self.conditions.extend(attr_match.conditions)
+
+    def _resolve_list_like_value(
+        self, key: str, value: Union[list, tuple], parent: MatchVariable
+    ):
+
+        # handle list like classes by wrapping the index access
+        for index, element in enumerate(value):
+            attr_match = AttributeMatch(
+                parent=parent,
+                attribute_name=key,
+                index_access=index,
+                assigned_value=element,
+            )
+            attr_match.resolve()
+            self.children.append(attr_match)
+            self.conditions.extend(attr_match.conditions)
+
+    def _get_parameter_from_value_in_kwarg(self, parameter: Any):
+        assert isinstance(parameter, Literal)
+        return parameter._value_
 
     def update_fields(
         self,
@@ -286,6 +332,10 @@ class Match(AbstractMatchExpression[T], HasFactoryAndKwargs[T]):
         self.expression.where(*conditions)
         return self
 
+    def _update_kwargs_from_literal_values(self):
+        for literal in self.literals:
+            variable = literal.assigned_variable
+
 
 @dataclass(eq=False)
 class MatchVariable(Match[T]):
@@ -332,6 +382,13 @@ class AttributeMatch(AbstractMatchExpression[T]):
     """
     The name of the attribute to assign the value to.
     """
+
+    index_access: Optional[Any] = None
+    """
+    The index  that is accessed.
+    Is not None if the attribute is an indexable object.
+    """
+
     assigned_value: Optional[Union[Literal, Match]] = None
     """
     The value to assign to the attribute, which can be a Match instance or a Literal.
@@ -377,10 +434,14 @@ class AttributeMatch(AbstractMatchExpression[T]):
         """
         :return: The symbolic variable representing the assigned value.
         """
+
         return (
             self.assigned_value.variable
             if isinstance(self.assigned_value, AbstractMatchExpression)
-            else self.assigned_value
+            else Literal(
+                _type_=self.type,
+                _value_=self.assigned_value,
+            )
         )
 
     @cached_property
@@ -391,7 +452,10 @@ class AttributeMatch(AbstractMatchExpression[T]):
         """
         if self.variable is not None:
             return self.variable
+
         attr: Attribute = getattr(self.parent.variable, self.attribute_name)
+        if self.index_access is not None:
+            attr = attr[self.index_access]
         self.variable = attr
         return attr
 
@@ -415,18 +479,6 @@ class AttributeMatch(AbstractMatchExpression[T]):
 
     def __str__(self):
         return self.name
-
-
-class UnderspecifiedVariable(MatchVariable[T]):
-    """
-    A special type of MatchVariable that represents a variable with underspecified constraints.
-    """
-
-    def __call__(self, **kwargs):
-        super().__call__(
-            **kwargs
-        )  # call super method but return self s. t. the next operations still act on this instead of the expression
-        return self
 
 
 def construct_graph_and_get_root(

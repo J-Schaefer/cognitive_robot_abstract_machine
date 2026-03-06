@@ -36,19 +36,25 @@ class HasFactoryAndKwargs(Generic[T]):
         for key, value in self.kwargs.items():
             if isinstance(value, list_like_classes):
                 constructed_kwargs[key] = type(value)(
-                    (
-                        element.construct_instance()
-                        if isinstance(element, HasFactoryAndKwargs)
-                        else element
-                    )
+                    self._recurse_construct_instance_and_get_value(element)
                     for element in value
                 )
 
-            elif isinstance(value, HasFactoryAndKwargs):
-                constructed_kwargs[key] = value.construct_instance()
-            else:
-                constructed_kwargs[key] = value
+            constructed_kwargs[key] = self._recurse_construct_instance_and_get_value(
+                value
+            )
         return self.factory(**constructed_kwargs)
+
+    def _recurse_construct_instance_and_get_value(self, value: Any):
+        """
+        Recursively construct an instance and return it.
+
+        :param value: The value to construct.
+        :return: The constructed instance.
+        """
+        if isinstance(value, HasFactoryAndKwargs):
+            return value.construct_instance()
+        return value
 
     def __deepcopy__(self, memo):
         return self.__class__(

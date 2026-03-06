@@ -39,7 +39,6 @@ from krrood.entity_query_language.predicate import *  # type: ignore
 from krrood.entity_query_language.query.match import (
     Match,
     MatchVariable,
-    UnderspecifiedVariable,
 )
 from krrood.entity_query_language.query.quantifiers import (
     ResultQuantificationConstraint,
@@ -117,18 +116,13 @@ def match_variable(
 
 def underspecified(
     expression: Union[Type[T], Selectable[T], Callable[..., T]],
-) -> Union[Type[T], UnderspecifiedVariable[T]]:
+) -> Union[Type[T], Match[T]]:
     """
-    Same as :py:func:`krrood.entity_query_language.match.match_variable` but instead of searching for solutions in
+    Same as :py:func:`krrood.entity_query_language.factories.match` but instead of searching for solutions in
     the domain objects, it is used as a query for generative processes to infer solutions that satisfy the constraints
     in the query.
-
-    .. note::
-
-        Calling an UnderspecifiedVariable will return an UnderspecifiedVariable instead of its expression.
     """
-
-    return UnderspecifiedVariable(factory=expression)
+    return Match(factory=expression)
 
 
 # %% Variable Declaration

@@ -1,5 +1,6 @@
 import numpy as np
 
+from krrood.entity_query_language.core.variable import Literal
 from krrood.entity_query_language.factories import (
     variable,
     entity,
@@ -7,18 +8,19 @@ from krrood.entity_query_language.factories import (
     or_,
     underspecified,
 )
-from krrood.entity_query_language.query.match import (
-    UnderspecifiedVariable,
-)
+from krrood.entity_query_language.query.match import Match
+
+from krrood.entity_query_language.query_graph import QueryGraph
 from krrood.parametrization.parameterizer import UnderspecifiedFactory
 from krrood.parametrization.random_events_translator import (
     WhereExpressionToRandomEventTranslator,
     is_disjunctive_normal_form,
+    is_literal_comparator,
 )
 from random_events.interval import singleton, open, closed, closed_open
 from random_events.product_algebra import SimpleEvent, Event
 from random_events.variable import Continuous
-from ..dataset.example_classes import Pose, Position, Orientation
+from ..dataset.example_classes import Pose, Position, Orientation, Positions
 from ..dataset.ormatic_interface import *  # type: ignore
 
 
@@ -147,31 +149,44 @@ def test_probable_variable_with_concrete_kwarg():
     prob_q = probable_pose(
         position=underspecified(Position)(x=..., y=..., z=...),
         orientation=Orientation(x=0.0, y=0.0, z=0.0, w=1.0),
-    ).where(probable_pose.variable.position.x > 0.5)
+    )
+    prob_q.expression
+    prob_q.where(probable_pose.variable.position.x > 0.5)
+    prob_q.expression.build()
+    instance = prob_q.construct_instance()
 
-    factory = UnderspecifiedFactory(prob_q)
-    instance = factory.statement.construct_instance()
-    assert instance.orientation == Orientation(x=0.0, y=0.0, z=0.0, w=1.0)
+    correct_instance = Pose(Position(..., ..., ...), Orientation(0.0, 0.0, 0.0, 1.0))
 
-    assert len(factory.flat_variables) == 4
+    assert instance == correct_instance
+    assert len(list(prob_q.literals)) == 4
 
 
-def test_new_underspecified_translator():
+def test_new_underspecified_with_factory():
 
     probable_pose = underspecified(Pose)
     prob_q = probable_pose(
         position=underspecified(Position.from_abc)(a=..., b=..., c=...),
         orientation=Orientation(x=0.0, y=0.0, z=0.0, w=1.0),
-    ).where(probable_pose.variable.position.x > 0.5)
+    )
+    prob_q.expression
+    prob_q = prob_q.where(probable_pose.variable.position.x > 0.5)
+    prob_q.expression.build()
+    r = prob_q.construct_instance()
+    assert r == Pose(Position(..., ..., ...), Orientation(0.0, 0.0, 0.0, 1.0))
 
-    factory = UnderspecifiedFactory(prob_q)
 
-    assignments = {}
+def test_underspecified_with_list():
+    q = underspecified(Positions)(
+        positions=[underspecified(Position)(x=1, y=..., z=...), Position(1, 2, 3)],
+        some_strings=["a", "b"],
+    )
+    q.expression.build()
 
-    for v in factory.flat_variables:
-        if isinstance(v.value, type(...)):
-            assignments[v] = 0.0
+    for literal in q.literals:
+        if literal.assigned_value is ...:
+            literal.assigned_variable._value_ = 0.0
 
-    factory.apply_assignments(assignments)
-    r = factory.statement.construct_instance()
-    assert r == Pose(Position(0.0, 0.0, 0.0), Orientation(0.0, 0.0, 0.0, 1.0))
+    q._update_kwargs_from_literal_values()
+
+    r = q.construct_instance()
+    assert r == Positions([Position(0.0, 0.0, 0.0), Position(1, 2, 3)], ["a", "b"])
