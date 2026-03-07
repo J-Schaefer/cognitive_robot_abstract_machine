@@ -94,9 +94,10 @@ class UnderspecifiedParameters:
         for literal in self.statement.literals:
             variable = self.variables.get(literal.assigned_variable._name_, None)
             if variable is None or isinstance(
-                literal.assigned_variable._value_, type(Ellipsis)
+                literal.assigned_variable._value_, (type(Ellipsis), SymbolicExpression)
             ):
                 continue
+
             result[variable] = literal.assigned_variable._value_
         return result
 

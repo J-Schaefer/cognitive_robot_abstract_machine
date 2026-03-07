@@ -703,8 +703,10 @@ def test_algebra_sequential_plan(mutable_model_world):
         target_location=target_location,
         keep_joint_states=...,
     )
+
     navigate_action.expression.build()
     parameters = UnderspecifiedParameters(navigate_action)
+
     model = fully_factorized(parameters.variables.values())
 
     registry = DictRegistry({NavigateAction: model})
