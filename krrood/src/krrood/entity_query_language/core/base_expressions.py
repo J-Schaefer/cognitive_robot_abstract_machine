@@ -30,7 +30,7 @@ from typing_extensions import (
     Type,
 )
 
-from krrood.entity_query_language.failures import NoExpressionFoundForGivenID
+from krrood.entity_query_language.exceptions import NoExpressionFoundForGivenID
 from krrood.entity_query_language.utils import make_list, T, make_set, is_iterable
 from krrood.symbol_graph.symbol_graph import SymbolGraph
 
@@ -174,6 +174,8 @@ class SymbolicExpression(ABC):
         :param old_child: The old child expression.
         :param new_child: The new child expression.
         """
+        if old_child is new_child:
+            return
         _children_ids_ = [v._id_ for v in self._children_]
         child_idx = _children_ids_.index(old_child._id_)
         self._children_[child_idx] = new_child
@@ -222,9 +224,15 @@ class SymbolicExpression(ABC):
         :param result: The result to be mapped.
         :return: The mapped result.
         """
-        return UnificationDict(
-            {self._get_expression_by_id_(id_): v for id_, v in result.bindings.items()}
-        )
+        if self._id_ in result:
+            return result[self._id_]
+        else:
+            return UnificationDict(
+                {
+                    self._get_expression_by_id_(id_): value
+                    for id_, value in result.bindings.items()
+                }
+            )
 
     def _evaluate_(
         self,
@@ -252,7 +260,7 @@ class SymbolicExpression(ABC):
             if isinstance(sources, OperationResult):
                 sources = sources.bindings
             sources = copy(sources) if sources is not None else {}
-            if self._binding_id_ in sources:
+            if self._id_ in sources:
                 yield OperationResult(sources, self._is_false_, self)
             else:
                 yield from map(
@@ -279,17 +287,6 @@ class SymbolicExpression(ABC):
                 conclusion._evaluate_(current_result.bindings, parent=self)
             ).bindings
         return current_result
-
-    @cached_property
-    def _binding_id_(self) -> uuid.UUID:
-        """
-        The binding id is the id used in the bindings (the results dictionary of operations). It is sometimes different
-        from the id of the symbolic expression itself because some operations do not have results themselves, but their
-        children do, so they delegate the binding id to one of their children. For example, in the case of quantifiers,
-        the quantifier expression itself does not have a binding id, but it delegates it to its child variable that is
-         being selected and tracked.
-        """
-        return self._id_
 
     @abstractmethod
     def _evaluate__(
@@ -325,7 +322,8 @@ class SymbolicExpression(ABC):
         if value is None and self._parent__ is not None:
             if self._id_ in [v._id_ for v in self._parent__._children_]:
                 self._parent__._children_.remove(self)
-            self._parents_.remove(self._parent__)
+            if self._parent__ in self._parents_:
+                self._parents_.remove(self._parent__)
 
         self._parent__ = value
 
@@ -566,10 +564,6 @@ class DerivedExpression(SymbolicExpression, ABC):
         ...
 
     @property
-    def _binding_id_(self) -> uuid.UUID:
-        return self._original_expression_._binding_id_
-
-    @property
     def _is_false_(self) -> bool:
         return self._original_expression_._is_false_
 
@@ -638,7 +632,7 @@ class OperationResult:
 
     @property
     def has_value(self) -> bool:
-        return self.operand._binding_id_ in self.bindings
+        return self.operand._id_ in self.bindings
 
     @property
     def is_true(self) -> bool:
@@ -651,7 +645,7 @@ class OperationResult:
 
         :raises: KeyError if the operand is not found in the bindings.
         """
-        return self.bindings[self.operand._binding_id_]
+        return self.operand._process_result_(self)
 
     def __contains__(self, item):
         return item in self.bindings
@@ -687,12 +681,12 @@ class UnificationDict(UserDict):
     """
 
     def __getitem__(self, key: Selectable[T]) -> T:
-        key = self._id_expression_map_[key._binding_id_]
+        key = self._id_expression_map_[key._id_]
         return super().__getitem__(key)
 
     @cached_property
     def _id_expression_map_(self) -> Dict[uuid.UUID, Selectable[T]]:
-        return {key._binding_id_: key for key in self.data.keys()}
+        return {key._id_: key for key in self.data.keys()}
 
 
 @dataclass(eq=False, repr=False)
@@ -726,7 +720,7 @@ class Selectable(SymbolicExpression, Generic[T], ABC):
         :param child_result: The result of the child operation, if any.
         :return: The OperationResult instance with an updated truth value.
         """
-        self._update_truth_value_(bindings[self._binding_id_])
+        self._update_truth_value_(bindings[self._id_])
         return OperationResult(bindings, self._is_false_, self, child_result)
 
     def _update_truth_value_(self, current_value: Any) -> None:
@@ -747,14 +741,6 @@ class Selectable(SymbolicExpression, Generic[T], ABC):
         self._is_false_ = not is_true
 
     @cached_property
-    def _binding_id_(self) -> uuid.UUID:
-        return (
-            self._var_._binding_id_
-            if self._var_ is not None and self._var_ is not self
-            else self._id_
-        )
-
-    @cached_property
     def _type__(self):
         return (
             self._var_._type_
@@ -769,7 +755,7 @@ class Selectable(SymbolicExpression, Generic[T], ABC):
         :param result: The result to be mapped.
         :return: The mapped result.
         """
-        return result.value
+        return result[self._id_]
 
     @cached_property
     def _name_(self):
