@@ -19,6 +19,7 @@ The module handles:
 * Data synchronization
 * Format conversions
 """
+
 import logging
 import struct
 import threading
@@ -69,7 +70,7 @@ class CameraInterface(object):
         """
         self._has_new_data = False
         self.camera_config = camera_config
-        self.rk_logger = rcutils_logger.RcutilsLogger(name=robokudo.defs.PACKAGE_NAME)
+        self.rk_logger = logging.getLogger(robokudo.defs.PACKAGE_NAME)
 
     def has_new_data(self):
         """
@@ -148,26 +149,32 @@ class ROSCameraInterface(CameraInterface):
         if self.lookup_viewpoint:
             time = Time()
             try:
-                tf = self.transform_listener.lookup_transform(self.tf_to,
-                                                              self.tf_from,
-                                                              time,
-                                                              timeout=Duration(seconds=0.1))
+                tf = self.transform_listener.lookup_transform(
+                    self.tf_to, self.tf_from, time, timeout=Duration(seconds=0.1)
+                )
                 translation = tf.transform.translation
                 rotation = tf.transform.rotation
-                self.cam_translation = [float(translation.x),
-                                        float(translation.y),
-                                        float(translation.z)]
-                self.cam_quaternion = [float(rotation.x),
-                                       float(rotation.y),
-                                       float(rotation.z),
-                                       float(rotation.w)]
+                self.cam_translation = [
+                    float(translation.x),
+                    float(translation.y),
+                    float(translation.z),
+                ]
+                self.cam_quaternion = [
+                    float(rotation.x),
+                    float(rotation.y),
+                    float(rotation.z),
+                    float(rotation.w),
+                ]
             except Exception as err:
                 self.rk_logger.warning(
-                    f"cannot transform from {self.tf_from} to {self.tf_to} at ts {time}: {err}")
+                    f"cannot transform from {self.tf_from} to {self.tf_to} at ts {time}: {err}"
+                )
                 return False
         return True
 
-    def store_cam_to_world_transform(self, cas: robokudo.cas.CAS, timestamp: builtin_interfaces.msg.Time) -> None:
+    def store_cam_to_world_transform(
+        self, cas: robokudo.cas.CAS, timestamp: builtin_interfaces.msg.Time
+    ) -> None:
         """
         If the camera is configured to look up transforms, store the camera transform in the CAS.
 
@@ -184,7 +191,9 @@ class ROSCameraInterface(CameraInterface):
             # cas.set(CASViews.VIEWPOINT_CAM_TO_WORLD, st)
 
             # TODO Update *Connection* between the corresponding Body's in the world with proper transform?
-            setup_world_for_camera_frame(world_frame=self.tf_to, camera_frame=self.tf_from)
+            setup_world_for_camera_frame(
+                world_frame=self.tf_to, camera_frame=self.tf_from
+            )
             transformation_matrix = HomogeneousTransformationMatrix.from_xyz_quaternion(
                 pos_x=self.cam_translation[0],
                 pos_y=self.cam_translation[1],
@@ -194,7 +203,7 @@ class ROSCameraInterface(CameraInterface):
                 quat_z=self.cam_quaternion[2],
                 quat_w=self.cam_quaternion[3],
                 child_frame=world_instance().get_body_by_name(self.tf_from),
-                reference_frame=world_instance().get_body_by_name(self.tf_to)
+                reference_frame=world_instance().get_body_by_name(self.tf_to),
             )
             cas.cam_to_world_transform = transformation_matrix
             cas.data_timestamp = timestamp.sec * 1_000_000_000 + timestamp.nanosec
@@ -271,24 +280,30 @@ def depth_convert_workaround(msg):
     :raises Exception: If compression type is wrong or decoding fails
     """
     # 'msg' as type CompressedImage
-    depth_fmt, compr_type = msg.format.split(';')
+    depth_fmt, compr_type = msg.format.split(";")
     # remove white space
     depth_fmt = depth_fmt.strip()
     compr_type = compr_type.strip()
     if "compressedDepth" not in compr_type:
-        raise Exception("Compression type is not 'compressedDepth'."
-                        "You probably subscribed to the wrong topic.")
+        raise Exception(
+            "Compression type is not 'compressedDepth'."
+            "You probably subscribed to the wrong topic."
+        )
 
     # remove header from raw data
     depth_header_size = 12
     raw_data = msg.data[depth_header_size:]
 
-    depth_img_raw = cv2.imdecode(np.frombuffer(raw_data, np.uint8), cv2.IMREAD_UNCHANGED)
+    depth_img_raw = cv2.imdecode(
+        np.frombuffer(raw_data, np.uint8), cv2.IMREAD_UNCHANGED
+    )
     # replaced np.fromstring with np.frombuffer because np.fromstring is deprecated in newer versions of numpy
     if depth_img_raw is None:
         # probably wrong header size
-        raise Exception("Could not decode compressed depth image."
-                        "You may need to change 'depth_header_size'!")
+        raise Exception(
+            "Could not decode compressed depth image."
+            "You may need to change 'depth_header_size'!"
+        )
 
     if depth_fmt == "16UC1":
         # write raw image data
@@ -296,8 +311,10 @@ def depth_convert_workaround(msg):
     elif depth_fmt == "32FC1":
         raw_header = msg.data[:depth_header_size]
         # header: int, float, float
-        [compfmt, depthQuantA, depthQuantB] = struct.unpack('iff', raw_header)
-        depth_img_scaled = depthQuantA / (depth_img_raw.astype(np.float32) - depthQuantB)
+        [compfmt, depthQuantA, depthQuantB] = struct.unpack("iff", raw_header)
+        depth_img_scaled = depthQuantA / (
+            depth_img_raw.astype(np.float32) - depthQuantB
+        )
         # filter max values
         depth_img_scaled[depth_img_raw == 0] = 0
 
@@ -352,26 +369,38 @@ class KinectCameraInterface(ROSCameraInterface):
         super().__init__(camera_config, node=Node("kinect_camera_node"))
 
         if self.compressed_color_configured():
-            self.color_subscriber = Subscriber(self.node, CompressedImage, camera_config.topic_color)
+            self.color_subscriber = Subscriber(
+                self.node, CompressedImage, camera_config.topic_color
+            )
             # self.color_topic_sub = self.node.create_subscription(CompressedImage, camera_config.topic_color,
             #                                                      self.blackhole_callback, 10)
         else:
-            self.color_subscriber = Subscriber(self.node, Image, camera_config.topic_color)
+            self.color_subscriber = Subscriber(
+                self.node, Image, camera_config.topic_color
+            )
 
         if self.compressed_depth_configured():
-            self.depth_subscriber = Subscriber(self.node, CompressedImage, camera_config.topic_depth)
+            self.depth_subscriber = Subscriber(
+                self.node, CompressedImage, camera_config.topic_depth
+            )
         else:
-            self.depth_subscriber = Subscriber(self.node, Image, camera_config.topic_depth)
+            self.depth_subscriber = Subscriber(
+                self.node, Image, camera_config.topic_depth
+            )
             # self.depth_topic_sub = self.node.create_subscription(Image, camera_config.topic_depth,
             #                                                      self.blackhole_callback, 10)
 
-        self.cam_info_subscriber = Subscriber(self.node, CameraInfo, camera_config.topic_cam_info)
+        self.cam_info_subscriber = Subscriber(
+            self.node, CameraInfo, camera_config.topic_cam_info
+        )
         # self.cam_info_sub = self.node.create_subscription(CameraInfo, camera_config.topic_cam_info,
         #                                                   self.blackhole_callback, 10)
 
         ts = ApproximateTimeSynchronizer(
             [self.color_subscriber, self.depth_subscriber, self.cam_info_subscriber],
-            queue_size=10, slop=0.4)
+            queue_size=10,
+            slop=0.4,
+        )
         ts.registerCallback(self.callback)
 
         self.rk_logger.info("Subscribed to: ")
@@ -388,7 +417,12 @@ class KinectCameraInterface(ROSCameraInterface):
         self.lock = threading.Lock()
         # rclpy.spin_once(self.node)
 
-        threading.Thread(target=rclpy.spin, args=(self.node,), daemon=True, name="Cam Interface Thread").start()
+        threading.Thread(
+            target=rclpy.spin,
+            args=(self.node,),
+            daemon=True,
+            name="Cam Interface Thread",
+        ).start()
 
         # threading.Thread(target=rclpy.spin_once(self.node), args=(self.node,), daemon=True).start()
 
@@ -399,7 +433,10 @@ class KinectCameraInterface(ROSCameraInterface):
         :return: True if compressed depth is configured, False otherwise
         :rtype: bool
         """
-        return hasattr(self.camera_config, "depth_hints") and self.camera_config.depth_hints == "compressedDepth"
+        return (
+            hasattr(self.camera_config, "depth_hints")
+            and self.camera_config.depth_hints == "compressedDepth"
+        )
 
     def compressed_color_configured(self):
         """
@@ -408,7 +445,10 @@ class KinectCameraInterface(ROSCameraInterface):
         :return: True if compressed color is configured, False otherwise
         :rtype: bool
         """
-        return hasattr(self.camera_config, "color_hints") and self.camera_config.color_hints == "compressed"
+        return (
+            hasattr(self.camera_config, "color_hints")
+            and self.camera_config.color_hints == "compressed"
+        )
 
     def get_node(self):
         return self.node
@@ -445,16 +485,28 @@ class KinectCameraInterface(ROSCameraInterface):
         if self.rk_logger.is_enabled_for(logging.DEBUG):
             self.rk_logger.debug("Received data:")
 
-            color_time = Time(seconds=color_data.header.stamp.sec, nanoseconds=color_data.header.stamp.nanosec)
+            color_time = Time(
+                seconds=color_data.header.stamp.sec,
+                nanoseconds=color_data.header.stamp.nanosec,
+            )
 
             if depth_data is not None:
-                depth_time = Time(seconds=depth_data.header.stamp.sec, nanoseconds=depth_data.header.stamp.nanosec)
-                self.rk_logger.debug(f"  Color time - Depth time: {(color_time - depth_time).nanoseconds / 1e9:.6f}")
+                depth_time = Time(
+                    seconds=depth_data.header.stamp.sec,
+                    nanoseconds=depth_data.header.stamp.nanosec,
+                )
+                self.rk_logger.debug(
+                    f"  Color time - Depth time: {(color_time - depth_time).nanoseconds / 1e9:.6f}"
+                )
 
             if cam_info is not None:
-                cam_info_time = Time(seconds=cam_info.header.stamp.sec, nanoseconds=cam_info.header.stamp.nanosec)
+                cam_info_time = Time(
+                    seconds=cam_info.header.stamp.sec,
+                    nanoseconds=cam_info.header.stamp.nanosec,
+                )
                 self.rk_logger.debug(
-                    f"  Color time - Cam Info time: {(color_time - cam_info_time).nanoseconds / 1e9:.6f}")
+                    f"  Color time - Cam Info time: {(color_time - cam_info_time).nanoseconds / 1e9:.6f}"
+                )
 
         if self.compressed_color_configured():
             color_arr = np.frombuffer(color_data.data, np.uint8)

@@ -14,6 +14,7 @@ This module provides base classes for implementing annotators in RoboKudo.
     * Variable publishing
     * Action client integration
 """
+
 import logging
 import threading
 import time
@@ -24,14 +25,15 @@ from typing import Optional, Any
 
 import py_trees
 import sensor_msgs
+from typing_extensions import Union, List, Dict, Callable, Tuple, Type
 
 import robokudo.annotator_parameters
 import robokudo.annotators.outputs
 import robokudo.cas
 import robokudo.defs
 import robokudo.pipeline
-import robokudo.utils.tree
 import robokudo.types.core
+import robokudo.utils.tree
 
 """
 This module contains superclasses for annotators.  the two main superclasses are Base- and ThreadedAnnotator.
@@ -47,13 +49,6 @@ class BaseAnnotator(py_trees.behaviour.Behaviour):
     This class provides core functionality for CAS access, tree structure navigation,
     and GUI result handling. It serves as the foundation for implementing annotators
     in the RoboKudo framework.
-
-    :param name: Name of the annotator instance, defaults to "Annotator"
-    :type name: str, optional
-    :param descriptor: Configuration descriptor for the annotator, defaults to Descriptor()
-    :type descriptor: BaseAnnotator.Descriptor, optional
-    :param ros_pkg_name: Name of the ROS package, defaults to robokudo.defs.PACKAGE_NAME
-    :type ros_pkg_name: str, optional
     """
 
     class Descriptor:
@@ -71,35 +66,38 @@ class BaseAnnotator(py_trees.behaviour.Behaviour):
             parameters. Global parameters are accessed through the global_
             prefix.
             """
+
             None
 
         class Capabilities:
-            """Defines the input and output capabilities of an annotator.
+            """Defines the input and output capabilities of an annotator."""
 
-            :ivar inputs: Input types accepted by the annotator
-            :ivar outputs: Output types produced by the annotator
-            """
-
-            def __init__(self):
+            def __init__(self) -> None:
                 """Initialize capabilities with empty input/output definitions."""
-                self.inputs = None
-                self.outputs = None
 
-        def __init__(self):
+                self.inputs = None
+                """Input types accepted by the annotator"""
+
+                self.outputs = None
+                """Output types produced by the annotator"""
+
+        def __init__(self) -> None:
             """Initialize the descriptor with parameters and capabilities."""
             param_class = self.Parameters
 
             # overwrite __getattr__ in current 'Parameters' class
-            def get_attr_with_predefined_parameters(self, name):
+            def get_attr_with_predefined_parameters(self, name: str) -> Any:
                 """Custom attribute getter for accessing global parameters.
 
                 :param name: Name of the parameter to access
-                :type name: str
                 :return: Value of the global parameter
                 :raises AttributeError: If parameter name is unknown
                 """
                 if name.startswith("global_"):
-                    return getattr(robokudo.annotator_parameters.AnnotatorPredefinedParameters, name)
+                    return getattr(
+                        robokudo.annotator_parameters.AnnotatorPredefinedParameters,
+                        name,
+                    )
                 else:
                     raise AttributeError(f"Unknown parameter with name <{name}>.")
 
@@ -108,18 +106,19 @@ class BaseAnnotator(py_trees.behaviour.Behaviour):
             self.parameters = param_class()
             self.capabilities = self.Capabilities()
 
-    def __init__(self, name="Annotator", descriptor=Descriptor(),
-                 ros_pkg_name: str = robokudo.defs.PACKAGE_NAME):
+    def __init__(
+        self,
+        name: str = "Annotator",
+        descriptor: "BaseAnnotator.Descriptor" = Descriptor(),
+        ros_pkg_name: str = robokudo.defs.PACKAGE_NAME,
+    ) -> None:
         """Initialize the BaseAnnotator.
 
         Performs minimal one-time initialization of the annotator.
 
         :param name: Name of the annotator instance
-        :type name: str
         :param descriptor: Configuration descriptor
-        :type descriptor: BaseAnnotator.Descriptor
         :param ros_pkg_name: Name of the ROS package
-        :type ros_pkg_name: str
         """
         super().__init__(name)
         # self.rk_logger = get_logger(ros_pkg_name)
@@ -129,7 +128,7 @@ class BaseAnnotator(py_trees.behaviour.Behaviour):
         # self.rk_logger.debug("%s" % (get_line_context(self)))
         self.descriptor = descriptor
 
-    def setup(self, **kwargs: typing.Any):
+    def setup(self, **kwargs: typing.Any) -> bool:
         """Perform delayed initialization.
 
         This method is called for initialization tasks after the constructor has been called.
@@ -139,116 +138,125 @@ class BaseAnnotator(py_trees.behaviour.Behaviour):
         self.rk_logger.debug("%s.setup()" % self.__class__.__name__)
         return True
 
-    def initialise(self):
+    def initialise(self) -> None:
         """Initialize the annotator state.
 
         Called when first tick is received and anytime status is not running.
         """
         self.rk_logger.debug("%s.initialise()" % self.__class__.__name__)
 
-    def update(self):
+    def update(self) -> py_trees.common.Status:
         """Update the annotator state.
 
         Called every time the behavior is ticked.
 
         :return: Status of the behavior after update
-        :rtype: py_trees.common.Status
         """
         return py_trees.common.Status.SUCCESS
 
-    def terminate(self, new_status):
+    def terminate(self, new_status: py_trees.common.Status) -> None:
         """Handle annotator termination.
 
         Called whenever behavior switches to a non-RUNNING state.
 
-        :param new_status: New status of the behavior (SUCCESS, FAILURE or INVALID)
+        :param new_status: New status of the behavior (SUCCESS, FAILURE, or INVALID)
         :type new_status: py_trees.common.Status
         """
         self.rk_logger.debug(
-            "%s.terminate()[%s->%s]" % (self.__class__.__name__, self.status, new_status))
+            "%s.terminate()[%s->%s]"
+            % (self.__class__.__name__, self.status, new_status)
+        )
 
-    def key_callback(self, key):
+    def key_callback(self, key: int) -> None:
         """Handle keyboard input events.
 
         :param key: Key code of the pressed key
-        :type key: int
         """
         self.rk_logger.debug("%s.keyCallback() got %i" % (self.__class__.__name__, key))
 
-    def mouse_callback(self, event, x, y, flags, param):
+    def mouse_callback(
+        self, event: int, x: int, y: int, flags: int, param: int
+    ) -> None:
         """Handle mouse interaction events in the visualizer window.
 
         :param event: The event type (see cv2.EVENT_* constants)
-        :type event: int
         :param x: The x coordinate of the mouse click
-        :type x: int
         :param y: The y coordinate of the mouse click
-        :type y: int
         :param flags: Flags passed by OpenCV
-        :type flags: int
         :param param: Parameters passed by OpenCV
-        :type param: Any
         """
-        self.rk_logger.debug("%s.mouseCallback() got %i at (%i,%i)" % (self.__class__.__name__, event, x, y))
+        self.rk_logger.debug(
+            "%s.mouseCallback() got %i at (%i,%i)"
+            % (self.__class__.__name__, event, x, y)
+        )
 
     def get_cas(self) -> Optional[robokudo.cas.CAS]:
         """Get the CAS from the parent RoboKudo pipeline.
 
         :return: The Common Analysis Structure (CAS) instance or None if not found
-        :rtype: Optional[robokudo.cas.CAS]
         """
         return self.get_parent_pipeline().cas
 
-    def get_parent_pipeline(self) -> Optional['robokudo.pipeline.Pipeline']:
+    def get_parent_pipeline(self) -> Optional["robokudo.pipeline.Pipeline"]:
         """Get the pipeline containing this annotator.
 
         :return: The parent pipeline instance or None if not found
-        :rtype: Optional[robokudo.pipeline.Pipeline]
         """
         return robokudo.utils.tree.find_parent_of_type(self, robokudo.pipeline.Pipeline)
 
-    def get_annotator_outputs(self) -> 'robokudo.annotators.outputs.AnnotatorOutputs':
+    def get_annotator_outputs(self) -> robokudo.annotators.outputs.AnnotatorOutputs:
         """Get the outputs container for all annotators in the current pipeline.
 
         :return: Container for all annotator outputs in the pipeline
-        :rtype: robokudo.annotators.outputs.AnnotatorOutputs
         :raises AssertionError: If output container types are invalid
         """
         blackboard = py_trees.blackboard.Blackboard()
         annotator_output_pipeline_map_buffer = blackboard.get(
-            "annotator_output_pipeline_map_buffer")
-        assert (isinstance(annotator_output_pipeline_map_buffer,
-                           robokudo.annotators.outputs.AnnotatorOutputPerPipelineMap))
+            "annotator_output_pipeline_map_buffer"
+        )
+        assert isinstance(
+            annotator_output_pipeline_map_buffer,
+            robokudo.annotators.outputs.AnnotatorOutputPerPipelineMap,
+        )
 
         pipeline = self.get_parent_pipeline()
         annotator_outputs = annotator_output_pipeline_map_buffer.map[pipeline.name]
-        assert (isinstance(annotator_outputs, robokudo.annotators.outputs.AnnotatorOutputs))
+        assert isinstance(
+            annotator_outputs, robokudo.annotators.outputs.AnnotatorOutputs
+        )
         return annotator_outputs
 
-    def get_annotator_output_struct(self) -> 'robokudo.annotators.outputs.AnnotatorOutputStruct':
+    def get_annotator_output_struct(
+        self,
+    ) -> robokudo.annotators.outputs.AnnotatorOutputStruct:
         """Get the output structure for this specific annotator.
 
         Dynamically adds the annotator to the output structure if not already present.
 
         :return: Output structure for this annotator
-        :rtype: robokudo.annotators.outputs.AnnotatorOutputStruct
         """
         annotator_outputs = self.get_annotator_outputs()
         # This check adds dynamically added annotators to the output struct that have
         # not been in the tree during the setup() of it.
         if self.name not in annotator_outputs.outputs:
-            self.rk_logger.debug(f"Annotator {self.name} was not in AnnotatorOutput struct. Adding it now.")
+            self.rk_logger.debug(
+                f"Annotator {self.name} was not in AnnotatorOutput struct. Adding it now."
+            )
             self.add_self_to_annotator_output_struct()
         return self.get_annotator_outputs().outputs[self.name]
 
-    def add_self_to_annotator_output_struct(self):
+    def add_self_to_annotator_output_struct(self) -> None:
         """Add this annotator to the output structure.
 
         Called when the annotator is not yet present in the output structure.
         """
         blackboard = py_trees.blackboard.Blackboard()
-        annotator_output_pipeline_map_buffer = blackboard.get("annotator_output_pipeline_map_buffer")
-        annotator_output_pipeline_map_buffer.map[self.get_parent_pipeline().name].init_annotator(self.name)
+        annotator_output_pipeline_map_buffer = blackboard.get(
+            "annotator_output_pipeline_map_buffer"
+        )
+        annotator_output_pipeline_map_buffer.map[
+            self.get_parent_pipeline().name
+        ].init_annotator(self.name)
 
     def get_class_name(self) -> str:
         """Get the class name of this annotator.
@@ -256,11 +264,12 @@ class BaseAnnotator(py_trees.behaviour.Behaviour):
         Unlike self.name which can be customized, this always returns the actual class name.
 
         :return: The class name of this annotator
-        :rtype: str
         """
         return type(self).__name__
 
-    def get_data_from_analysis_scope(self, analysis_scope: list):
+    def get_data_from_analysis_scope(
+        self, analysis_scope: List[Union[str, Type]]
+    ) -> Dict[Union[str, Type], Any]:
         """Look up data to analyze based on a list of Types or String constants.
 
         Retrieves data from the CAS based on specified types or CASView constants.
@@ -282,45 +291,45 @@ class BaseAnnotator(py_trees.behaviour.Behaviour):
             }
 
         :param analysis_scope: List of data types to target (CASView attributes or Annotation subclasses)
-        :type analysis_scope: list
         :return: Dict mapping requested types to corresponding data
-        :rtype: dict
         :raises ValueError: If result would be empty
         """
-        result = {}
+        result: Dict[Union[str, Type], Any] = {}
 
         for content in analysis_scope:
             # CASViews are string values
             if isinstance(content, str):
                 if content not in robokudo.cas.CASViews.__dict__.values():
                     self.rk_logger.warning(
-                        "You have passed a string that is not defining a valid CASView from robokudo.cas.CASViews")
+                        "You have passed a string that is not defining a valid CASView from robokudo.cas.CASViews"
+                    )
                 result[content] = self.get_cas().get(content)
             elif issubclass(content, robokudo.types.core.Annotation):
                 # We assume that typically only few annotations are requested here
                 # Otherwise we should iterate over all annotations and filter once to save resources
                 result[content] = self.get_cas().filter_annotations_by_type(content)
             else:
-                self.rk_logger.error(f"Couldn't lookup data {content} - Unsupported type")
+                self.rk_logger.error(
+                    f"Couldn't lookup data {content} - Unsupported type"
+                )
 
         if len(result) == 0:
             raise ValueError(
-                f"Result list after scope look up is empty. Can't continue processing.Input was: {analysis_scope}")
+                f"Result list after scope look up is empty. Can't continue processing.Input was: {analysis_scope}"
+            )
 
         return result
 
-    def init_time_recording(self):
+    def init_time_recording(self) -> None:
         """Initialize the time recording dictionary for performance measurement."""
-        if not hasattr(self, '_times'):
-            setattr(self, '_times', defaultdict(list))
+        if not hasattr(self, "_times"):
+            setattr(self, "_times", defaultdict(list))
 
-    def set_time_recording(self, value, func="update"):
+    def set_time_recording(self, value: float, func: str = "update") -> None:
         """Record timing information for a function.
 
         :param value: The timing value to record
-        :type value: float
         :param func: The function name to associate with the timing, defaults to "update"
-        :type func: str, optional
         """
         timing_dict = getattr(self, "_times")
         timing_dict[func] = value
@@ -339,8 +348,10 @@ class BaseAnnotator(py_trees.behaviour.Behaviour):
         :return: True if variables should be published, False otherwise
         :rtype: bool
         """
-        return hasattr(self.descriptor.parameters, "publish_variables") and \
-            self.descriptor.parameters.publish_variables
+        return (
+            hasattr(self.descriptor.parameters, "publish_variables")
+            and self.descriptor.parameters.publish_variables
+        )
 
     def setup_published_variables(self) -> None:
         """Setup the ROS Publisher and internal data structure if data shall be published
@@ -349,18 +360,18 @@ class BaseAnnotator(py_trees.behaviour.Behaviour):
         """
         if self.shall_publish_variables():
             # TODO Rewrite so that the pipeline name is also included and updated on-the-fly
-            self.variable_publisher = self.create_publisher(f'~{self.name}/published_variables',
-                                                            sensor_msgs.msg.JointState,
-                                                            queue_size=10)
-            self.published_variables = dict()
+            self.variable_publisher = self.create_publisher(
+                f"~{self.name}/published_variables",
+                sensor_msgs.msg.JointState,
+                queue_size=10,
+            )
+            self.published_variables: Dict[str, float] = dict()
 
     def update_published_variable(self, name: str, value: float) -> None:
         """Store a value that shall be published whenever self.publish_variables() is called.
 
         :param name: Identifier of the variable
-        :type name: str
         :param value: The actual value (must be a float)
-        :type value: float
         """
         try:
             self.published_variables[name] = value
@@ -373,7 +384,9 @@ class BaseAnnotator(py_trees.behaviour.Behaviour):
         :return: True if setup is complete, False otherwise
         :rtype: bool
         """
-        return hasattr(self, "published_variables") and isinstance(self.published_variables, dict)
+        return hasattr(self, "published_variables") and isinstance(
+            self.published_variables, dict
+        )
 
     def publish_variables(self) -> None:
         """Publish all collected variable updates at once.
@@ -382,8 +395,6 @@ class BaseAnnotator(py_trees.behaviour.Behaviour):
         compute method to automatically publish variables whenever the method is returning.
 
         This method will only work if you've set self.publish_variables = True in the Descriptor of your Annotator
-
-        :return: None
         """
         if self.shall_publish_variables():
             if not self.setup_done_for_published_variables():
@@ -391,8 +402,9 @@ class BaseAnnotator(py_trees.behaviour.Behaviour):
 
             # Create a joint state message to have a common data structure for all values
             msg = sensor_msgs.msg.JointState()
-            msg.header.stamp = self.get_cas().get(
-                robokudo.cas.CASViews.CAM_INFO).header.stamp  # This is always the time of recording the data.
+            msg.header.stamp = (
+                self.get_cas().get(robokudo.cas.CASViews.CAM_INFO).header.stamp
+            )  # This is always the time of recording the data.
 
             # msg.header.stamp = rospy.Time(self.get_cas().timestamp) # This might be the current time!
             for key, value in self.published_variables.items():
@@ -413,23 +425,20 @@ class Worker(object):
     optionally execute a callback when the function completes.
     """
 
-    def __init__(self, fn, args=()):
+    def __init__(self, fn: Callable, args: Tuple = ()) -> None:
         """Initialize the worker.
 
         :param fn: The function to execute
-        :type fn: callable
         :param args: Arguments to pass to the function, defaults to ()
-        :type args: tuple, optional
         """
-        self.future = Future()
-        self._fn = fn
-        self._args = args
+        self.future: Future = Future()
+        self._fn: Callable = fn
+        self._args: Tuple = args
 
-    def start(self, callback=None):
+    def start(self, callback: Optional[Callable] = None) -> threading.Thread:
         """Start executing the function in a separate thread.
 
         :param callback: Function to call when execution completes, defaults to None
-        :type callback: callable, optional
         """
         self._callback = callback
         self.future.set_running_or_notify_cancel()
@@ -437,14 +446,14 @@ class Worker(object):
         thread.start()
         return thread
 
-    def run(self):
+    def run(self) -> None:
         """Execute the function and store its result in the future object."""
         try:
             self.future.set_result(self._fn(*self._args))
         except BaseException as e:
             self.future.set_exception(e)
 
-        if (self._callback):
+        if self._callback:
             self._callback(self.future.result())
 
 
@@ -456,21 +465,23 @@ class ThreadedAnnotator(BaseAnnotator):
     and handle their results.
     """
 
-    def __init__(self, name="ThreadedAnnotator", descriptor=BaseAnnotator.Descriptor()):
+    def __init__(
+        self,
+        name: str = "ThreadedAnnotator",
+        descriptor: BaseAnnotator.Descriptor = BaseAnnotator.Descriptor(),
+    ) -> None:
         """Initialize the ThreadedAnnotator.
 
         :param name: Name of the annotator instance, defaults to "ThreadedAnnotator"
-        :type name: str, optional
         :param descriptor: Configuration descriptor, defaults to BaseAnnotator.Descriptor()
-        :type descriptor: BaseAnnotator.Descriptor, optional
         """
         super().__init__(name, descriptor)
         self.rk_logger.debug("%s.__init__()" % self.__class__.__name__)
-        self.compute_worker = None
-        self.compute_worker_started = False
-        self.compute_worker_thread = None
+        self.compute_worker: Optional[Worker] = None
+        self.compute_worker_started: bool = False
+        self.compute_worker_thread: Optional[threading.Thread] = None
 
-    def initialise(self):
+    def initialise(self) -> None:
         """Initialize the annotator state.
 
         Called when first tick is received and anytime status is not running.
@@ -478,7 +489,7 @@ class ThreadedAnnotator(BaseAnnotator):
         self.rk_logger.debug("%s.initialise()" % self.__class__.__name__)
         self.compute_worker = Worker(self.compute)
 
-    def update(self):
+    def update(self) -> py_trees.common.Status:
         """Update the annotator state.
 
         Manages the asynchronous computation and returns appropriate status:
@@ -487,7 +498,6 @@ class ThreadedAnnotator(BaseAnnotator):
         - INVALID if computation failed with an exception
 
         :return: Status of the behavior after update
-        :rtype: py_trees.common.Status
         """
         self.rk_logger.debug("%s.update()" % self.__class__.__name__)
         if self.compute_worker.future.running():
@@ -504,29 +514,37 @@ class ThreadedAnnotator(BaseAnnotator):
         result = self.compute_worker.future.result()
 
         if result is None:
-            self.rk_logger.error("Your Annotator didn't return a Status. Please fix. Will return SUCCESS.")
+            self.rk_logger.error(
+                "Your Annotator didn't return a Status. Please fix. Will return SUCCESS."
+            )
             return py_trees.common.Status.SUCCESS
 
         return result
 
-    def compute(self):
+    def compute(self) -> py_trees.common.Status:
         """Perform the main computation of the annotator.
 
         This method should be overridden by subclasses to implement the actual
         computation logic.
         """
-        self.rk_logger.debug("%s.compute(): Start doing the heavy stuff" % self.__class__.__name__)
+        self.rk_logger.debug(
+            "%s.compute(): Start doing the heavy stuff" % self.__class__.__name__
+        )
         time.sleep(0.5)  # in seconds
-        self.rk_logger.debug("%s.compute(): Stop doing the heavy stuff" % self.__class__.__name__)
+        self.rk_logger.debug(
+            "%s.compute(): Stop doing the heavy stuff" % self.__class__.__name__
+        )
+        return py_trees.common.Status.SUCCESS
 
-    def terminate(self, new_status):
+    def terminate(self, new_status: py_trees.common.Status) -> None:
         """Handle annotator termination.
 
         Called whenever behavior switches to !RUNNING state.
-        new_status can be SUCCESS, FAILURE or INVALID
+        new_status can be SUCCESS, FAILURE, or INVALID
 
-        :param new_status: New status of the behavior (SUCCESS, FAILURE or INVALID)
-        :type new_status: py_trees.common.Status
+        :param new_status: New status of the behavior (SUCCESS, FAILURE, or INVALID)
         """
         self.rk_logger.debug(
-            "%s.terminate()[%s->%s]" % (self.__class__.__name__, self.status, new_status))
+            "%s.terminate()[%s->%s]"
+            % (self.__class__.__name__, self.status, new_status)
+        )

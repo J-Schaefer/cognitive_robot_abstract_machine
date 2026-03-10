@@ -5,6 +5,7 @@ from timeit import default_timer
 import cv2
 import numpy as np
 import py_trees.common
+from typing_extensions import Optional
 
 import robokudo.pipeline
 import robokudo.types.annotation
@@ -18,19 +19,28 @@ font = cv2.FONT_HERSHEY_COMPLEX
 
 
 class SemanticDigitalTwinConnector(BaseAnnotator):
-    def __init__(self, name="WorldValidator"):
+    class Descriptor(robokudo.annotators.core.BaseAnnotator.Descriptor):
+
+        class Parameters:
+            def __init__(self) -> None:
+                self.urdf_path: Optional[str] = None
+                """Optional Path to the URDF file of the world"""
+
+        # overwrite the parameters explicitly to enable auto-completion
+        parameters = Parameters()
+
+    def __init__(
+        self,
+        name: str = "WorldValidator",
+        descriptor: "SemanticDigitalTwinConnector.Descriptor" = Descriptor(),
+    ):
         """Default construction. Minimal one-time init!"""
-        super().__init__(name)
+        super().__init__(name, descriptor)
         self.rk_logger.debug("%s.__init__()" % self.__class__.__name__)
 
-        urdf_dir = os.path.join(
-            Path.home(), "robokudo_ws", "src", "semantic_digital_twin", "resources", "urdf"
+        self.semdt_adapter = SemanticDigitalTwinAdapter(
+            self.get_cas, urdf_path=descriptor.parameters.urdf_path
         )
-        apartment = os.path.join(urdf_dir, "apartment.urdf")
-
-        self.semdt_adapter = SemanticDigitalTwinAdapter(self.get_cas)  # , urdf_path=apartment)
-
-        self.tracked_sw_objects = []
 
     def extract_data(self, oh: ObjectHypothesis) -> dict:
         data = {}

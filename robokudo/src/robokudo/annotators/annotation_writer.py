@@ -7,11 +7,13 @@ import os
 import shutil
 from timeit import default_timer
 
-from std_msgs.msg import String
 import rospy
-from ..utils import serialization as serializer
 from py_trees.common import Status
+from std_msgs.msg import String
+from typing_extensions import Optional
+
 from . import core
+from ..utils import serialization as serializer
 
 
 class AnnotationStorageWriter(core.BaseAnnotator):
@@ -19,9 +21,6 @@ class AnnotationStorageWriter(core.BaseAnnotator):
 
     This annotator writes the current CAS annotations to files in a specified
     directory, using JSON serialization.
-
-    :ivar counter: Counter for generating sequential filenames
-    :type counter: int
     """
 
     class Descriptor(core.BaseAnnotator.Descriptor):
@@ -30,22 +29,21 @@ class AnnotationStorageWriter(core.BaseAnnotator):
         class Parameters:
             """Parameters for configuring annotation storage."""
 
-            def __init__(self):
+            def __init__(self) -> None:
                 self.basic_path: str = "annotations"
                 """Base directory for storing annotations, defaults to "annotations"""
 
                 self.suffix: str = "json"
                 """File extension for annotation files, defaults to "json"""
 
-        parameters = (
-            Parameters()
-        )  # overwrite the parameters explicitly to enable auto-completion
+        # Overwrite the parameters explicitly to enable auto-completion
+        parameters = Parameters()
 
     def __init__(
         self,
         name: str = "AnnotationStorageWriter",
-        descriptor: Descriptor = Descriptor(),
-    ):
+        descriptor: "AnnotationStorageWriter.Descriptor" = Descriptor(),
+    ) -> None:
         """Initialize the annotation storage writer. Minimal one-time init!
 
         :param name: Name of the annotator instance, defaults to "AnnotationStorageWriter"
@@ -54,10 +52,10 @@ class AnnotationStorageWriter(core.BaseAnnotator):
         super().__init__(name, descriptor)
         self.rk_logger.debug("%s.__init__()" % self.__class__.__name__)
 
-        self.counter = -1
+        self.counter: int = -1
         """Counter for generating sequential filenames"""
 
-    def update(self):
+    def update(self) -> Status:
         """Write current CAS annotations to storage.
 
         Serializes the current annotations to JSON and writes them to a file
@@ -97,7 +95,6 @@ class AnnotationPublisherWriter(core.BaseAnnotator):
     This annotator publishes the current CAS annotations as JSON-encoded
     strings over a ROS topic.
 
-    :ivar pub: ROS publisher for annotations
     :type pub: rospy.Publisher
     """
 
@@ -107,19 +104,18 @@ class AnnotationPublisherWriter(core.BaseAnnotator):
         class Parameters:
             """Parameters for configuring annotation publishing."""
 
-            def __init__(self):
+            def __init__(self) -> None:
                 self.topic_name: str = "/annotations"
                 """Name of the ROS topic to publish on, defaults to "/annotations"""
 
-        parameters = (
-            Parameters()
-        )  # overwrite the parameters explicitly to enable auto-completion
+        # overwrite the parameters explicitly to enable auto-completion
+        parameters = Parameters()
 
     def __init__(
         self,
         name: str = "AnnotationPublisherWriter",
         descriptor: "AnnotationPublisherWriter.Descriptor" = Descriptor(),
-    ):
+    ) -> None:
         """Initialize the annotation publisher. Minimal one-time init!
 
         :param name: Name of the annotator instance, defaults to "AnnotationPublisherWriter"
@@ -128,9 +124,10 @@ class AnnotationPublisherWriter(core.BaseAnnotator):
         super().__init__(name, descriptor)
         self.rk_logger.debug("%s.__init__()" % self.__class__.__name__)
 
-        self.pub = None
+        self.pub: Optional[rospy.Publisher] = None
+        """ROS publisher for annotations"""
 
-    def setup(self, timeout: float):
+    def setup(self, timeout: float) -> None:
         """Set up the ROS publisher. Useful for delayed initialization. For example ROS pub/sub, drivers.
 
         :param timeout: Maximum time to wait for setup completion

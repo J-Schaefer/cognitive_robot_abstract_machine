@@ -16,9 +16,11 @@ The module is used for:
 * Result refinement
 * Conditional processing
 """
-import py_trees
 
-import robokudo
+import py_trees
+from typing_extensions import Optional, Tuple, Dict, Callable
+
+import robokudo.annotators.core
 
 
 class FilterAnnotator(robokudo.annotators.core.BaseAnnotator):
@@ -27,9 +29,6 @@ class FilterAnnotator(robokudo.annotators.core.BaseAnnotator):
 
     This annotator applies a provided filter function to the current set of
     annotations, modifying the annotation list in-place based on the filter results.
-
-    :ivar descriptor: Configuration descriptor containing filter parameters
-    :type descriptor: FilterAnnotator.Descriptor
     """
 
     class Descriptor(robokudo.annotators.core.BaseAnnotator.Descriptor):
@@ -41,36 +40,36 @@ class FilterAnnotator(robokudo.annotators.core.BaseAnnotator):
         """
 
         class Parameters:
-            """
-            Parameter container for filter configuration.
+            """Parameter container for filter configuration."""
 
-            :ivar func: Filter function to apply
-            :type func: callable
-            :ivar func_args: Positional arguments for filter function
-            :type func_args: tuple
-            :ivar func_kwargs: Keyword arguments for filter function
-            :type func_kwargs: dict
-            """
+            def __init__(self) -> None:
+                self.func: Optional[Callable] = None
+                """Filter function to apply"""
 
-            def __init__(self):
-                self.func = None
-                self.func_args = None
-                self.func_kwargs = None
+                self.func_args: Optional[Tuple] = None
+                """Positional arguments for filter function"""
 
-        parameters = Parameters()  # overwrite the parameters explicitly to enable auto-completion
+                self.func_kwargs: Optional[Dict] = None
+                """Keyword arguments for filter function"""
 
-    def __init__(self, name="FilterAnnotator", descriptor=Descriptor()):
+        parameters = (
+            Parameters()
+        )  # overwrite the parameters explicitly to enable auto-completion
+
+    def __init__(
+        self,
+        name: str = "FilterAnnotator",
+        descriptor: "FilterAnnotator.Descriptor" = Descriptor(),
+    ) -> None:
         """Initialize the filter annotator.
 
         :param name: Annotator name, defaults to "FilterAnnotator"
-        :type name: str, optional
         :param descriptor: Configuration descriptor, defaults to Descriptor()
-        :type descriptor: FilterAnnotator.Descriptor, optional
         """
         super().__init__(name, descriptor)
         self.logger.debug("%s.__init__()" % self.__class__.__name__)
 
-    def update(self):
+    def update(self) -> py_trees.common.Status:
         """
         Apply the filter function to current annotations.
 
@@ -78,7 +77,6 @@ class FilterAnnotator(robokudo.annotators.core.BaseAnnotator):
         arguments. Only annotations that pass the filter are kept.
 
         :return: SUCCESS status
-        :rtype: py_trees.Status
         """
         func = self.descriptor.parameters.func
 
@@ -87,8 +85,11 @@ class FilterAnnotator(robokudo.annotators.core.BaseAnnotator):
             func_kwargs = self.descriptor.parameters.func_kwargs or {}
 
             annotations = self.get_cas().annotations
-            annotations = [annotation for annotation in annotations
-                           if func(annotation, *func_args, **func_kwargs)]
+            annotations = [
+                annotation
+                for annotation in annotations
+                if func(annotation, *func_args, **func_kwargs)
+            ]
             self.get_cas().annotations = annotations
 
-        return py_trees.Status.SUCCESS
+        return py_trees.common.Status.SUCCESS

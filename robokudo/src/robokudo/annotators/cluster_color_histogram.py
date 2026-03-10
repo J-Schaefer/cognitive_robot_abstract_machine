@@ -16,15 +16,18 @@ The module uses:
 .. note::
    Histogram plotting is optional and can be disabled for performance.
 """
+
 import copy
 import math
 from timeit import default_timer
+from typing import Tuple
 
 import cv2
 import numpy as np
 import numpy.typing as npt
 import py_trees
 from matplotlib import pyplot as plt
+from typing_extensions import List, Optional
 
 import robokudo.annotators
 import robokudo.annotators.core
@@ -32,19 +35,21 @@ import robokudo.annotators.outputs
 import robokudo.types.annotation
 import robokudo.types.scene
 import robokudo.utils.cv_helper
+from robokudo.annotators.cluster_color import Color
 from robokudo.cas import CASViews
+from robokudo.types.cv import Rect
 
 
 class ClusterColorHistogramAnnotator(robokudo.annotators.core.BaseAnnotator):
     """Hue and saturation histogram analysis for object hypotheses with RGB ROI and Mask.
-    
+
     This annotator:
-    
+
     * Calculates 2D histograms of hue and saturation
     * Processes masked ROIs from object hypotheses
     * Normalizes histogram distributions
     * Optionally generates visualization plots
-    
+
     .. warning::
        Histogram plotting can significantly impact performance (200-500ms).
     """
@@ -53,49 +58,45 @@ class ClusterColorHistogramAnnotator(robokudo.annotators.core.BaseAnnotator):
         """Configuration descriptor for color histogram analysis."""
 
         class Parameters:
-            """Parameters for configuring histogram calculation.
+            """Parameters for configuring histogram calculation."""
 
-            Histogram parameters:
-            
-            :ivar histogram_cols: Number of histogram columns (hue bins), defaults to 16
-            :type histogram_cols: int
-            :ivar histogram_rows: Number of histogram rows (saturation bins), defaults to 16
-            :type histogram_rows: int
-            
-            Visualization:
-            
-            :ivar generate_plot_output: Whether to generate histogram plots, defaults to False
-            :type generate_plot_output: bool
-            """
-            def __init__(self):
-                self.histogram_cols = 16
-                self.histogram_rows = 16
-                self.generate_plot_output = False  # plotting takes a lot of time in matplotlib (200-500ms)
+            def __init__(self) -> None:
+                self.histogram_cols: int = 16
+                """Number of histogram columns (hue bins), defaults to 16"""
 
-        parameters = Parameters()  # overwrite the parameters explicitly to enable auto-completion
+                self.histogram_rows: int = 16
+                """histogram_rows: Number of histogram rows(saturation bins), defaults to 16"""
 
-    def __init__(self, name="ClusterColorHistogramAnnotator", descriptor=Descriptor()):
+                self.generate_plot_output: bool = False
+                """Whether to generate histogram plots, defaults to False. Plotting takes a lot of time in matplotlib (200-500ms)"""
+
+        parameters = (
+            Parameters()
+        )  # overwrite the parameters explicitly to enable auto-completion
+
+    def __init__(
+        self,
+        name: str = "ClusterColorHistogramAnnotator",
+        descriptor: "ClusterColorHistogramAnnotator.Descriptor" = Descriptor(),
+    ):
         """Initialize the color histogram analyzer. Minimal one-time init!
 
         :param name: Name of this annotator instance, defaults to "ClusterColorHistogramAnnotator"
-        :type name: str, optional
         :param descriptor: Configuration descriptor, defaults to Descriptor()
-        :type descriptor: ClusterColorHistogramAnnotator.Descriptor, optional
         """
         super().__init__(name, descriptor)
         self.rk_logger.debug("%s.__init__()" % self.__class__.__name__)
 
-    def update(self):
+    def update(self) -> py_trees.common.Status:
         """Process object hypotheses and calculate color histograms.
 
         The method:
-        
+
         * Loads point cloud and color image from CAS
         * Creates color histogram annotations
         * Updates visualization if enabled
-        
+
         :return: SUCCESS after processing
-        :rtype: py_trees.Status
         """
         start_timer = default_timer()
 
@@ -103,8 +104,8 @@ class ClusterColorHistogramAnnotator(robokudo.annotators.core.BaseAnnotator):
         color = self.get_cas().get(CASViews.COLOR_IMAGE)
 
         # List for visualization purposes
-        self.cluster_color_info = []
-        self.cluster_rois = []
+        self.cluster_color_info: List[List[Tuple[Color, int, float]]] = []
+        self.cluster_rois: List[Rect] = []
 
         visualization_img = self.create_color_histogram_annotations(color)
 
@@ -120,35 +121,39 @@ class ClusterColorHistogramAnnotator(robokudo.annotators.core.BaseAnnotator):
         self.get_annotator_output_struct().set_image(visualization_img)
 
         end_timer = default_timer()
-        self.feedback_message = f'Processing took {(end_timer - start_timer):.4f}s'
+        self.feedback_message = f"Processing took {(end_timer - start_timer):.4f}s"
         return py_trees.common.Status.SUCCESS
 
-    def create_color_histogram_annotations(self, color: npt.NDArray):
+    def create_color_histogram_annotations(
+        self, color: npt.NDArray
+    ) -> Optional[npt.NDArray]:
         """Calculate 2D color histograms for object hypotheses.
 
         For each object hypothesis with a valid ROI mask:
-        
+
         * Extracts color image region and mask
         * Converts to HSV color space
         * Calculates 2D histogram of hue and saturation
         * Normalizes histogram distribution
         * Creates histogram annotation
         * Optionally generates visualization plot
-        
+
         :param color: Input color image
-        :type color: numpy.ndarray
         :return: Combined histogram plot image if enabled, None otherwise
-        :rtype: numpy.ndarray or None
         """
         # Iterate over everything that is a Object hypothesis and calculate the colors
         cluster_index = 0
 
-        object_hypotheses = self.get_cas().filter_annotations_by_type(robokudo.types.scene.ObjectHypothesis)
+        object_hypotheses = self.get_cas().filter_annotations_by_type(
+            robokudo.types.scene.ObjectHypothesis
+        )
 
         if self.descriptor.parameters.generate_plot_output:
             plot_columns = 3
             cluster_count = len(object_hypotheses)
-            fig, axes = plt.subplots(nrows=math.ceil(cluster_count / plot_columns), ncols=plot_columns)
+            fig, axes = plt.subplots(
+                nrows=math.ceil(cluster_count / plot_columns), ncols=plot_columns
+            )
             fig.tight_layout()
             axes1d = axes.ravel()
 
@@ -158,24 +163,35 @@ class ClusterColorHistogramAnnotator(robokudo.annotators.core.BaseAnnotator):
 
             roi = object_hypothesis.roi.roi
 
-            cluster_color_img = color[roi.pos.y: roi.pos.y + roi.height,
-                                roi.pos.x: roi.pos.x + roi.width]
+            cluster_color_img = color[
+                roi.pos.y : roi.pos.y + roi.height, roi.pos.x : roi.pos.x + roi.width
+            ]
 
             cluster_mask = object_hypothesis.roi.mask
 
             color_height, color_width, color_dim = cluster_color_img.shape
             mask_height, mask_width = cluster_mask.shape
 
-            assert (color_height == mask_height)
-            assert (color_width == mask_width)
+            assert color_height == mask_height
+            assert color_width == mask_width
 
             # Convert to HSV_FULL. FULL is important, # because otherwise you just get H=0...180
-            cluster_hsv_color_img = cv2.cvtColor(cluster_color_img, cv2.COLOR_BGR2HSV_FULL)
+            cluster_hsv_color_img = cv2.cvtColor(
+                cluster_color_img, cv2.COLOR_BGR2HSV_FULL
+            )
 
             # Generate the actual histogram
-            hist_size = [self.descriptor.parameters.histogram_cols, self.descriptor.parameters.histogram_rows]
-            histogram_2d = cv2.calcHist([cluster_hsv_color_img], [0, 1], cluster_mask, histSize=hist_size,
-                                        ranges=[0, 256, 0, 256])
+            hist_size = [
+                self.descriptor.parameters.histogram_cols,
+                self.descriptor.parameters.histogram_rows,
+            ]
+            histogram_2d = cv2.calcHist(
+                [cluster_hsv_color_img],
+                [0, 1],
+                cluster_mask,
+                histSize=hist_size,
+                ranges=[0, 256, 0, 256],
+            )
             normalized_histogram2d = histogram_2d / histogram_2d.sum()
 
             color_histogram_annotation = robokudo.types.annotation.ColorHistogram()
@@ -185,10 +201,14 @@ class ClusterColorHistogramAnnotator(robokudo.annotators.core.BaseAnnotator):
 
             # Add the histogram to the plot if desired
             if self.descriptor.parameters.generate_plot_output:
-                p = axes1d[cluster_index].imshow(normalized_histogram2d, interpolation="nearest")
-                axes1d[cluster_index].set_title(f"HS(V) hist cluster={cluster_index}", fontdict={'fontsize': 8})
-                axes1d[cluster_index].set_ylabel('sat')
-                axes1d[cluster_index].set_xlabel('hue')
+                p = axes1d[cluster_index].imshow(
+                    normalized_histogram2d, interpolation="nearest"
+                )
+                axes1d[cluster_index].set_title(
+                    f"HS(V) hist cluster={cluster_index}", fontdict={"fontsize": 8}
+                )
+                axes1d[cluster_index].set_ylabel("sat")
+                axes1d[cluster_index].set_xlabel("hue")
 
             cluster_index += 1
 
@@ -196,7 +216,7 @@ class ClusterColorHistogramAnnotator(robokudo.annotators.core.BaseAnnotator):
         if self.descriptor.parameters.generate_plot_output:
             # https://stackoverflow.com/questions/43099734/combining-cv2-imshow-with-matplotlib-plt-show-in-real-time/43101480
             fig.canvas.draw()
-            img = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+            img = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep="")
             img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
             plt.cla()  # cleanup figures

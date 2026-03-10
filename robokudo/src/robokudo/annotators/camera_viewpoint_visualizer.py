@@ -4,15 +4,12 @@ This module provides an annotator for visualizing camera viewpoints and referenc
 in 3D space using Open3D.
 """
 
-import numpy as np
 import open3d as o3d
 
 from py_trees.common import Status
 
 import robokudo.utils.annotator_helper
 from . import core
-from ..types.tf import StampedTransform
-from ..utils.transform import get_transform_matrix_from_q
 from ..cas import CASViews
 
 
@@ -26,7 +23,7 @@ class CameraViewpointVisualizer(core.BaseAnnotator):
     The annotator will fail if the required viewpoint transform cannot be found in the CAS.
     """
 
-    def __init__(self, name: str = "CameraViewpointVisualizer"):
+    def __init__(self, name: str = "CameraViewpointVisualizer") -> None:
         """Initialize the camera viewpoint visualizer.
 
         :param name: Name of the annotator instance, defaults to "CameraViewpointVisualizer"
@@ -46,7 +43,11 @@ class CameraViewpointVisualizer(core.BaseAnnotator):
         :raises AssertionError: If viewpoint transform is of a wrong type
         """
         try:
-            world_to_cam_transform = robokudo.utils.annotator_helper.get_world_to_cam_transform_matrix(self.get_cas())
+            world_to_cam_transform = (
+                robokudo.utils.annotator_helper.get_world_to_cam_transform_matrix(
+                    self.get_cas()
+                )
+            )
         except KeyError as err:
             self.rk_logger.warning(f"Couldn't find viewpoint in the CAS: {err}")
             return Status.FAILURE

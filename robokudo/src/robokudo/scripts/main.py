@@ -8,7 +8,6 @@ import os
 import sys
 import threading
 import traceback
-from pathlib import Path
 
 # For time measurements or additional logic
 from timeit import default_timer as timer
@@ -18,26 +17,25 @@ import py_trees
 
 # ROS imports
 import rclpy
+import rclpy.executors
+import rclpy.impl.logging_severity
 import rclpy.logging
-from ament_index_python.packages import get_package_share_directory
-from rclpy.executors import MultiThreadedExecutor
-from rclpy.executors import SingleThreadedExecutor
-from rclpy.impl.logging_severity import LoggingSeverity
-from rclpy.parameter import Parameter
 from typing_extensions import TYPE_CHECKING
+
+import robokudo.annotators.query
 
 # RoboKudo imports
 import robokudo.defs
 import robokudo.garden
-from robokudo.annotators.query import QueryActionServer
-from robokudo.identifier import BBIdentifier
-from robokudo.utils.logging_configuration import configure_logging
-from robokudo.utils.module_loader import ModuleLoader
+import robokudo.identifier
+import robokudo.io.ros
+import robokudo.utils.logging_configuration
+import robokudo.utils.module_loader
+import robokudo.utils.tree
 
 if TYPE_CHECKING:
-    from py_trees_ros.trees import BehaviourTree
-    from rclpy.node import Node
-
+    import py_trees_ros.trees
+    import rclpy.node
 
 # Silence some TensorFlow GPU logs if needed
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
@@ -45,8 +43,8 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 def run_ae(
     ae_name: str,
-    node: Node,
-    ae_root: BehaviourTree,
+    node: rclpy.node.Node,
+    ae_root: py_trees_ros.trees.BehaviourTree,
     tickrate: int = 20,
 ):
     """
@@ -141,40 +139,50 @@ def main():
     rclpy.init(args=sys.argv)
 
     if args.debugmode:
-        rclpy.logging.set_logger_level("", LoggingSeverity.DEBUG)
+        rclpy.logging.set_logger_level(
+            "", rclpy.impl.logging_severity.LoggingSeverity.DEBUG
+        )
 
     # 3. Logging setup
     logger = logging.getLogger(robokudo.defs.LOGGING_IDENTIFIER_MAIN_EXECUTABLE)
 
     log_cfg_file = (
-        ModuleLoader.get_module_path(robokudo.defs.PACKAGE_NAME)
+        robokudo.utils.module_loader.ModuleLoader.get_module_path(
+            robokudo.defs.PACKAGE_NAME
+        )
         / "logging_levels.yaml"
     )
-    configure_logging(logging_config_file_name=str(log_cfg_file))
+    robokudo.utils.logging_configuration.configure_logging(
+        logging_config_file_name=str(log_cfg_file)
+    )
 
     # 4. Create a main ROS node
     node_name = robokudo.defs.PACKAGE_NAME + args.nodesuffix
-    node1 = rclpy.create_node(
+    node1 = robokudo.io.ros.init_node(
         node_name,
         parameter_overrides=[
-            Parameter("default_snapshot_stream", Parameter.Type.BOOL, True),
-            Parameter("default_snapshot_period", Parameter.Type.DOUBLE, 2.0),
+            rclpy.parameter.Parameter(
+                "default_snapshot_stream", rclpy.parameter.Parameter.Type.BOOL, True
+            ),
+            rclpy.parameter.Parameter(
+                "default_snapshot_period", rclpy.parameter.Parameter.Type.DOUBLE, 2.0
+            ),
         ],
     )
     logger.info(f"Created node: {node_name}")
 
     # 5. Create any action servers or supporting nodes
-    query_action_server = QueryActionServer(name="query")
+    query_action_server = robokudo.annotators.query.QueryActionServer(name="query")
     blackboard = py_trees.blackboard.Blackboard()
-    blackboard.set(BBIdentifier.QUERY_SERVER, query_action_server)
+    blackboard.set(robokudo.identifier.BBIdentifier.QUERY_SERVER, query_action_server)
     blackboard.set(
-        BBIdentifier.QUERY_SERVER_IN_PIPELINE, False
+        robokudo.identifier.BBIdentifier.QUERY_SERVER_IN_PIPELINE, False
     )  # Ownership in Pipeline has to be declared first
 
     # 6. Start executors in separate threads
-    executor_main = SingleThreadedExecutor()
+    executor_main = rclpy.executors.SingleThreadedExecutor()
     executor_asrv = (
-        MultiThreadedExecutor()
+        rclpy.executors.MultiThreadedExecutor()
     )  # Necessary to handle long-running goals AND incoming preempts
 
     executor_main.add_node(node1)
@@ -196,7 +204,7 @@ def main():
     thread_asrv.start()
 
     # 7. Dynamically load the requested Analysis Engine (AE) using the **refactored** ModuleLoader
-    loader = ModuleLoader()
+    loader = robokudo.utils.module_loader.ModuleLoader()
     logger.info(f"Loading AE '{args.ae}' from package '{args.ros_pkg}'...")
     loaded_ae = loader.load_ae(ros_pkg_name=args.ros_pkg, module_name=args.ae)
 

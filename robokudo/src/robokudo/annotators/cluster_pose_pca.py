@@ -17,6 +17,7 @@ The module uses:
 .. note::
    Requires at least 10 points per object hypothesis.
 """
+
 import copy
 from timeit import default_timer
 
@@ -36,33 +37,32 @@ from robokudo.cas import CASViews
 
 class ClusterPosePCAAnnotator(robokudo.annotators.core.BaseAnnotator):
     """3D pose estimation using principal component analysis.
-    
+
     This annotator:
-    
+
     * Calculates 3D poses for object point clusters
     * Uses PCA for orientation estimation
     * Aligns coordinate frames with principal axes
     * Creates pose annotations
     * Generates visualization markers
-    
+
     .. note::
        Requires minimum 10 points per object hypothesis.
     """
 
-    def __init__(self, name="ClusterPosePCAAnnotator"):
+    def __init__(self, name: str = "ClusterPosePCAAnnotator") -> None:
         """Initialize the PCA pose estimator.
 
         :param name: Name of this annotator instance, defaults to "ClusterPosePCAAnnotator"
-        :type name: str, optional
         """
         super().__init__(name)
         self.rk_logger.debug("%s.__init__()" % self.__class__.__name__)
 
-    def update(self):
+    def update(self) -> py_trees.common.Status:
         """Process object hypotheses and estimate poses.
 
         The method:
-        
+
         * Loads point cloud from CAS
         * For each object hypothesis:
           * Computes centroid and covariance
@@ -70,9 +70,8 @@ class ClusterPosePCAAnnotator(robokudo.annotators.core.BaseAnnotator):
           * Aligns coordinate frame with principal axes
           * Creates pose annotations
           * Creates visualization markers
-        
+
         :return: SUCCESS after processing
-        :rtype: py_trees.Status
         """
         start_timer = default_timer()
 
@@ -128,7 +127,10 @@ class ClusterPosePCAAnnotator(robokudo.annotators.core.BaseAnnotator):
             pose_annotation = robokudo.types.annotation.PoseAnnotation()
             pose_annotation.translation = list(centroid)
             pose_annotation.rotation = list(
-                robokudo.utils.transform.get_quaternion_from_rotation_matrix(new_rotation))
+                robokudo.utils.transform.get_quaternion_from_rotation_matrix(
+                    new_rotation
+                )
+            )
             pose_annotation.source = type(self).__name__
             object_hypothesis.annotations.append(pose_annotation)
 
@@ -146,5 +148,5 @@ class ClusterPosePCAAnnotator(robokudo.annotators.core.BaseAnnotator):
         self.get_annotator_output_struct().set_geometries(vis_geometries)
 
         end_timer = default_timer()
-        self.feedback_message = f'Processing took {(end_timer - start_timer):.4f}s'
+        self.feedback_message = f"Processing took {(end_timer - start_timer):.4f}s"
         return py_trees.common.Status.SUCCESS

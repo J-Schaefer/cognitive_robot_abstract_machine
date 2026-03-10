@@ -17,17 +17,18 @@ The module uses:
 .. note::
    This is typically the first annotator in a pipeline.
 """
+
 from dataclasses import dataclass
 from timeit import default_timer as timer
-from typing import Optional
+from typing_extensions import Optional, List
 
 import py_trees
-import rclpy
 
-import robokudo.annotators
+import robokudo.annotators.core
 import robokudo.cas
 import robokudo.io
 from robokudo.world import world_instance
+import robokudo.io.camera_interface
 
 
 class CollectionReaderAnnotator(robokudo.annotators.core.BaseAnnotator):
@@ -48,47 +49,50 @@ class CollectionReaderAnnotator(robokudo.annotators.core.BaseAnnotator):
     class Descriptor(robokudo.annotators.core.BaseAnnotator.Descriptor):
         """Configuration descriptor for collection reader."""
 
-        def __init__(self, camera_config, camera_interface):
+        def __init__(
+            self,
+            camera_config,
+            camera_interface: robokudo.io.camera_interface.CameraInterface,
+        ) -> None:
             """Initialize descriptor with camera configuration.
 
             :param camera_config: Configuration for camera interface
-            :type camera_config: object
             :param camera_interface: Interface for reading camera data
-            :type camera_interface: robokudo.io.CameraInterface
             """
 
             class Parameters:
-                """Parameters for configuring collection reader.
+                """Parameters for configuring collection reader."""
 
-                :ivar camera_config: Configuration for camera interface
-                :type camera_config: object
-                :ivar camera_interface: Interface for reading camera data
-                :type camera_interface: robokudo.io.CameraInterface
-                """
-
-                def __init__(self):
+                def __init__(self) -> None:
                     self.camera_config = camera_config
+                    """Configuration for camera interface"""
+
                     self.camera_interface = camera_interface
+                    """Interface for reading camera data"""
 
             self.parameters = Parameters()
 
-    def __init__(self, descriptor, name="CollectionReader"):
+    def __init__(
+        self,
+        descriptor: "CollectionReaderAnnotator.Descriptor",
+        name: str = "CollectionReader",
+    ) -> None:
         """Initialize the collection reader.
 
         :param descriptor: Configuration descriptor
-        :type descriptor: CollectionReaderAnnotator.Descriptor
         :param name: Name of this annotator instance, defaults to "CollectionReader"
-        :type name: str, optional
         """
         super().__init__(name, descriptor)
         self.rk_logger.debug("%s.__init__()" % self.__class__.__name__)
 
-        self.collection_readers = [descriptor]
-        self.start_timer = None
-        self.iterations_since_last_data = 0
-        self.iterations_since_last_data_warn_threshold = 40
+        self.collection_readers: List["CollectionReaderAnnotator.Descriptor"] = [
+            descriptor
+        ]
+        self.start_timer: Optional[float] = None
+        self.iterations_since_last_data: int = 0
+        self.iterations_since_last_data_warn_threshold: int = 40
 
-    def initialise(self):
+    def initialise(self) -> None:
         """Initialize the collection reader.
 
         Called when:
@@ -101,21 +105,24 @@ class CollectionReaderAnnotator(robokudo.annotators.core.BaseAnnotator):
         self.rk_logger.debug("%s.initialise()" % self.__class__.__name__)
 
         # Clear all feedback messages when Collection Reader starts over
-        assert (isinstance(self.parent, py_trees.composites.Sequence))
+        assert isinstance(self.parent, py_trees.composites.Sequence)
         for child in self.parent.children:
-            child.feedback_message = ''
+            child.feedback_message = ""
 
-    def add_collection_reader(self, descriptor: Descriptor):
+    def add_collection_reader(
+        self, descriptor: "CollectionReaderAnnotator.Descriptor"
+    ) -> None:
         """Add another collection reader descriptor.
 
         :param descriptor: Configuration descriptor for additional reader
-        :type descriptor: CollectionReaderAnnotator.Descriptor
         """
         interface_type = descriptor.parameters.camera_interface.interface_type
         self.collection_readers.append(descriptor)
-        self.logger.debug(f"added descriptor to collection readers with camera interface '{interface_type}'")
+        self.logger.debug(
+            f"added descriptor to collection readers with camera interface '{interface_type}'"
+        )
 
-    def update(self):
+    def update(self) -> py_trees.common.Status:
         """Process sensor data and update CAS.
 
         The method:
@@ -127,20 +134,25 @@ class CollectionReaderAnnotator(robokudo.annotators.core.BaseAnnotator):
         * Monitors data availability
 
         :return: SUCCESS if data processed, RUNNING if waiting
-        :rtype: py_trees.Status
         """
         if self.start_timer is None:
             self.start_timer = timer()
 
         all_crs_have_data = True
         for collection_reader in self.collection_readers:
-            all_crs_have_data = all_crs_have_data & collection_reader.parameters.camera_interface.has_new_data()
+            all_crs_have_data = (
+                all_crs_have_data
+                & collection_reader.parameters.camera_interface.has_new_data()
+            )
 
         if all_crs_have_data:
             self.iterations_since_last_data = 0
-            self.rk_logger.debug("%s.update(): All CRs have new data! Creating a new CAS." % self.__class__.__name__)
+            self.rk_logger.debug(
+                "%s.update(): All CRs have new data! Creating a new CAS."
+                % self.__class__.__name__
+            )
             end_timer = timer()
-            time_difference = (end_timer - self.start_timer)
+            time_difference = end_timer - self.start_timer
             self.rk_logger.debug("Waited for %f seconds \n" % time_difference)
             self.start_timer = None
             pipeline = self.get_parent_pipeline()
@@ -164,7 +176,9 @@ class CollectionReaderAnnotator(robokudo.annotators.core.BaseAnnotator):
             for collection_reader in self.collection_readers:
                 collection_reader.parameters.camera_interface.set_data(self.get_cas())
 
-            self.feedback_message = f"Got sensor data... Waited for {time_difference} seconds"
+            self.feedback_message = (
+                f"Got sensor data... Waited for {time_difference} seconds"
+            )
             if self.parent:
                 self.rk_logger.info("Current Behavior Tree:")
                 print(py_trees.display.unicode_tree(self.parent))
@@ -174,22 +188,29 @@ class CollectionReaderAnnotator(robokudo.annotators.core.BaseAnnotator):
         else:
             self.iterations_since_last_data += 1
             self.feedback_message = "Waiting for incoming sensor data ..."
-            if self.iterations_since_last_data >= self.iterations_since_last_data_warn_threshold:
+            if (
+                self.iterations_since_last_data
+                >= self.iterations_since_last_data_warn_threshold
+            ):
                 self.rk_logger.warning(
-                    f"Didn't receive sensor data since {self.iterations_since_last_data} iterations.")
+                    f"Didn't receive sensor data since {self.iterations_since_last_data} iterations."
+                )
                 for collection_reader in self.collection_readers:
                     self.rk_logger.warning(
-                        f"  CR data available?: {collection_reader.parameters.camera_interface.has_new_data()}")
+                        f"  CR data available?: {collection_reader.parameters.camera_interface.has_new_data()}"
+                    )
                 self.iterations_since_last_data = 0
             return py_trees.common.Status.RUNNING
 
-    def terminate(self, new_status):
+    def terminate(self, new_status: py_trees.common.Status) -> None:
         """Handle behavior termination.
 
         :param new_status: New status (SUCCESS, FAILURE or INVALID)
-        :type new_status: py_trees.Status
         """
-        self.rk_logger.debug("%s.terminate()[%s->%s]" % (self.__class__.__name__, self.status, new_status))
+        self.rk_logger.debug(
+            "%s.terminate()[%s->%s]"
+            % (self.__class__.__name__, self.status, new_status)
+        )
 
 
 """ROS1 TO ROS2 

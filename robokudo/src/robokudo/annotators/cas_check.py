@@ -38,7 +38,7 @@ class CASCheckFunc(core.BaseAnnotator):
         name: str = "CASCheckFunc",
         func: Callable[[CAS], bool] = None,
         raise_with_str: str = "",
-    ):
+    ) -> None:
         """Initialize the CAS condition checker.
 
         :param name: Name of this node in the behavior tree, defaults to "CASCheckFunc"
@@ -96,7 +96,7 @@ class CASCheckAnnotationTypeExists(CASCheckFunc):
         name: str = "CASCheckAnnotationTypeExists",
         annotation_type: Optional[Type] = None,
         raise_with_str: str = "",
-    ):
+    ) -> None:
         """Initialize annotation type checker.
 
         :param name: Name of this node in the behavior tree, defaults to "CASCheckAnnotationTypeExists"
@@ -119,7 +119,9 @@ class CASCheckOHExists(CASCheckAnnotationTypeExists):
     * Returns FAILURE if no ObjectHypothesis exists
     """
 
-    def __init__(self, name: str = "CASCheckOHExists", raise_with_str: str = ""):
+    def __init__(
+        self, name: str = "CASCheckOHExists", raise_with_str: str = ""
+    ) -> None:
         """Initialize ObjectHypothesis checker.
 
         :param name: Name of this node in the behavior tree, defaults to "CASCheckOHExists"

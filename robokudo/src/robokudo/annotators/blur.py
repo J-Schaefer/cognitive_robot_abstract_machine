@@ -45,22 +45,21 @@ class BlurAnnotator(core.BaseAnnotator):
         class Parameters:
             """Parameters for configuring blur detection behavior."""
 
-            def __init__(self):
+            def __init__(self) -> None:
                 self.blur_threshold: float = 100.0
                 """Threshold for acceptable blur level, defaults to 100"""
 
                 self.return_failure_above_threshold: bool = True
                 """Let this behaviour return failure to stop the advancement of the current pipeline"""
 
-        parameters = (
-            Parameters()
-        )  # overwrite the parameters explicitly to enable auto-completion
+        # Overwrite the parameters explicitly to enable auto-completion
+        parameters = Parameters()
 
     def __init__(
         self,
         name: str = "BlurAnnotator",
         descriptor: "BlurAnnotator.Descriptor" = Descriptor(),
-    ):
+    ) -> None:
         """Initialize the blur annotator. Minimal one-time init!
 
         :param name: Name of the annotator instance, defaults to "BlurAnnotator"

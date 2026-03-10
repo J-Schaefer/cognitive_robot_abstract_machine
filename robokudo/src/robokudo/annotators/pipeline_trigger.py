@@ -9,9 +9,11 @@ This module provides an annotator for:
 .. note::
    The pipeline will remain in RUNNING state until triggered.
 """
+
 import py_trees
 
 import robokudo.annotators
+import robokudo.annotators.core
 
 
 class PipelineTrigger(robokudo.annotators.core.BaseAnnotator):
@@ -25,15 +27,14 @@ class PipelineTrigger(robokudo.annotators.core.BaseAnnotator):
        The trigger is accessed via "pipeline_trigger" on the blackboard.
     """
 
-    def __init__(self, name="PipelineTrigger"):
+    def __init__(self, name: str = "PipelineTrigger") -> None:
         """Initialize the pipeline trigger.
 
         :param name: Name of this annotator instance, defaults to "PipelineTrigger"
-        :type name: str, optional
         """
         super().__init__(name)
 
-    def update(self):
+    def update(self) -> py_trees.common.Status:
         """Check trigger state and control pipeline execution.
 
         The method:
@@ -44,7 +45,6 @@ class PipelineTrigger(robokudo.annotators.core.BaseAnnotator):
         * Returns RUNNING if not triggered
 
         :return: SUCCESS if triggered, RUNNING otherwise
-        :rtype: py_trees.Status
         """
         self.rk_logger.debug("%s.update()" % (self.__class__.__name__))
         blackboard = py_trees.blackboard.Blackboard()

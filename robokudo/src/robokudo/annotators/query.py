@@ -17,6 +17,7 @@ The module is used for:
 * Interactive perception tasks
 * Asynchronous data exchange
 """
+
 import logging
 import queue
 import threading
@@ -35,19 +36,32 @@ import robokudo.types.annotation
 import robokudo.types.cv
 import robokudo.types.scene
 import robokudo_msgs.msg
-from robokudo.annotators.core import BaseAnnotator
+import robokudo.annotators.core
 from robokudo.cas import CASViews
 from robokudo.identifier import BBIdentifier
-from robokudo.utils.annotation_conversion import SemanticColor2ODConverter, \
-    Classification2ODConverter, StampedPose2ODConverter, BoundingBox3DForShapeSizeConverter, Pose2ODConverter, \
-    Position2ODConverter, StampedPosition2ODConverter, Shape2ODConverter, Cuboid2ODConverter, Sphere2ODConverter, \
-    Location2ODConverter
-from robokudo.utils.error_handling import has_blackboard_exception, get_blackboard_exception, clear_blackboard_exception
+from robokudo.utils.annotation_conversion import (
+    SemanticColor2ODConverter,
+    Classification2ODConverter,
+    StampedPose2ODConverter,
+    BoundingBox3DForShapeSizeConverter,
+    Pose2ODConverter,
+    Position2ODConverter,
+    StampedPosition2ODConverter,
+    Shape2ODConverter,
+    Cuboid2ODConverter,
+    Sphere2ODConverter,
+    Location2ODConverter,
+)
+from robokudo.utils.error_handling import (
+    has_blackboard_exception,
+    get_blackboard_exception,
+    clear_blackboard_exception,
+)
 from robokudo.utils.query import QueryHandler
 from robokudo_msgs.action import Query
 
 
-class QueryAnnotator(BaseAnnotator):
+class QueryAnnotator(robokudo.annotators.core.BaseAnnotator):
     """Handle external queries through ROS action server.
 
     This Annotator spawns an Action Server that listens for Queries from external ROS nodes.
@@ -107,7 +121,9 @@ class QueryAnnotator(BaseAnnotator):
         """
         self.rk_logger.debug(f"{self.__class__.__name__}.update()")
 
-        assert self.action_server is not None, "Action server should be initialized by now."
+        assert (
+            self.action_server is not None
+        ), "Action server should be initialized by now."
         query = self.action_server.new_query
         self.rk_logger.debug(f"self.action_server.new_query: {query}")
 
@@ -123,7 +139,7 @@ class QueryAnnotator(BaseAnnotator):
         return py_trees.common.Status.RUNNING
 
 
-class QueryFeedback(BaseAnnotator):
+class QueryFeedback(robokudo.annotators.core.BaseAnnotator):
     """
     A test class which simply generates a fixed-string feedback.
     """
@@ -139,13 +155,18 @@ class QueryFeedback(BaseAnnotator):
         return py_trees.common.Status.SUCCESS
 
 
-class QueryFeedbackAndCount(BaseAnnotator):
+class QueryFeedbackAndCount(robokudo.annotators.core.BaseAnnotator):
     """
     A test class which simply counts up until a fixed number.
     Until this number is reached, a pre-defined status is returned.
     """
 
-    def __init__(self, name="QueryFeedback", count_until=20, return_code=py_trees.common.Status.RUNNING):
+    def __init__(
+        self,
+        name="QueryFeedback",
+        count_until=20,
+        return_code=py_trees.common.Status.RUNNING,
+    ):
         super().__init__(name=name)
         self.i = 0
         self.count_until = count_until
@@ -162,7 +183,7 @@ class QueryFeedbackAndCount(BaseAnnotator):
             return self.return_code
 
 
-class QueryReply(BaseAnnotator):
+class QueryReply(robokudo.annotators.core.BaseAnnotator):
     """
     A test class which simply generates an empty Query Answer to check
     if the Action server can reply properly.
@@ -197,6 +218,7 @@ class QueryReply(BaseAnnotator):
         od = robokudo_msgs.msg.ObjectDesignator()
 
         import geometry_msgs
+
         pose_stamped = geometry_msgs.msg.PoseStamped()
 
         # Explicitly cast to float
@@ -217,7 +239,7 @@ class QueryReply(BaseAnnotator):
         return py_trees.common.Status.SUCCESS
 
 
-class GenerateQueryResult(BaseAnnotator):
+class GenerateQueryResult(robokudo.annotators.core.BaseAnnotator):
     """
     This class reads in the annotations done by the previous Annotators
     and generates Object Designators from them.
@@ -296,15 +318,19 @@ class GenerateQueryResult(BaseAnnotator):
                 converter = self.type_converter.get(type(oh_annotation), None)
                 if converter is None:
                     self.rk_logger.warning(
-                        f"no converter available for annotation type {type(oh_annotation)}, skipping annotation.")
+                        f"no converter available for annotation type {type(oh_annotation)}, skipping annotation."
+                    )
                     continue
                 if not converter.can_convert(oh_annotation):
                     self.rk_logger.warning(
-                        f"converter for {type(oh_annotation)} available but cannot convert, skipping annotation.")
+                        f"converter for {type(oh_annotation)} available but cannot convert, skipping annotation."
+                    )
                     continue
 
                 converter.convert(oh_annotation, cas, object_designator)
-                self.rk_logger.info(f"converted {type(oh_annotation)} on OH {object_hypotheses_count}")
+                self.rk_logger.info(
+                    f"converted {type(oh_annotation)} on OH {object_hypotheses_count}"
+                )
 
             query_result.append(object_designator)
             object_hypotheses_count += 1
@@ -312,7 +338,9 @@ class GenerateQueryResult(BaseAnnotator):
         result.res = query_result
         QueryHandler.send_answer(result)
 
-        self.feedback_message = f"Send result for {object_hypotheses_count} object hypotheses"
+        self.feedback_message = (
+            f"Send result for {object_hypotheses_count} object hypotheses"
+        )
         return py_trees.common.Status.SUCCESS
 
 
@@ -332,8 +360,13 @@ class QueryActionServer(Node):
     :type query: robokudo_msgs.msg.QueryGoal
     """
 
-    def __init__(self, name, feedback_instance=Query.Feedback(),
-                 result_instance=Query.Result(), action_type=Query):
+    def __init__(
+        self,
+        name,
+        feedback_instance=Query.Feedback(),
+        result_instance=Query.Result(),
+        action_type=Query,
+    ):
         super().__init__(name, namespace="robokudo")
         self._action_name = name
         self._as = ActionServer(
@@ -364,7 +397,9 @@ class QueryActionServer(Node):
         self.new_query = None
         py_trees.blackboard.Blackboard().set(BBIdentifier.QUERY_ANSWER, None)
         py_trees.blackboard.Blackboard().set(BBIdentifier.QUERY_FEEDBACK, queue.Queue())
-        py_trees.blackboard.Blackboard().set(BBIdentifier.QUERY_PREEMPT_REQUESTED, False)
+        py_trees.blackboard.Blackboard().set(
+            BBIdentifier.QUERY_PREEMPT_REQUESTED, False
+        )
         py_trees.blackboard.Blackboard().set(BBIdentifier.QUERY_PREEMPT_ACK, False)
 
     def goal_cb(self, goal_request):
@@ -415,7 +450,9 @@ class QueryActionServer(Node):
         self.logger.info("Begin waiting for new_query")
         self.logger.info("Processing query...")
 
-        feedback_queue = py_trees.blackboard.Blackboard().get(BBIdentifier.QUERY_FEEDBACK)
+        feedback_queue = py_trees.blackboard.Blackboard().get(
+            BBIdentifier.QUERY_FEEDBACK
+        )
         self.logger.info("Start watching")
 
         while rclpy.ok():
@@ -423,7 +460,9 @@ class QueryActionServer(Node):
 
             # At least one node in the Tree has to acknowledge the preempt request. This allows the tree
             # to properly shutdown.
-            preempt_acknowledge = py_trees.blackboard.Blackboard().get(BBIdentifier.QUERY_PREEMPT_ACK)
+            preempt_acknowledge = py_trees.blackboard.Blackboard().get(
+                BBIdentifier.QUERY_PREEMPT_ACK
+            )
             if goal_handle.is_cancel_requested and preempt_acknowledge:
                 self.logger.info("Goal cancel acknowledged by PPT.")
                 goal_handle.canceled()
@@ -445,9 +484,13 @@ class QueryActionServer(Node):
             try:
                 feedback_msg = feedback_queue.get_nowait()
                 if isinstance(feedback_msg, Query.Feedback):
-                    self.feedback_instance.feedback = feedback_msg.feedback  # Adjust based on actual field
+                    self.feedback_instance.feedback = (
+                        feedback_msg.feedback
+                    )  # Adjust based on actual field
                     goal_handle.publish_feedback(self.feedback_instance)
-                    self.logger.info(f"Published feedback: {self.feedback_instance.feedback}")
+                    self.logger.info(
+                        f"Published feedback: {self.feedback_instance.feedback}"
+                    )
             except queue.Empty:
                 pass
 

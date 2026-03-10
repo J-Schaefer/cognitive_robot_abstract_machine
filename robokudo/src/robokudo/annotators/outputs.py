@@ -17,15 +17,22 @@ The module is used for:
 * Cross-pipeline data handling
 * Output type safety
 """
+
+from __future__ import annotations
+
 import logging
 
 import numpy as np
 import py_trees
 from py_trees.behaviour import Behaviour
+from typing_extensions import TYPE_CHECKING, Dict, List, Any
 
 import robokudo.defs
 import robokudo.pipeline
 import robokudo.utils.tree
+
+if TYPE_CHECKING:
+    import numpy.typing as npt
 
 
 class AnnotatorOutputStruct:
@@ -49,14 +56,14 @@ class AnnotatorOutputStruct:
         self.geometries = None
         self.render_next_time = True  # render defaults on the first run
 
-    def set_image(self, img):
+    def set_image(self, img: npt.NDArray) -> None:
         """
         Set the image in this AnnotatorOutputStruct and instruct the GUI to render it next time.
         """
         self.image = img
         self.render_next_time = True
 
-    def set_geometries(self, geometries):
+    def set_geometries(self, geometries: List[Dict[str, Any]]) -> None:
         """
         Set the geometries in this AnnotatorOutputStruct and instruct the GUI to render it next time.
 
@@ -126,20 +133,28 @@ class ClearAnnotatorOutputs(Behaviour):
     Put directly in the corresponding RK Pipeline
     """
 
-    def __init__(self, name='ClearAnnotatorOutputs'):
+    def __init__(self, name="ClearAnnotatorOutputs"):
         super().__init__("ClearAnnotatorOutputs")
         self.rk_logger = logging.getLogger(robokudo.defs.PACKAGE_NAME)
 
     def update(self):
         self.rk_logger.debug("%s.update()" % (self.__class__.__name__))
         blackboard = py_trees.blackboard.Blackboard()
-        annotator_output_pipeline_map_buffer = blackboard.get("annotator_output_pipeline_map_buffer")
-        assert (isinstance(annotator_output_pipeline_map_buffer,
-                           robokudo.annotators.outputs.AnnotatorOutputPerPipelineMap))
+        annotator_output_pipeline_map_buffer = blackboard.get(
+            "annotator_output_pipeline_map_buffer"
+        )
+        assert isinstance(
+            annotator_output_pipeline_map_buffer,
+            robokudo.annotators.outputs.AnnotatorOutputPerPipelineMap,
+        )
 
-        pipeline = robokudo.utils.tree.find_parent_of_type(self, robokudo.pipeline.Pipeline)
+        pipeline = robokudo.utils.tree.find_parent_of_type(
+            self, robokudo.pipeline.Pipeline
+        )
         annotator_outputs = annotator_output_pipeline_map_buffer.map[pipeline.name]
-        assert (isinstance(annotator_outputs, robokudo.annotators.outputs.AnnotatorOutputs))
+        assert isinstance(
+            annotator_outputs, robokudo.annotators.outputs.AnnotatorOutputs
+        )
         annotator_outputs.clear_outputs()
 
         return py_trees.common.Status.SUCCESS

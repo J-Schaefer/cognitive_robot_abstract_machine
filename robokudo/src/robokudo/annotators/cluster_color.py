@@ -8,6 +8,7 @@ using HSV color space segmentation.
 .. warning::
    The non-numba version of color counting may contain bugs in color counting.
 """
+
 import copy
 from enum import Enum
 from timeit import default_timer
@@ -18,6 +19,7 @@ import numpy as np
 import numpy.ma
 import numpy.typing as npt
 import py_trees
+from typing_extensions import Type, Dict, Tuple, List
 
 import robokudo.annotators
 import robokudo.annotators.core
@@ -27,6 +29,7 @@ import robokudo.types.scene
 import robokudo.utils.cv_helper
 import robokudo.utils.error_handling
 from robokudo.cas import CASViews
+from robokudo.types.cv import Rect
 
 
 class Color(Enum):
@@ -36,15 +39,16 @@ class Color(Enum):
     * Secondary colors: YELLOW, CYAN, MAGENTA
     * Grayscale: WHITE, BLACK, GREY
     """
-    RED = 0,
-    YELLOW = 1,
-    GREEN = 2,
-    CYAN = 3,
-    BLUE = 4,
-    MAGENTA = 5,
-    WHITE = 6,
-    BLACK = 7,
-    GREY = 8,
+
+    RED = (0,)
+    YELLOW = (1,)
+    GREEN = (2,)
+    CYAN = (3,)
+    BLUE = (4,)
+    MAGENTA = (5,)
+    WHITE = (6,)
+    BLACK = (7,)
+    GREY = (8,)
     # COUNT # Use len(Color) instead
 
 
@@ -78,23 +82,24 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
         class Parameters:
             """Parameters for color analysis configuration."""
 
-            def __init__(self):
-                self.num_of_colors = 6
-                self.color_range = 256 / self.num_of_colors
-                self.jit_compile_on_init = False
-                self.min_value_color = 60
-                self.min_saturation_color = 60
-                self.max_value_black = 60
-                self.min_value_white = 120
-                self.ratio_annotation_threshold = 0.2
-                self.analysis_scope = robokudo.types.scene.AnalyzableAnnotation
+            def __init__(self) -> None:
+                self.num_of_colors: int = 6
+                self.color_range: float = 256 / self.num_of_colors
+                self.jit_compile_on_init: bool = False
+                self.min_value_color: int = 60
+                self.min_saturation_color: int = 60
+                self.max_value_black: int = 60
+                self.min_value_white: int = 120
+                self.ratio_annotation_threshold: float = 0.2
+                self.analysis_scope: Type = robokudo.types.scene.AnalyzableAnnotation
 
-        parameters = Parameters()  # overwrite the parameters explicitly to enable auto-completion
+        # Overwrite the parameters explicitly to enable auto-completion
+        parameters = Parameters()
 
     # To easily define this, we use RGB here and then flip it. OpenCV in python uses BGR per default.
     # Please note, that this color will not be used for the segmentation!
     # The segmentation is mainly done with self.color_hue_positions
-    color_name_to_bgr_values = {
+    color_name_to_bgr_values: Dict[Color, Tuple[int, ...]] = {
         Color.RED: tuple(reversed((255, 0, 0))),
         Color.YELLOW: tuple(reversed((255, 255, 0))),
         Color.GREEN: tuple(reversed((0, 255, 0))),
@@ -106,21 +111,26 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
         Color.GREY: tuple(reversed((127, 127, 127))),
     }
 
-    def __init__(self, name="ClusterColorAnnotator", descriptor=Descriptor()):
+    def __init__(
+        self,
+        name: str = "ClusterColorAnnotator",
+        descriptor: "ClusterColorAnnotator.Descriptor" = Descriptor(),
+    ):
         """Default construction. Minimal one-time init!
 
         :param name: Name of the annotator instance, defaults to "ClusterColorAnnotator"
-        :type name: str
         :param descriptor: Configuration descriptor, defaults to Descriptor()
-        :type descriptor: ClusterColorAnnotator.Descriptor
         """
         super().__init__(name, descriptor)
         self.rk_logger.debug("%s.__init__()" % self.__class__.__name__)
 
         # This list defines the range of a certain color.
-        hue_intervals = \
-            [i * self.descriptor.parameters.color_range + self.descriptor.parameters.color_range / 2 + 0.5 for i in
-             range(0, self.descriptor.parameters.num_of_colors)]
+        hue_intervals = [
+            i * self.descriptor.parameters.color_range
+            + self.descriptor.parameters.color_range / 2
+            + 0.5
+            for i in range(0, self.descriptor.parameters.num_of_colors)
+        ]
 
         self.color_hue_positions = {
             Color.RED: hue_intervals[0],
@@ -131,8 +141,8 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
             Color.MAGENTA: hue_intervals[5],
         }
 
-        self.cluster_color_info = []
-        self.cluster_rois = []
+        self.cluster_color_info: List[List[Tuple[Color, int, float]]] = []
+        self.cluster_rois: List[Rect] = []
 
         # Trigger JIT by calling method first time with empty data
         if self.descriptor.parameters.jit_compile_on_init:
@@ -141,32 +151,35 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
             mask = np.array([[0]])
             self.count_colors_numba(hsv_image, mask)
             end_timer_jit = default_timer()
-            self.rk_logger.info(f'Pre-compilation took {(end_timer_jit - start_timer_jit):.4f}s')
+            self.rk_logger.info(
+                f"Pre-compilation took {(end_timer_jit - start_timer_jit):.4f}s"
+            )
 
-    def count_colors_numba(self, hsv_image: npt.NDArray, mask: npt.NDArray) -> (int, dict):
+    def count_colors_numba(
+        self, hsv_image: npt.NDArray, mask: npt.NDArray
+    ) -> Tuple[int, Dict[Color, int]]:
         """Wrapper function for the numba version of the count colors method.
 
         The wrapper handles the pythonic/object style data and prepares everything for the requirements
         of the numba method.
 
         :param hsv_image: Image in HSV color space
-        :type hsv_image: numpy.ndarray
         :param mask: Binary mask indicating pixels to analyze
-        :type mask: numpy.ndarray
         :return: A tuple with the number of analyzed pixels (given by the mask) as well as a dict with the counted
                 colors. The key is a Color enum from this module.
-        :rtype: tuple(int, dict)
         """
 
-        counted_pixel_sum, color_count = \
-            ClusterColorAnnotator.count_colors_numba_impl(hsv_image, mask,
-                                                          len(Color),
-                                                          self.descriptor.parameters.min_saturation_color,
-                                                          self.descriptor.parameters.min_value_color,
-                                                          self.descriptor.parameters.max_value_black,
-                                                          self.descriptor.parameters.min_value_white,
-                                                          self.descriptor.parameters.num_of_colors,
-                                                          self.descriptor.parameters.color_range)
+        counted_pixel_sum, color_count = ClusterColorAnnotator.count_colors_numba_impl(
+            hsv_image,
+            mask,
+            len(Color),
+            self.descriptor.parameters.min_saturation_color,
+            self.descriptor.parameters.min_value_color,
+            self.descriptor.parameters.max_value_black,
+            self.descriptor.parameters.min_value_white,
+            self.descriptor.parameters.num_of_colors,
+            self.descriptor.parameters.color_range,
+        )
 
         color_count_map = {}
         for c in Color:
@@ -176,45 +189,39 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
 
     @staticmethod
     @numba.njit
-    def count_colors_numba_impl(hsv_image: npt.NDArray, mask: npt.NDArray,
-                                total_amount_of_colors: int,
-                                min_saturation_color: int,
-                                min_value_color: int,
-                                max_value_black: int,
-                                min_value_white: int,
-                                number_of_colors: int,
-                                color_range: float) -> (int, npt.NDArray):
+    def count_colors_numba_impl(
+        hsv_image: npt.NDArray,
+        mask: npt.NDArray,
+        total_amount_of_colors: int,
+        min_saturation_color: int,
+        min_value_color: int,
+        max_value_black: int,
+        min_value_white: int,
+        number_of_colors: int,
+        color_range: float,
+    ) -> Tuple[int, npt.NDArray]:
         """Iterate over the masked pixels on a given hsv image to count how many pixels can be assigned
         to the defined color ranges. Requires the numba library and passes the required parameters to avoid
         class access and object-mode from numba.
 
         :param hsv_image: Image in HSV color space
-        :type hsv_image: numpy.ndarray
         :param mask: Binary mask indicating pixels to analyze
-        :type mask: numpy.ndarray
         :param total_amount_of_colors: Total number of color categories
-        :type total_amount_of_colors: int
         :param min_saturation_color: Minimum saturation for chromatic colors
-        :type min_saturation_color: int
         :param min_value_color: Minimum value for chromatic colors
-        :type min_value_color: int
         :param max_value_black: Maximum value for black classification
-        :type max_value_black: int
         :param min_value_white: Minimum value for white classification
-        :type min_value_white: int
         :param number_of_colors: Number of hue divisions
-        :type number_of_colors: int
         :param color_range: Size of each hue division
-        :type color_range: float
         :return: A tuple with the number of analyzed pixels (given by the mask) as well as a numpy array with the counted
                 colors. The id refers the indices of the Color enum from this module.
-        :rtype: tuple(int, numpy.ndarray)
         """
         width, height, channels = hsv_image.shape
         counted_pixel_sum = 0
 
-        hue_intervals = [i * color_range + color_range / 2 + 0.5 for i in
-                         range(0, number_of_colors)]
+        hue_intervals = [
+            i * color_range + color_range / 2 + 0.5 for i in range(0, number_of_colors)
+        ]
 
         # Amount of defined Colors (including black/white/grey)
         color_count = np.zeros(total_amount_of_colors, dtype=numpy.int32)
@@ -249,7 +256,9 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
                     color_count[Color.GREY.value[0]] += 1
         return counted_pixel_sum, color_count
 
-    def count_colors(self, hsv_image: npt.NDArray, mask: npt.NDArray) -> (int, dict):
+    def count_colors(
+        self, hsv_image: npt.NDArray, mask: npt.NDArray
+    ) -> Tuple[int, dict]:
         """Non-numba version of the count_colors_numba_impl method.
         Use only if you can't use numba.
 
@@ -257,11 +266,8 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
            Seems to contain a bug in color counting.
 
         :param hsv_image: Image in HSV color space
-        :type hsv_image: numpy.ndarray
         :param mask: Binary mask indicating pixels to analyze
-        :type mask: numpy.ndarray
         :return: A tuple with the number of analyzed pixels and a dict with color counts
-        :rtype: tuple(int, dict)
         """
         all_image_pixel_values_in_mask = hsv_image[mask == 255]
 
@@ -271,8 +277,10 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
         # val = 2
 
         # https://stackoverflow.com/questions/7662458/how-to-split-an-array-according-to-a-condition-in-numpy
-        def split(arr, cond):
-            return [arr[cond], arr[~cond]]
+        def split(
+            arr: npt.NDArray, cond: npt.NDArray
+        ) -> Tuple[npt.NDArray, npt.NDArray]:
+            return arr[cond], arr[~cond]
 
         # Input matrix
         im = all_image_pixel_values_in_mask
@@ -280,20 +288,44 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
         # We'll now create multiple pixel lists (pl) in a divide and conquer fashion.
         # Effectively reducing the number of pixels we have to analyze
         # We try to visit pixels as few times as possible.
-        pl_color, pl_bw_range = split(im, numpy.logical_and(im[:, 1] > self.descriptor.parameters.min_saturation_color,
-                                                            im[:, 2] > self.descriptor.parameters.min_value_color))
+        pl_color, pl_bw_range = split(
+            im,
+            np.logical_and(
+                im[:, 1] > self.descriptor.parameters.min_saturation_color,
+                im[:, 2] > self.descriptor.parameters.min_value_color,
+            ),
+        )
 
-        pl_black, pl_grey_white = split(pl_bw_range, pl_bw_range[:, 2] <= self.descriptor.parameters.max_value_black)
-        pl_white, pl_grey = split(pl_grey_white, pl_grey_white[:, 2] > self.descriptor.parameters.min_value_white)
+        pl_black, pl_grey_white = split(
+            pl_bw_range, pl_bw_range[:, 2] <= self.descriptor.parameters.max_value_black
+        )
+        pl_white, pl_grey = split(
+            pl_grey_white,
+            pl_grey_white[:, 2] > self.descriptor.parameters.min_value_white,
+        )
 
         # Check on the HUE channel the color and reduce the list of pixels piece-by-piece
-        pl_red, pl_rest = split(pl_color, pl_color[:, 0] < self.color_hue_positions[Color.RED])
-        pl_yellow, pl_rest = split(pl_rest, pl_rest[:, 0] < self.color_hue_positions[Color.YELLOW])
-        pl_green, pl_rest = split(pl_rest, pl_rest[:, 0] < self.color_hue_positions[Color.GREEN])
-        pl_cyan, pl_rest = split(pl_rest, pl_rest[:, 0] < self.color_hue_positions[Color.CYAN])
-        pl_blue, pl_rest = split(pl_rest, pl_rest[:, 0] < self.color_hue_positions[Color.BLUE])
-        pl_magenta, pl_rest = split(pl_rest, pl_rest[:, 0] < self.color_hue_positions[Color.MAGENTA])
-        pl_red = np.append(pl_red, pl_rest)  # the rest can be considered as red in the HUE scale
+        pl_red, pl_rest = split(
+            pl_color, pl_color[:, 0] < self.color_hue_positions[Color.RED]
+        )
+        pl_yellow, pl_rest = split(
+            pl_rest, pl_rest[:, 0] < self.color_hue_positions[Color.YELLOW]
+        )
+        pl_green, pl_rest = split(
+            pl_rest, pl_rest[:, 0] < self.color_hue_positions[Color.GREEN]
+        )
+        pl_cyan, pl_rest = split(
+            pl_rest, pl_rest[:, 0] < self.color_hue_positions[Color.CYAN]
+        )
+        pl_blue, pl_rest = split(
+            pl_rest, pl_rest[:, 0] < self.color_hue_positions[Color.BLUE]
+        )
+        pl_magenta, pl_rest = split(
+            pl_rest, pl_rest[:, 0] < self.color_hue_positions[Color.MAGENTA]
+        )
+        pl_red = np.append(
+            pl_red, pl_rest
+        )  # the rest can be considered as red in the HUE scale
 
         color_count = {
             Color.RED: len(pl_red),
@@ -309,7 +341,7 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
 
         return len(all_image_pixel_values_in_mask), color_count
 
-    def update(self):
+    def update(self) -> py_trees.common.Status:
         """Process current scene to analyze colors of object hypotheses.
 
         Steps:
@@ -320,7 +352,6 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
         * Prepares 3D visualization geometries
 
         :return: SUCCESS after processing is complete
-        :rtype: py_trees.Status
         """
         start_timer = default_timer()
 
@@ -345,10 +376,10 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
         self.get_annotator_output_struct().set_image(visualization_img)
 
         end_timer = default_timer()
-        self.feedback_message = f'Processing took {(end_timer - start_timer):.4f}s'
+        self.feedback_message = f"Processing took {(end_timer - start_timer):.4f}s"
         return py_trees.common.Status.SUCCESS
 
-    def create_color_annotations(self, color):
+    def create_color_annotations(self, color: npt.NDArray) -> None:
         """Create color annotations for all object hypotheses.
 
         For each object hypothesis with a valid ROI mask:
@@ -361,10 +392,11 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
         * Store color information for visualization
 
         :param color: Input color image
-        :type color: numpy.ndarray
         """
         # Iterate over everything that is an Object hypothesis and calculate the colors
-        object_hypotheses = self.get_cas().filter_annotations_by_type(self.descriptor.parameters.analysis_scope)
+        object_hypotheses = self.get_cas().filter_annotations_by_type(
+            self.descriptor.parameters.analysis_scope
+        )
 
         for object_hypothesis in object_hypotheses:
             if object_hypothesis.roi.mask is None:
@@ -372,8 +404,9 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
 
             roi = object_hypothesis.roi.roi
 
-            cluster_color_img = color[roi.pos.y: roi.pos.y + roi.height,
-                                roi.pos.x: roi.pos.x + roi.width]
+            cluster_color_img = color[
+                roi.pos.y : roi.pos.y + roi.height, roi.pos.x : roi.pos.x + roi.width
+            ]
 
             cluster_mask = object_hypothesis.roi.mask
 
@@ -386,25 +419,41 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
             color_height, color_width, color_dim = cluster_color_img.shape
             mask_height, mask_width = cluster_mask.shape
 
-            assert (color_height == mask_height)
-            assert (color_width == mask_width)
+            assert color_height == mask_height
+            assert color_width == mask_width
 
             # Convert to HSV_FULL. FULL is important, # because otherwise you just get H=0...180
-            cluster_hsv_color_img = cv2.cvtColor(cluster_color_img, cv2.COLOR_BGR2HSV_FULL)
+            cluster_hsv_color_img = cv2.cvtColor(
+                cluster_color_img, cv2.COLOR_BGR2HSV_FULL
+            )
 
             # Uncomment the following line if you want to use the non-numba version (roughly 100% slower)
             # color_count_result = self.count_colors(cluster_hsv_color_img, cluster_mask)
-            total_pixel_count, color_count_dict = self.count_colors_numba(cluster_hsv_color_img, cluster_mask)
+            total_pixel_count, color_count_dict = self.count_colors_numba(
+                cluster_hsv_color_img, cluster_mask
+            )
 
             # Sort list by color count. Highest value comes first.
             # Also add the ratio of the color
-            color_count_result_sorted_by_count = \
-                sorted([(color_name, color_pixel_count, color_pixel_count / total_pixel_count)
-                        for color_name, color_pixel_count in color_count_dict.items()],
-                       key=lambda tup: tup[1], reverse=True)
+            color_count_result_sorted_by_count = sorted(
+                [
+                    (
+                        color_name,
+                        color_pixel_count,
+                        color_pixel_count / total_pixel_count,
+                    )
+                    for color_name, color_pixel_count in color_count_dict.items()
+                ],
+                key=lambda tup: tup[1],
+                reverse=True,
+            )
 
             # Add Color Annotation if ratio of color is large
-            for color_name, color_pixel_count, color_ratio in color_count_result_sorted_by_count:
+            for (
+                color_name,
+                color_pixel_count,
+                color_ratio,
+            ) in color_count_result_sorted_by_count:
                 if color_ratio > self.descriptor.parameters.ratio_annotation_threshold:
                     color_annotation = robokudo.types.annotation.SemanticColor()
                     color_annotation.color = str(color_name.name.lower())
@@ -418,7 +467,7 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
             self.cluster_color_info.append(color_count_result_sorted_by_count)
             self.cluster_rois.append(roi)
 
-    def draw_visualization(self, visualization_img):
+    def draw_visualization(self, visualization_img: npt.NDArray) -> npt.NDArray:
         """Draw visualization of detected colors on the image.
 
         For each ROI:
@@ -428,41 +477,57 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
         * Create color histogram showing distribution of detected colors
 
         :param visualization_img: Image to draw visualization on
-        :type visualization_img: numpy.ndarray
         :return: Image with visualization overlays
-        :rtype: numpy.ndarray
         """
         for i, roi in enumerate(self.cluster_rois):
             cci = self.cluster_color_info[i]
             dominant_color = cci[0][0]
-            assert (isinstance(dominant_color, Color))
+            assert isinstance(dominant_color, Color)
             dominant_color_value = self.color_name_to_bgr_values[dominant_color]
 
             upper_left = (roi.pos.x, roi.pos.y)
             upper_left_text = (roi.pos.x, roi.pos.y - 5)
 
             font = cv2.FONT_HERSHEY_COMPLEX
-            visualization_img = cv2.putText(visualization_img, f"{i}: {dominant_color.name}",
-                                            upper_left_text, font, 0.5, dominant_color_value, 1, 2)
-            visualization_img = cv2.rectangle(visualization_img,
-                                              upper_left,
-                                              (roi.pos.x + roi.width, roi.pos.y + roi.height),
-                                              dominant_color_value, 2)
+            visualization_img = cv2.putText(
+                visualization_img,
+                f"{i}: {dominant_color.name}",
+                upper_left_text,
+                font,
+                0.5,
+                dominant_color_value,
+                1,
+                2,
+            )
+            visualization_img = cv2.rectangle(
+                visualization_img,
+                upper_left,
+                (roi.pos.x + roi.width, roi.pos.y + roi.height),
+                dominant_color_value,
+                2,
+            )
 
             # Prepare Histogram
             histogram_size = roi.width, 10
             histogram_upper_left = (roi.pos.x, roi.pos.y + roi.height + 1)
-            histogram_lower_right = (roi.pos.x + histogram_size[0], roi.pos.y + roi.height + 1 + histogram_size[1])
-            histogram_region = robokudo.utils.cv_helper.crop_image(visualization_img, histogram_upper_left,
-                                                                   histogram_size)
+            histogram_lower_right = (
+                roi.pos.x + histogram_size[0],
+                roi.pos.y + roi.height + 1 + histogram_size[1],
+            )
+            histogram_region = robokudo.utils.cv_helper.crop_image(
+                visualization_img, histogram_upper_left, histogram_size
+            )
 
             histogram_region[:] = (255, 255, 255)
 
             # Draw the border of the Histogram
-            visualization_img = cv2.rectangle(visualization_img,
-                                              histogram_upper_left,
-                                              histogram_lower_right,
-                                              (0, 0, 0), 1)
+            visualization_img = cv2.rectangle(
+                visualization_img,
+                histogram_upper_left,
+                histogram_lower_right,
+                (0, 0, 0),
+                1,
+            )
 
             # Draw the actual histogram
             # Get the ratios of the colors, calculate their width and draw them into the region of the image
@@ -471,11 +536,20 @@ class ClusterColorAnnotator(robokudo.annotators.core.BaseAnnotator):
             for elem in cci:
                 # Triple: Name, Count, Ratio
                 hist_color = elem[0]
-                assert (isinstance(hist_color, Color))
+                assert isinstance(hist_color, Color)
                 ratio = elem[2]
-                hist_color_width = (histogram_size[0] * ratio)
-                hist_color_rect = (int(start + 0.5), 0, int(hist_color_width + 0.5), histogram_size[1])
+                hist_color_width = histogram_size[0] * ratio
+                hist_color_rect = (
+                    int(start + 0.5),
+                    0,
+                    int(hist_color_width + 0.5),
+                    histogram_size[1],
+                )
                 start += hist_color_width
-                cv2.rectangle(histogram_region, hist_color_rect, self.color_name_to_bgr_values[hist_color],
-                              thickness=-1)
+                cv2.rectangle(
+                    histogram_region,
+                    hist_color_rect,
+                    self.color_name_to_bgr_values[hist_color],
+                    thickness=-1,
+                )
         return visualization_img

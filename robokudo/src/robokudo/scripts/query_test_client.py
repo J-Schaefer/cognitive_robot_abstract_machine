@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import time
 from queue import Queue
 
@@ -15,6 +16,8 @@ from rosidl_runtime_py.convert import message_to_ordereddict
 from typing_extensions import TYPE_CHECKING, Optional
 
 from robokudo_msgs.action import Query
+
+import robokudo.defs
 
 if TYPE_CHECKING:
     from rclpy.action.client import ClientGoalHandle
@@ -41,6 +44,7 @@ class RoboKudoActionClient(Node):
         :param preempt_timer: Optional preempt timer to cancel the goal automatically after x seconds.
         """
         super().__init__("robokudo_query_test_client")
+        self.rk_logger = logging.getLogger(robokudo.defs.PACKAGE_NAME)
         self._action_client: ActionClient = ActionClient(
             self, Query, "/robokudo/query"
         )  # Connect to the action server
@@ -62,9 +66,9 @@ class RoboKudoActionClient(Node):
 
         :param goal_type: Content of the type field in the goal sent to the action server.
         """
-        self.get_logger().info("Waiting for action server...")
+        self.rk_logger.info("Waiting for action server...")
         if not self._action_client.wait_for_server(timeout_sec=5.0):
-            self.get_logger().error("Action server not available!")
+            self.rk_logger.error("Action server not available!")
             self.done = True
             return
 
@@ -72,7 +76,7 @@ class RoboKudoActionClient(Node):
         goal_msg = Query.Goal()
         goal_msg.obj.type = goal_type
 
-        self.get_logger().info(f"Sending goal request with type: '{goal_type}'")
+        self.rk_logger.info(f"Sending goal request with type: '{goal_type}'")
         send_goal_future = self._action_client.send_goal_async(
             goal_msg, feedback_callback=self.feedback_callback
         )
@@ -85,11 +89,11 @@ class RoboKudoActionClient(Node):
         """
         self._goal_handle = future.result()
         if not self._goal_handle.accepted:
-            self.get_logger().error("Goal rejected by the action server.")
+            self.rk_logger.error("Goal rejected by the action server.")
             self.done = True
             return
 
-        self.get_logger().info("Goal accepted by the action server.")
+        self.rk_logger.info("Goal accepted by the action server.")
 
         # Scheduling of cancellation after X seconds
         if self._preempt_timer is not None:
@@ -108,15 +112,15 @@ class RoboKudoActionClient(Node):
         """
         feedback = feedback_msg.feedback
         self.last_feedback = feedback
-        self.get_logger().info(f"Received feedback: {feedback.feedback}")
+        self.rk_logger.info(f"Received feedback: {feedback.feedback}")
 
     def cancel_goal(self) -> None:
         """Sends a cancel request for the active goal."""
         if not self._goal_handle:
-            self.get_logger().error("No active goal to cancel.")
+            self.rk_logger.error("No active goal to cancel.")
             return
 
-        self.get_logger().info("Sending cancel request...")
+        self.rk_logger.info("Sending cancel request...")
         cancel_future = self._goal_handle.cancel_goal_async()
         cancel_future.add_done_callback(self.cancel_done_callback)
 
@@ -132,11 +136,11 @@ class RoboKudoActionClient(Node):
         cancel_response = future.result()
         self.cancel_response = cancel_response
         if len(cancel_response.goals_canceling) > 0:
-            self.get_logger().info("Goal cancellation accepted by the server.")
+            self.rk_logger.info("Goal cancellation accepted by the server.")
         else:
-            self.get_logger().warning("Goal cancellation was not successful.")
+            self.rk_logger.warning("Goal cancellation was not successful.")
         # self.done = True
-        # self.get_logger().info("Shutting down after cancellation is accepted.")
+        # self.rk_logger.info("Shutting down after cancellation is accepted.")
         # rclpy.shutdown()
 
     def result_callback(self, future: Future) -> None:
@@ -156,31 +160,31 @@ class RoboKudoActionClient(Node):
             self.goal_result = result
 
             if status == GoalStatus.STATUS_CANCELED:
-                self.get_logger().info("Goal was successfully canceled by the server.")
+                self.rk_logger.info("Goal was successfully canceled by the server.")
             elif status == GoalStatus.STATUS_SUCCEEDED:
-                self.get_logger().info("Goal succeeded.")
+                self.rk_logger.info("Goal succeeded.")
             else:
-                self.get_logger().info(f"Goal finished with status code: {status}")
+                self.rk_logger.info(f"Goal finished with status code: {status}")
 
-            self.get_logger().info(f"Formatted Result: \n{pretty_result_str}")
+            self.rk_logger.info(f"Formatted Result: \n{pretty_result_str}")
         except Exception as e:
-            self.get_logger().error(f"Error receiving result: {e}")
+            self.rk_logger.error(f"Error receiving result: {e}")
         finally:
-            self.get_logger().info("Shutting down after receiving the final result.")
+            self.rk_logger.info("Shutting down after receiving the final result.")
             self.done = True
 
     # def result_callback(self, future):
     #     """Processes the result from the action server."""
     #     try:
     #         result = future.result().result
-    #         # self.get_logger().info(f"Result received: {result}")
+    #         # self.rk_logger.info(f"Result received: {result}")
     #         prp = PrettyResultPrinter()
     #         pretty_result_str = prp.pretty_print_result(result)
-    #         self.get_logger().info(f'Formatted Result: \n{pretty_result_str}')
+    #         self.rk_logger.info(f'Formatted Result: \n{pretty_result_str}')
     #     except Exception as e:
-    #         self.get_logger().error(f"Error receiving result: {e}")
+    #         self.rk_logger.error(f"Error receiving result: {e}")
     #     finally:
-    #         self.get_logger().info("Shutting down after receiving the result.")
+    #         self.rk_logger.info("Shutting down after receiving the result.")
     #         self.done = True
 
     def destroy_node(self) -> None:

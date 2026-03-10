@@ -21,6 +21,7 @@ The module uses:
 from __future__ import annotations
 
 import copy
+from collections.abc import Iterable
 from timeit import default_timer
 from typing_extensions import List, TYPE_CHECKING, Type
 
@@ -54,37 +55,29 @@ class ClusterPositionAnnotator(core.BaseAnnotator):
         """Configuration descriptor for position estimation."""
 
         class Parameters:
-            """Parameters for configuring position estimation.
+            """Parameters for configuring position estimation."""
 
-            Analysis parameters:
+            def __init__(self) -> None:
+                self.analysis_scope: Type = scene.ObjectHypothesis
+                """Type of data to perform position estimation on(e.g. ObjectHypothesis or CloudAnnotation)"""
 
-            :ivar analysis_scope: Type of data to analyze (ObjectHypothesis or CloudAnnotation), defaults to ObjectHypothesis
-            :type analysis_scope: type
+                self.visualizer_point_radius: float = 0.04
+                """Radius of centroid sphere markers in meters"""
 
-            Visualization:
-
-            :ivar visualizer_point_radius: Radius of centroid sphere markers in meters, defaults to 0.04
-            :type visualizer_point_radius: float
-            """
-
-            def __init__(self):
-                # On which data shall we perform the position estimation?
-                # Object Hypothesis or specific annotations like CloudAnnotation?
-                self.analysis_scope = scene.ObjectHypothesis
-                self.visualizer_point_radius = 0.04  # in meters
-
-    def __init__(self, name="ClusterPositionAnnotator", descriptor=Descriptor()):
+    def __init__(
+        self,
+        name: str = "ClusterPositionAnnotator",
+        descriptor: "ClusterPositionAnnotator.Descriptor" = Descriptor(),
+    ) -> None:
         """Initialize the position estimator.
 
         :param name: Name of this annotator instance, defaults to "ClusterPositionAnnotator"
-        :type name: str, optional
         :param descriptor: Configuration descriptor, defaults to Descriptor()
-        :type descriptor: ClusterPositionAnnotator.Descriptor, optional
         """
         super().__init__(name, descriptor)
         self.rk_logger.debug("%s.__init__()" % self.__class__.__name__)
 
-    def update(self):
+    def update(self) -> py_trees.common.Status:
         """Process object hypotheses and estimate positions.
 
         The method:
@@ -97,12 +90,11 @@ class ClusterPositionAnnotator(core.BaseAnnotator):
           * Creates visualization marker
 
         :return: SUCCESS after processing
-        :rtype: py_trees.Status
         """
         start_timer = default_timer()
 
         cloud = self.get_cas().get(CASViews.CLOUD)
-        centroids_to_visualize = []
+        centroids_to_visualize: List[List[float]] = []
 
         object_hypotheses = self.get_cas().filter_annotations_by_type(
             scene.ObjectHypothesis
@@ -112,15 +104,10 @@ class ClusterPositionAnnotator(core.BaseAnnotator):
             if object_hypothesis.points is None:
                 continue
 
-            if (
-                self.descriptor.parameters.analysis_scope
-                == annotation.CloudAnnotation
-            ):
-                o_clouds: List[annotation.CloudAnnotation] = (
-                    CAS.filter_by_type(
-                        annotation.CloudAnnotation,
-                        object_hypothesis.annotations,
-                    )
+            if self.descriptor.parameters.analysis_scope == annotation.CloudAnnotation:
+                o_clouds: List[annotation.CloudAnnotation] = CAS.filter_by_type(
+                    annotation.CloudAnnotation,
+                    object_hypothesis.annotations,
                 )
                 if len(o_clouds) == 0:
                     self.rk_logger.warning(
@@ -150,28 +137,28 @@ class ClusterPositionAnnotator(core.BaseAnnotator):
         self.feedback_message = f"Processing took {(end_timer - start_timer):.4f}s"
         return py_trees.common.Status.SUCCESS
 
-    def position_annotation_from_centroid(self, centroid):
+    def position_annotation_from_centroid(
+        self, centroid: List[float]
+    ) -> annotation.PositionAnnotation:
         """Create position annotation from centroid.
 
         :param centroid: 3D centroid coordinates
-        :type centroid: numpy.ndarray
         :return: Position annotation with centroid as translation
-        :rtype: robokudo.types.annotation.PositionAnnotation
         """
         position = annotation.PositionAnnotation()
         position.source = type(self).__name__
         position.translation = centroid
         return position
 
-    def add_centroid_to_vis(self, centroid, centroids_to_visualize):
+    def add_centroid_to_vis(
+        self, centroid: List[float], centroids_to_visualize: List[List[float]]
+    ) -> None:
         """Add centroid visualization marker.
 
         Creates a colored sphere at the centroid position.
 
         :param centroid: 3D centroid coordinates
-        :type centroid: numpy.ndarray
         :param centroids_to_visualize: List to append visualization marker to
-        :type centroids_to_visualize: list
         """
         centroid_sphere = o3d.geometry.TriangleMesh.create_sphere(
             radius=self.descriptor.parameters.visualizer_point_radius

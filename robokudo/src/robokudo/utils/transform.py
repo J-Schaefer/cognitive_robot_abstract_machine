@@ -21,6 +21,7 @@ Dependencies:
 from __future__ import annotations
 
 import math
+from typing import Iterable
 
 import numpy as np
 from geometry_msgs.msg import Pose
@@ -85,9 +86,7 @@ def get_transform_matrix_from_pose(pose: Pose) -> npt.NDArray:
     return pose_t
 
 
-def get_transform_matrix(
-    rotation: npt.NDArray, translation: npt.NDArray
-) -> npt.NDArray:
+def get_transform_matrix(rotation: Iterable, translation: Iterable) -> npt.NDArray:
     """Create a 4x4 transformation matrix from rotation and translation.
 
     :param rotation: 3x3 rotation matrix
