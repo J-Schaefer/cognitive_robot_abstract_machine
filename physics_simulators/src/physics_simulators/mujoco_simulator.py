@@ -818,12 +818,12 @@ class MujocoSimulator(BaseSimulator):
         body_names: List[str],
         including_children: bool = True,
         contact_style: Union[
-            SimulatorCallbackResult.OutType, str
-        ] = SimulatorCallbackResult.OutType.PYBULLET,
+            SimulatorCallbackResult.OutputType, str
+        ] = SimulatorCallbackResult.OutputType.PYBULLET,
     ) -> SimulatorCallbackResult:
         if isinstance(contact_style, str):
-            contact_style = SimulatorCallbackResult.OutType(contact_style)
-        if contact_style != SimulatorCallbackResult.OutType.PYBULLET:
+            contact_style = SimulatorCallbackResult.OutputType(contact_style)
+        if contact_style != SimulatorCallbackResult.OutputType.PYBULLET:
             return SimulatorCallbackResult(
                 type=SimulatorCallbackResult.ResultType.FAILURE_WITHOUT_EXECUTION,
                 info=f"Contact style {contact_style} is not supported",
@@ -924,12 +924,12 @@ class MujocoSimulator(BaseSimulator):
         ray_from_position: List[float],
         ray_to_position: List[float],
         ray_style: Union[
-            SimulatorCallbackResult.OutType, str
-        ] = SimulatorCallbackResult.OutType.PYBULLET,
+            SimulatorCallbackResult.OutputType, str
+        ] = SimulatorCallbackResult.OutputType.PYBULLET,
     ) -> SimulatorCallbackResult:
         if isinstance(ray_style, str):
-            ray_style = SimulatorCallbackResult.OutType(ray_style)
-        if ray_style != SimulatorCallbackResult.OutType.PYBULLET:
+            ray_style = SimulatorCallbackResult.OutputType(ray_style)
+        if ray_style != SimulatorCallbackResult.OutputType.PYBULLET:
             return SimulatorCallbackResult(
                 type=SimulatorCallbackResult.ResultType.FAILURE_WITHOUT_EXECUTION,
                 info=f"Ray style {ray_style} is not supported",
@@ -989,12 +989,12 @@ class MujocoSimulator(BaseSimulator):
         ray_to_positions: List[List[float]],
         parent_link_name: Optional[str] = None,
         ray_style: Union[
-            SimulatorCallbackResult.OutType, str
-        ] = SimulatorCallbackResult.OutType.PYBULLET,
+            SimulatorCallbackResult.OutputType, str
+        ] = SimulatorCallbackResult.OutputType.PYBULLET,
     ) -> SimulatorCallbackResult:
         if isinstance(ray_style, str):
-            ray_style = SimulatorCallbackResult.OutType(ray_style)
-        if ray_style != SimulatorCallbackResult.OutType.PYBULLET:
+            ray_style = SimulatorCallbackResult.OutputType(ray_style)
+        if ray_style != SimulatorCallbackResult.OutputType.PYBULLET:
             return SimulatorCallbackResult(
                 type=SimulatorCallbackResult.ResultType.FAILURE_WITHOUT_EXECUTION,
                 info=f"Ray style {ray_style} is not supported",

@@ -68,7 +68,7 @@ class SimulatorRenderer:
 
 @dataclass
 class SimulatorCallbackResult:
-    class OutType(str, Enum):
+    class OutputType(str, Enum):
         """
         Output type for SimulatorCallbackResult
         """
