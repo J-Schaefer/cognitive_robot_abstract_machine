@@ -983,9 +983,8 @@ class FloatVariable(Scalar):
 
     resolve: Callable[[], float] | None = field(default=None, init=False)
     """
-    This method is called by SymbolicType.evaluate().
-    Subclasses should override this method to return the current float value for this variable.
-    :return: This variables' current value.
+    This is called by SymbolicType.evaluate().
+    Subclasses should set it to return the current float value for this variable.
     """
 
     def __init__(self, name: str):

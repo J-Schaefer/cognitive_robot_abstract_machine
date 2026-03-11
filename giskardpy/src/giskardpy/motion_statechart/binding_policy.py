@@ -37,7 +37,9 @@ class ForwardKinematicsBinding:
     """
 
     float_variable_data: FloatVariableData
-    """"""
+    """
+    Reference to the FloatVariableData used for storing variables for the forward kinematics.
+    """
     name: PrefixedName
     """
     Name of the Binding. It is used for naming the auxiliary variables.

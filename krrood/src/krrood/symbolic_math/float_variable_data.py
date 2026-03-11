@@ -21,8 +21,7 @@ hidden_index_name = "__float_variable_index__"
 class FloatVariableData:
     """
     Stores float variables and their values in a single flat numpy array.
-
-    .. warning:: this class is not thread-safe.
+    The purpose of this class is to store data in a single numpy array for efficient evaluation of compiled casadi functions.
     """
 
     variables: List[FloatVariable] = field(default_factory=list)
@@ -37,7 +36,11 @@ class FloatVariableData:
     def register_expression(self, expression: SymbolicMathType):
         """
         Add an expression to the data.
-        :param expression: The new variable.
+        Adds a `hidden_index_name` attribute to the expression to keep track of its index in the data array.
+        .. warning:: You can only use expressions with free variables that have no resolve function defined.
+            This is a safeguard to prevent accidentally registering, e.g., degree of freedom variables.
+        .. warning:: this class is not thread-safe.
+        :param expression: The expression to be tracked.
         """
         free_variables = expression.free_variables()
         if len(free_variables) == 0:
@@ -71,7 +74,7 @@ class FloatVariableData:
     ):
         """
         Set the managed values of free variables in an expression.
-        .. note:: we are assuming that you know what you are doing
+        Only works if the expression was registered before.
         :param expression: The expression to set the values for.
         :param value: The new value(s) for the expression's free variables.
         """

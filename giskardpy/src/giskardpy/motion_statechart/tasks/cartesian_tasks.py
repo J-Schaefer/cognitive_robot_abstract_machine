@@ -259,14 +259,10 @@ class CartesianPositionTrajectory(CartesianTask):
             1, context.float_variable_data.data
         )
 
-    def on_tick(
-        self, context: MotionStatechartContext
-    ) -> Optional[ObservationStateValues]:
-        goal_reference_frame_P_tip_np = (
-            self._compiled_goal_reference_frame_P_tip.evaluate()
-        )
-
-        # 2. Find the closest point on the remaining trajectory to update progress
+    def _update_trajectory_index(self, goal_reference_frame_P_tip_np: np.ndarray):
+        """
+        Search for the closest point in the trajectory to the current position, without going backwards.
+        """
         remaining_points = self._goal_points_np[self.current_index :]
         distances = np.linalg.norm(
             remaining_points - goal_reference_frame_P_tip_np, axis=1
@@ -274,35 +270,45 @@ class CartesianPositionTrajectory(CartesianTask):
         local_closest_index = np.argmin(distances)
         self.current_index += local_closest_index
 
-        # 3. Compute target point with path correction
-        if self.current_index < len(self._goal_points_np) - 1:
-            p_current = self._goal_points_np[self.current_index]
-            p_next = self._goal_points_np[self.current_index + 1]
+    def _compute_target_point(
+        self, goal_reference_frame_P_tip_np: np.ndarray
+    ) -> np.ndarray:
+        if self.current_index >= len(self._goal_points_np) - 1:
+            # If we've reached the end of the trajectory, return the last point
+            return self._goal_points_np[-1]
 
-            # Tangent vector
-            tangent = p_next - p_current
-            tangent_norm = np.linalg.norm(tangent)
+        p_current = self._goal_points_np[self.current_index]
+        p_next = self._goal_points_np[self.current_index + 1]
 
-            if tangent_norm > 1e-6:
-                unit_tangent = tangent / tangent_norm
+        # Tangent vector
+        tangent = p_next - p_current
+        tangent_norm = np.linalg.norm(tangent)
 
-                # Project current position onto the segment (p_current, p_next)
-                # This is the "closest point" on the line segment
-                v = goal_reference_frame_P_tip_np - p_current
-                projection_dist = np.dot(v, unit_tangent)
-                projection_dist = np.clip(projection_dist, 0, tangent_norm)
-                p_projected = p_current + projection_dist * unit_tangent
+        if tangent_norm <= 1e-6:
+            # /0 safeguard
+            return p_current
+        unit_tangent = tangent / tangent_norm
 
-                # Aim for a point 'threshold' distance away from the PROJECTED point
-                # This ensures that the target point is always 'threshold' away along the path,
-                # which creates a vector that pulls the robot back to the path AND forward.
-                target_point = p_projected + unit_tangent * self.threshold
-            else:
-                target_point = p_current
-        else:
-            target_point = self._goal_points_np[-1]
+        # Project current position onto the segment (p_current, p_next)
+        # This is the "closest point" on the line segment
+        v = goal_reference_frame_P_tip_np - p_current
+        projection_dist = np.dot(v, unit_tangent)
+        projection_dist = np.clip(projection_dist, 0, tangent_norm)
+        p_projected = p_current + projection_dist * unit_tangent
 
-        # 4. Update the symbolic target point
+        # Aim for a point 'threshold' distance away from the PROJECTED point
+        # This ensures that the target point is always 'threshold' away along the path,
+        # which creates a vector that pulls the robot back to the path AND forward.
+        return p_projected + unit_tangent * self.threshold
+
+    def on_tick(
+        self, context: MotionStatechartContext
+    ) -> Optional[ObservationStateValues]:
+        goal_reference_frame_P_tip_np = (
+            self._compiled_goal_reference_frame_P_tip.evaluate()
+        )
+        self._update_trajectory_index(goal_reference_frame_P_tip_np)
+        target_point = self._compute_target_point(goal_reference_frame_P_tip_np)
         context.float_variable_data.set_value(
             self.goal_reference_frame_P_current_target_point, target_point
         )
