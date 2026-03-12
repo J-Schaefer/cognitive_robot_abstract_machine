@@ -20,6 +20,7 @@ from typing_extensions import (
     Type,
 )
 
+from krrood.entity_query_language.backends import QueryBackend
 from pycram.plans.designator import Designator
 from pycram.plans.plan_entity import PlanEntity
 from semantic_digital_twin.robots.abstract_robot import AbstractRobot

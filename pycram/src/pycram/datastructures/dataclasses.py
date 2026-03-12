@@ -7,6 +7,7 @@ from typing_extensions import (
     Any,
 )
 
+from krrood.entity_query_language.backends import QueryBackend
 from pycram.plans.plan import Plan
 from pycram.plans.plan_entity import PlanEntity
 from semantic_digital_twin.robots.abstract_robot import AbstractRobot
@@ -34,18 +35,25 @@ class Context(PlanEntity):
     A ROS node that should be used for communication in this plan
     """
 
+    query_backend: Optional[QueryBackend] = None
+    """
+    The backend used to answer queries about underspecified statements.
+    """
+
     @classmethod
-    def from_world(cls, world: World, plan: Plan = None):
+    def from_world(cls, world: World, plan: Plan = None, query_backend: Optional[QueryBackend] = None):
         """
         Create a context from a world by getting the first robot in the world. There is no super plan in this case.
 
         :param world: The world for which to create the context
         :param plan: The plan that manages this context
+        :param query_backend: The query backend to use for answering queries
         :return: A context with the first robot in the world and no super plan
         """
         result =  cls(
             world=world,
             robot=world.get_semantic_annotations_by_type(AbstractRobot)[0],
+            query_backend=query_backend
         )
         if plan:
             plan.add_plan_entity(result)

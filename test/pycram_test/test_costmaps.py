@@ -1,32 +1,32 @@
-import pytest
 from copy import deepcopy
 
 import numpy as np
-from random_events.variable import Continuous
+import plotly.graph_objects as go
+import pytest
 
-#  import plotly.graph_objects as go
-from random_events.product_algebra import Event, SimpleEvent
-from random_events.interval import *
-
-from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
-
-from pycram.costmaps.costmaps import (
+from pycram.locations.costmaps import (
     OccupancyCostmap,
-    AlgebraicSemanticCostmap,
     VisibilityCostmap,
     GaussianCostmap,
     OrientationGenerator,
 )
-from pycram.probabilistic_costmap import ProbabilisticCostmap
 from pycram.datastructures.pose import PoseStamped
-import plotly.graph_objects as go
+from pycram.probabilistic_costmap import ProbabilisticCostmap
+from random_events.interval import *
+
+#  import plotly.graph_objects as go
+from random_events.product_algebra import Event, SimpleEvent
+from random_events.variable import Continuous
+from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 
 
-# ---- Occupancy costmaps tests ----
+# ---- Occupancy locations tests ----
 
 
-def test_attachment_exclusion(immutable_model_world):
+def test_attachment_exclusion(immutable_model_world, rclpy_node):
+
     world, robot_view, context = immutable_model_world
+
     robot_view.root.parent_connection.origin = (
         HomogeneousTransformationMatrix.from_xyz_rpy(
             -1.5, 1, 0, reference_frame=world.root
@@ -136,50 +136,6 @@ def test_merge_costmap(immutable_model_world):
     o2.map = np.zeros_like(o2.map)
     o3 = o + o2
     assert np.all(o3.map == o2.map)
-
-
-# ---- Algebraic semantic costmaps tests ----
-
-
-def test_semantic_generate_map(immutable_model_world):
-    world, robot_view, context = immutable_model_world
-    costmap = AlgebraicSemanticCostmap(world.get_body_by_name("island_countertop"))
-    costmap.valid_area = costmap.valid_area.__deepcopy__() & costmap.left()
-    costmap.valid_area = costmap.valid_area.__deepcopy__() & costmap.top()
-    costmap.valid_area = costmap.valid_area.__deepcopy__() & costmap.border(0.2)
-    assert len(costmap.valid_area.simple_sets) == 2
-
-
-def test_semantic_as_distribution(immutable_model_world):
-    world, robot_view, context = immutable_model_world
-    costmap = AlgebraicSemanticCostmap(world.get_body_by_name("island_countertop"))
-    costmap.valid_area = (
-        costmap.valid_area.__deepcopy__()
-        & costmap.right()
-        & costmap.bottom()
-        & costmap.border(0.2)
-    )
-    model = costmap.as_distribution()
-    assert len(model.nodes()) == 7
-    # fig = go.Figure(model.plot(), model.plotly_layout())
-    # fig.show()
-    # supp = model.support
-    # fig = go.Figure(supp.plot(), supp.plotly_layout())
-    # fig.show()
-
-
-def test_semantic_iterate(immutable_model_world):
-    world, robot_view, context = immutable_model_world
-    costmap = AlgebraicSemanticCostmap(world.get_body_by_name("island_countertop"))
-    costmap.valid_area = (
-        costmap.valid_area.__deepcopy__()
-        & costmap.left()
-        & costmap.bottom()
-        & costmap.border(0.2)
-    )
-    for sample in iter(costmap):
-        assert isinstance(sample, PoseStamped)
-        assert costmap.valid_area.contains([sample.position.x, sample.position.y])
 
 
 def test_occupancy_robot_exclusion(immutable_model_world):
@@ -558,48 +514,3 @@ def test_orientation_generator_by_axis_x(immutable_model_world):
     generated_orientation = ori_gen(target_position, origin_pose)
 
     assert generated_orientation == pytest.approx([0, 0, 1, 0], abs=0.001)
-
-
-# ---- Probabilistic costmaps tests (skipped) ----
-
-
-@pytest.mark.skip(reason="Wait for PM Upgrade to go live")
-def test_probabilistic_setup(immutable_model_world):
-    world, robot_view, context = immutable_model_world
-    origin = PoseStamped.from_list([1.5, 1, 0], [0, 0, 0, 1], world.root)
-    costmap = ProbabilisticCostmap(origin, size=200 * centimeter)
-    event = costmap.create_event_from_map()
-    assert event.is_disjoint()
-
-
-@pytest.mark.skip(reason="Wait for PM Upgrade to go live")
-def test_probabilistic_visualization(immutable_model_world):
-    world, robot_view, context = immutable_model_world
-    origin = PoseStamped.from_list([1.5, 1, 0], [0, 0, 0, 1], world.root)
-    costmap = ProbabilisticCostmap(origin, size=200 * centimeter)
-    fig = go.Figure(costmap.distribution.plot(), costmap.distribution.plotly_layout())
-    costmap.visualize()
-
-
-@pytest.mark.skip(reason="Wait for PM Upgrade to go live")
-def test_probabilistic_visibility_cm(immutable_model_world):
-    world, robot_view, context = immutable_model_world
-    origin = PoseStamped.from_list([1.5, 1, 0], [0, 0, 0, 1], world.root)
-    costmap = ProbabilisticCostmap(
-        origin, size=200 * centimeter, costmap_type=VisibilityCostmap
-    )
-    costmap.visualize()
-
-
-@pytest.mark.skip(reason="Wait for PM Upgrade to go live")
-def test_probabilistic_merge_cm(immutable_model_world):
-    world, robot_view, context = immutable_model_world
-    origin = PoseStamped.from_list([1.5, 1, 0], [0, 0, 0, 1], world.root)
-    visibility = ProbabilisticCostmap(
-        origin, size=200 * centimeter, costmap_type=VisibilityCostmap
-    )
-    occupancy = ProbabilisticCostmap(origin, size=200 * centimeter)
-    occupancy.distribution, _ = occupancy.distribution.conditional(
-        visibility.create_event_from_map()
-    )
-    occupancy.visualize()

@@ -237,8 +237,7 @@ class UnderspecifiedActionNode(PlanNode):
     def designator_type(self) -> Type:
         return self.underspecified_action.type
 
-    def perform(self, *args, **kwargs):
-        raise NotImplemented
+    def perform(self): ...
 
 
 @dataclass

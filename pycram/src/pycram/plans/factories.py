@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing_extensions import List, assert_never, Union, Optional, TYPE_CHECKING
 
+from krrood.entity_query_language.backends import QueryBackend
 from krrood.entity_query_language.query.match import Match
 from pycram.datastructures.dataclasses import Context
 
@@ -13,7 +14,8 @@ if TYPE_CHECKING:
 
 
 def execute_single(
-    action_like: ActionLike, context: Optional[Context] = None
+    action_like: ActionLike,
+    context: Optional[Context] = None,
 ) -> PlanNode:
 
     node = make_node(action_like)

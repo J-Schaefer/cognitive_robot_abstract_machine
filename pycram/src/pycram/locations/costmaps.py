@@ -42,10 +42,10 @@ class OrientationGenerator:
         position: List[float], origin: PoseStamped, rotate_by_angle: float = 0
     ) -> List[float]:
         """
-        Generates an orientation such that the robot faces the origin of the costmaps.
+        Generates an orientation such that the robot faces the origin of the locations.
 
-        :param position: The position in the costmaps, already converted to the world coordinate frame.
-        :param origin: The origin of the costmaps, the point which the robot should face.
+        :param position: The position in the locations, already converted to the world coordinate frame.
+        :param origin: The origin of the locations, the point which the robot should face.
         :param rotate_by_angle: Angle to rotate the orientation.
         :return: A quaternion of the calculated orientation.
         """
@@ -92,6 +92,32 @@ class OrientationGenerator:
 
 
 @dataclass
+class Rectangle:
+    """
+    A rectangle that is described by a lower and upper x and y value.
+    """
+
+    x_lower: float
+    x_upper: float
+    y_lower: float
+    y_upper: float
+
+    def translate(self, x: float, y: float):
+        """Translate the rectangle by x and y"""
+        self.x_lower += x
+        self.x_upper += x
+        self.y_lower += y
+        self.y_upper += y
+
+    def scale(self, x_factor: float, y_factor: float):
+        """Scale the rectangle by x_factor and y_factor"""
+        self.x_lower *= x_factor
+        self.x_upper *= x_factor
+        self.y_lower *= y_factor
+        self.y_upper *= y_factor
+
+
+@dataclass
 class Costmap:
     """
     The base class of all Costmaps.
@@ -100,23 +126,23 @@ class Costmap:
 
     resolution: float
     """
-    The distance in metre in the real-world which is represented by a single entry in the costmaps. 
+    The distance in metre in the real-world which is represented by a single entry in the locations. 
     """
     height: int
     """
-    Height of the costmaps.
+    Height of the locations.
     """
     width: int
     """
-    Width of the costmaps.
+    Width of the locations.
     """
     origin: PoseStamped = field(kw_only=True, default_factory=lambda: PoseStamped())
     """
-    Origin pose of the costmaps.
+    Origin pose of the locations.
     """
     map: np.ndarray = field(default_factory=lambda: np.zeros((10, 10)), kw_only=True)
     """
-    Numpy array to save the costmaps distribution
+    Numpy array to save the locations distribution
     
     Costmaps represent the 2D distribution in a numpy array where axis 0 is the X-Axis of the coordinate system and axis 1 
     is the Y-Axis of the coordinate system. An increase in the index of the axis of the numpy array corresponds to an increase in the 
@@ -124,7 +150,7 @@ class Costmap:
     system is given by the resolution. 
 
     Furthermore, there is a difference in the origin of the two representations while the numpy arrays start from the top left 
-    corner, the origin given as PoseStamped is placed in the middle of the array. The costmaps is build around the origin and 
+    corner, the origin given as PoseStamped is placed in the middle of the array. The locations is build around the origin and 
     since the array start from 0, 0 in the corner this conversion is necessary. 
 
                 y-axis      0, 10
@@ -139,7 +165,7 @@ class Costmap:
 
     world: World
     """
-    The world from which this costmaps was created.
+    The world from which this locations was created.
     """
     vis_ids: List[int] = field(default_factory=list, init=False)
 
@@ -181,11 +207,11 @@ class Costmap:
 
     def _find_consectuive_line(self, start: Tuple[int, int], map: np.ndarray) -> int:
         """
-        Finds the number of consecutive entries in the costmaps which are greater
+        Finds the number of consecutive entries in the locations which are greater
         than zero.
 
-        :param start: The indices in the costmaps from which the consecutive line should be found.
-        :param map: The costmaps in which the line should be found.
+        :param start: The indices in the locations from which the consecutive line should be found.
+        :param map: The locations in which the line should be found.
         :return: The length of the consecutive line of entries greater than zero.
         """
         width = map.shape[1]
@@ -201,14 +227,14 @@ class Costmap:
         self, start: Tuple[int, int], length: int, map: np.ndarray
     ) -> int:
         """
-        Finds the maximal height for a rectangle with a given width in a costmaps.
+        Finds the maximal height for a rectangle with a given width in a locations.
         The method traverses one row at a time and checks if all entries for the
         given width are greater than zero. If an entry is less or equal than zero
         the height is returned.
 
-        :param start: The indices in the costmaps from which the method should start.
+        :param start: The indices in the locations from which the method should start.
         :param length: The given width for the rectangle
-        :param map: The costmaps in which should be searched.
+        :param map: The locations in which should be searched.
         :return: The height of the rectangle.
         """
         height, width = map.shape
@@ -222,8 +248,8 @@ class Costmap:
 
     def merge(self, other_cm: Costmap) -> Costmap:
         """
-        Merges the values of two costmaps and returns a new costmaps that has for
-        every cell the merged values of both inputs. To merge two costmaps they
+        Merges the values of two locations and returns a new locations that has for
+        every cell the merged values of both inputs. To merge two locations they
         need to fulfill 3 constrains:
 
         1. They need to have the same size
@@ -232,27 +258,27 @@ class Costmap:
 
         If any of these constrains is not fulfilled a ValueError will be raised.
 
-        :param other_cm: The other costmaps with which this costmaps should be merged.
-        :return: A new costmaps that contains the merged values
+        :param other_cm: The other locations with which this locations should be merged.
+        :return: A new locations that contains the merged values
         """
         if self.width != other_cm.width or self.height != other_cm.height:
-            raise ValueError("You can only merge costmaps of the same size.")
+            raise ValueError("You can only merge locations of the same size.")
         elif (
             self.origin.position.x != other_cm.origin.position.x
             or self.origin.position.y != other_cm.origin.position.y
             or self.origin.orientation != other_cm.origin.orientation
         ):
             raise ValueError(
-                "To merge costmaps, the x and y coordinate as well as the orientation must be equal."
+                "To merge locations, the x and y coordinate as well as the orientation must be equal."
             )
         elif self.resolution != other_cm.resolution:
-            raise ValueError("To merge two costmaps their resolution must be equal.")
+            raise ValueError("To merge two locations their resolution must be equal.")
         elif self.world != other_cm.world:
             raise ValueError(
-                "To merge two costmaps they must belong to the same world."
+                "To merge two locations they must belong to the same world."
             )
         new_map = np.zeros((self.height, self.width))
-        # A numpy array of the positions where both costmaps are greater than 0
+        # A numpy array of the positions where both locations are greater than 0
         merge = np.logical_and(self.map > 0, other_cm.map > 0)
         new_map[merge] = self.map[merge] * other_cm.map[merge]
         max_val = np.max(new_map)
@@ -260,7 +286,7 @@ class Costmap:
             new_map = (new_map / np.max(new_map)).reshape((self.height, self.width))
         else:
             new_map = new_map.reshape((self.height, self.width))
-            logger.warning("Merged costmaps is empty.")
+            logger.warning("Merged locations is empty.")
         return Costmap(
             resolution=self.resolution,
             height=self.height,
@@ -282,12 +308,12 @@ class Costmap:
             return self.merge(other)
         else:
             raise ValueError(
-                f"Can only combine two costmaps other type was {type(other)}"
+                f"Can only combine two locations other type was {type(other)}"
             )
 
     def partitioning_rectangles(self) -> List[Rectangle]:
         """
-        Partition the map attached to this costmaps into rectangles. The rectangles are axis aligned, exhaustive and
+        Partition the map attached to this locations into rectangles. The rectangles are axis aligned, exhaustive and
         disjoint sets.
 
         :return: A list containing the partitioning rectangles
@@ -296,7 +322,7 @@ class Costmap:
         origin = np.array([self.height / 2, self.width / 2]) * -1
         rectangles = []
 
-        # for every index pair (i, j) in the occupancy costmaps
+        # for every index pair (i, j) in the occupancy locations
         for i in range(0, self.map.shape[0]):
             for j in range(0, self.map.shape[1]):
 
@@ -306,7 +332,7 @@ class Costmap:
                     curr_pose = (i, j)
                     curr_height = self._find_max_box_height((i, j), curr_width, ocm_map)
 
-                    # calculate the rectangle in the costmaps
+                    # calculate the rectangle in the locations
                     x_lower = curr_pose[0]
                     x_upper = curr_pose[0] + curr_height
                     y_lower = curr_pose[1]
@@ -325,9 +351,9 @@ class Costmap:
 
     def __iter__(self) -> Iterator[PoseStamped]:
         """
-        A generator that crates pose candidates from a given costmaps. The generator
+        A generator that crates pose candidates from a given locations. The generator
         selects the highest 100 values and returns the corresponding positions.
-        Orientations are calculated such that the Robot faces the center of the costmaps.
+        Orientations are calculated such that the Robot faces the center of the locations.
 
         :Yield: A tuple of position and orientation
         """
@@ -337,7 +363,7 @@ class Costmap:
             or OrientationGenerator.generate_origin_orientation
         )
 
-        # Determines how many positions should be sampled from the costmaps
+        # Determines how many positions should be sampled from the locations
         if (
             self.number_of_samples == -1
             or self.number_of_samples > self.map.flatten().shape[0]
@@ -365,8 +391,8 @@ class Costmap:
             for ind in indices:
                 if seg_map[ind[0]][ind[1]] == 0:
                     continue
-                # The position is calculated by creating a vector from the 2D position in the costmaps (given by x and y)
-                # and the center of the costmaps (since this is the origin). This vector is then turned into a transformation
+                # The position is calculated by creating a vector from the 2D position in the locations (given by x and y)
+                # and the center of the locations (since this is the origin). This vector is then turned into a transformation
                 # and multiplied with the transformation of the origin.
                 vector_to_origin = (center - ind) * self.resolution
                 point_to_origin = TransformStamped.from_list(
@@ -385,7 +411,7 @@ class Costmap:
 
     def segment_map(self) -> List[np.ndarray]:
         """
-        Finds partitions in the costmaps and isolates them, a partition is a number of entries in the costmaps which are
+        Finds partitions in the locations and isolates them, a partition is a number of entries in the locations which are
         neighbours. Returns a list of numpy arrays with one partition per array.
 
         :return: A list of numpy arrays with one partition per array
@@ -501,7 +527,7 @@ class OccupancyCostmap(Costmap):
         """
         Creates an Occupancy Costmap for the specified World.
         This map marks every position as valid that has no object above it. After
-        creating the costmaps the distance to obstacle parameter is applied.
+        creating the locations the distance to obstacle parameter is applied.
         """
 
         res = self.create_ray_mask_around_origin()
@@ -527,8 +553,8 @@ class OccupancyCostmap(Costmap):
 @dataclass
 class VisibilityCostmap(Costmap):
     """
-    A costmaps that represents the visibility of a specific point for every position around
-    this point. For a detailed explanation on how the creation of the costmaps works
+    A locations that represents the visibility of a specific point for every position around
+    this point. For a detailed explanation on how the creation of the locations works
     please look here: `PhD Thesis (page 173) <https://mediatum.ub.tum.de/doc/1239461/1239461.pdf>`_
     """
 
@@ -547,7 +573,7 @@ class VisibilityCostmap(Costmap):
     def _create_images(self) -> List[np.ndarray]:
         """
         Creates four depth images in every direction around the point
-        for which the costmaps should be created. The depth images are converted
+        for which the locations should be created. The depth images are converted
         to metre, meaning that every entry in the depth images represents the
         distance to the next object in metre.
 
@@ -625,18 +651,18 @@ class VisibilityCostmap(Costmap):
         depth_indices[res == 0, :1] = indices[res == 0, :1]
         depth_indices[res == 0, 1:2] = indices[res == 0, 1:2]
 
-        # Convert back to origin in the middle of the costmaps
+        # Convert back to origin in the middle of the locations
         depth_indices[:, :, :1] -= self.width / 2
         depth_indices[:, :, 1:2] = np.absolute(
             self.width / 2 - depth_indices[:, :, 1:2]
         )
 
-        # Sets the y index for the coordinates of the middle of the costmaps to 1,
+        # Sets the y index for the coordinates of the middle of the locations to 1,
         # the computed value is 0 which would cause an error in the next step where
         # the calculation divides the x coordinates by the y coordinates
         depth_indices[int(self.width / 2), int(self.width / 2), 1] = 1
 
-        # Calculate columns for the respective position in the costmaps
+        # Calculate columns for the respective position in the locations
         columns = (
             np.around(
                 (
@@ -650,7 +676,7 @@ class VisibilityCostmap(Costmap):
         )
 
         # An array with size * size that contains the euclidean distance to the
-        # origin (in the middle of the costmaps) from every cell
+        # origin (in the middle of the locations) from every cell
         distances = np.maximum(
             np.linalg.norm(
                 np.dstack(
@@ -686,10 +712,10 @@ class VisibilityCostmap(Costmap):
         r = np.arange(self.width)
         # Calculates a mask from the r_min and r_max values. This mask is for every
         # coordinate respectively and determines which values from the computed column
-        # of the depth image should be taken into account for the costmaps.
+        # of the depth image should be taken into account for the locations.
         # A Mask of a single coordinate has the length of the column of the depth image
         # and together with the computed column at this coordinate determines which
-        # values of the depth image make up the value of the visibility costmaps at this
+        # values of the depth image make up the value of the visibility locations at this
         # point.
         mask = ((rs[:, 0, None] <= r) & (rs[:, 1, None] > r)).reshape(
             (self.width, self.width, self.width)
@@ -701,7 +727,7 @@ class VisibilityCostmap(Costmap):
         for i in range(4):
             row_masks = mask[res == i].T
             # This statement does several things, first it takes the values from
-            # the depth image for this quarter of the costmaps. The values taken are
+            # the depth image for this quarter of the locations. The values taken are
             # the complete columns of the depth image (which where computed beforehand)
             # and checks if the values in them are greater than the distance to the
             # respective coordinates. This does not take the row ranges into account.
@@ -713,11 +739,11 @@ class VisibilityCostmap(Costmap):
             # This applies the created mask of the row ranges to the values of
             # the columns which are compared in the previous statement
             masked = np.ma.masked_array(values, mask=~row_masks)
-            # The calculated values are added to the costmaps
+            # The calculated values are added to the locations
             map[res == i] = np.sum(masked, axis=0)
         map /= np.max(map)
         # Weird flipping shit so that the map fits the orientation of the visualization.
-        # the costmaps in itself is consistent and just needs to be flipped to fit the world coordinate system
+        # the locations in itself is consistent and just needs to be flipped to fit the world coordinate system
         map = np.flip(map, axis=0)
         map = np.flip(map)
         self.map = map
@@ -741,12 +767,12 @@ class GaussianCostmap(Costmap):
         the specified size.
 
         :param mean: The mean input for the gaussian distribution, this also specifies
-            the length of the side of the resulting costmaps. The costmaps is Created
+            the length of the side of the resulting locations. The locations is Created
             as a square.
         :param sigma: The sigma input for the gaussian distribution.
-        :param resolution: The resolution of the costmaps, this specifies how much
+        :param resolution: The resolution of the locations, this specifies how much
             meter a pixel represents.
-        :param origin: The origin of the costmaps around which it will be created.
+        :param origin: The origin of the locations around which it will be created.
         """
         self.gau: np.ndarray = self._gaussian_window(mean, sigma)
         self.map: np.ndarray = np.outer(self.gau, self.gau)
@@ -781,7 +807,7 @@ class GaussianCostmap(Costmap):
 @dataclass
 class RingCostmap(Costmap):
     """
-    Creates a ring costmaps, similar to the gaussian costmaps but this looks more like a donut. Can be used to create poses
+    Creates a ring locations, similar to the gaussian locations but this looks more like a donut. Can be used to create poses
     for reaching a point for the robot.
     """
 
@@ -792,7 +818,7 @@ class RingCostmap(Costmap):
 
     distance: float
     """
-    Distance between the center of the costmaps and the center of the ring. A distance of 0 results in a gaussian costmaps
+    Distance between the center of the locations and the center of the ring. A distance of 0 results in a gaussian locations
     """
 
     def __post_init__(self):

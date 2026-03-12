@@ -14,7 +14,7 @@ from pycram.tf_transformations import quaternion_from_euler
 from random_events.interval import closed_open
 from typing_extensions import Optional, Type
 
-from pycram.costmaps.costmaps import Costmap, OccupancyCostmap, VisibilityCostmap
+from pycram.locations.costmaps import Costmap, OccupancyCostmap, VisibilityCostmap
 import matplotlib.colorbar
 from pycram.datastructures.pose import PoseStamped
 from pycram.ros import create_publisher, Duration
@@ -61,22 +61,22 @@ class ProbabilisticCostmap:
 
     costmap: Costmap
     """
-    The legacy costmaps.
+    The legacy locations.
     """
 
     origin: PoseStamped
     """
-    The origin of the costmaps.
+    The origin of the locations.
     """
 
     size: Quantity
     """
-    The side length of the costmaps. The costmaps is a square.
+    The side length of the locations. The locations is a square.
     """
 
     distribution: Optional[ProbabilisticCircuit] = None
     """
-    The distribution associated with the costmaps.
+    The distribution associated with the locations.
     """
 
     def __init__(
@@ -128,7 +128,7 @@ class ProbabilisticCostmap:
                 world=self.world,
             )
         else:
-            raise NotImplementedError(f"Unknown costmaps type {costmap_type}")
+            raise NotImplementedError(f"Unknown locations type {costmap_type}")
         self.create_distribution()
 
     @cached_property
@@ -137,7 +137,7 @@ class ProbabilisticCostmap:
 
     def create_event_from_map(self) -> Event:
         """
-        :return: The event that is encoded by the costmaps map.
+        :return: The event that is encoded by the locations map.
         """
         area = Event()
         for rectangle in self.costmap.partitioning_rectangles():
@@ -154,13 +154,13 @@ class ProbabilisticCostmap:
 
     def create_distribution(self):
         """
-        Create a probabilistic circuit from the costmaps.
+        Create a probabilistic circuit from the locations.
         """
         self.distribution = uniform_measure_of_event(self.create_event_from_map())
 
     def sample_to_pose(self, sample: np.ndarray) -> PoseStamped:
         """
-        Convert a sample from the costmaps to a pose.
+        Convert a sample from the locations to a pose.
 
         :param sample: The sample to convert
         :return: The pose corresponding to the sample
@@ -180,7 +180,7 @@ class ProbabilisticCostmap:
 
     def visualize(self):
         """
-        Visualize the costmaps for rviz.
+        Visualize the locations for rviz.
         """
         samples = self.distribution.sample(1000)
         likelihoods = self.distribution.likelihood(samples)

@@ -1,21 +1,30 @@
+import enum
 from abc import abstractmethod, ABC
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable, TypeVar
 
 from sqlalchemy.orm import sessionmaker
 
+from krrood.entity_query_language.core.base_expressions import SymbolicExpression
 from krrood.entity_query_language.exceptions import (
     NoSolutionFound,
     GenerativeBackendQueryIsNotUnderspecifiedVariable,
 )
+from krrood.entity_query_language.factories import variable_from, set_of, variable
 from krrood.entity_query_language.query.match import Match
 from krrood.entity_query_language.query.query import Query
 from krrood.ormatic.eql_interface import eql_to_sql
-from krrood.parametrization.model_registries import ModelRegistry
+from krrood.parametrization.model_registries import (
+    ModelRegistry,
+    FullyFactorizedRegistry,
+)
 from krrood.parametrization.parameterizer import (
     MatchVariable,
     UnderspecifiedParameters,
 )
+from probabilistic_model.probabilistic_circuit.rx.helper import fully_factorized
+from probabilistic_model.probabilistic_model import ProbabilisticModel
+from random_events.variable import Symbolic
 
 T = TypeVar("T")
 
@@ -80,27 +89,65 @@ class SQLAlchemyBackend(SelectiveBackend):
 
 
 @dataclass
-class PythonBackend(SelectiveBackend):
+class EntityQueryLanguageBackend(SelectiveBackend):
     """
     A domain that selects elements from a python process. This is just ordinary EQL.
     """
 
     def evaluate(self, expression: Query) -> Iterable:
+        if isinstance(expression, Match):
+            yield from self._evaluate_underspecified(expression)
         yield from expression.evaluate()
+
+    def _evaluate_underspecified(self, expression: Match[T]) -> Iterable[T]:
+        for attribute_match in expression.matches_with_variables:
+            if isinstance(
+                attribute_match.assigned_value, type(Ellipsis)
+            ) and not issubclass(attribute_match.assigned_variable._type_, enum.Enum):
+                raise ValueError(
+                    f"Leaf statements in underspecified queries must be concrete objects or a symbolic expression."
+                    f"If the assignment is Ellipsis it must, the type of the field must be an Enum, otherwise EQL cant"
+                    f"generate it. If your looking for more flexible generations, try ProbabilisticBackend."
+                    f"Got {attribute_match.name_from_variable_access_path} = {attribute_match.assigned_variable._type_}."
+                )
+
+            # convert ellipsis assignments for enum fields to symbolic expressions
+            if isinstance(
+                attribute_match.assigned_value, type(Ellipsis)
+            ) and issubclass(attribute_match.assigned_variable._type_, enum.Enum):
+                attribute_match.assigned_variable._value_ = variable(
+                    attribute_match.assigned_variable._type_,
+                    list(attribute_match.assigned_variable._type_),
+                )
+
+            # convert concrete objects to symbolic expressions
+            else:
+                attribute_match.assigned_variable._value_ = variable(
+                    type(attribute_match.assigned_value),
+                    [attribute_match.assigned_value],
+                )
+        all_combinations = set_of(
+            *[
+                attribute_match.assigned_variable
+                for attribute_match in expression.matches_with_variables
+            ]
+        )
+        for combination in all_combinations.evaluate():
+            print(combination)
 
 
 @dataclass
 class ProbabilisticBackend(GenerativeBackend):
     """
-    A backend that generates elements from a tractable probabilistic model.
+    A backend that generates elements from a tractable probabilistic model using a model registry.
     """
 
-    model_registry: ModelRegistry
+    model_registry: ModelRegistry = field(default_factory=FullyFactorizedRegistry)
     """
     A model registry that can be used to resolve match statements to probabilistic models.
     """
 
-    number_of_samples: int = 50
+    number_of_samples: int = field(kw_only=True, default=50)
     """
     The number of samples to generate.
     """
@@ -110,10 +157,10 @@ class ProbabilisticBackend(GenerativeBackend):
         # generate parameters from example instance values
         parameters = UnderspecifiedParameters(expression)
 
+        model = self.model_registry.get_model(parameters)
+
         # apply conditions from the parameters
-        conditioned, _ = self.model_registry.get_model(expression).conditional(
-            parameters.assignments_for_conditioning
-        )
+        conditioned, _ = model.conditional(parameters.assignments_for_conditioning)
 
         if conditioned is None:
             raise NoSolutionFound(expression.expression)
