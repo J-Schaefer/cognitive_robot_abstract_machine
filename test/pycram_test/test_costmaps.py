@@ -10,7 +10,7 @@ from random_events.interval import *
 
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 
-from pycram.costmaps import (
+from pycram.costmaps.costmaps import (
     OccupancyCostmap,
     AlgebraicSemanticCostmap,
     VisibilityCostmap,
@@ -22,7 +22,7 @@ from pycram.datastructures.pose import PoseStamped
 import plotly.graph_objects as go
 
 
-# ---- Occupancy costmap tests ----
+# ---- Occupancy costmaps tests ----
 
 
 def test_attachment_exclusion(immutable_model_world):
@@ -138,7 +138,7 @@ def test_merge_costmap(immutable_model_world):
     assert np.all(o3.map == o2.map)
 
 
-# ---- Algebraic semantic costmap tests ----
+# ---- Algebraic semantic costmaps tests ----
 
 
 def test_semantic_generate_map(immutable_model_world):
@@ -560,7 +560,7 @@ def test_orientation_generator_by_axis_x(immutable_model_world):
     assert generated_orientation == pytest.approx([0, 0, 1, 0], abs=0.001)
 
 
-# ---- Probabilistic costmap tests (skipped) ----
+# ---- Probabilistic costmaps tests (skipped) ----
 
 
 @pytest.mark.skip(reason="Wait for PM Upgrade to go live")

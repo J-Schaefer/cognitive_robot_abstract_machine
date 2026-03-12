@@ -14,7 +14,7 @@ from pycram.tf_transformations import quaternion_from_euler
 from random_events.interval import closed_open
 from typing_extensions import Optional, Type
 
-from pycram.costmaps import Costmap, OccupancyCostmap, VisibilityCostmap
+from pycram.costmaps.costmaps import Costmap, OccupancyCostmap, VisibilityCostmap
 import matplotlib.colorbar
 from pycram.datastructures.pose import PoseStamped
 from pycram.ros import create_publisher, Duration
@@ -61,22 +61,22 @@ class ProbabilisticCostmap:
 
     costmap: Costmap
     """
-    The legacy costmap.
+    The legacy costmaps.
     """
 
     origin: PoseStamped
     """
-    The origin of the costmap.
+    The origin of the costmaps.
     """
 
     size: Quantity
     """
-    The side length of the costmap. The costmap is a square.
+    The side length of the costmaps. The costmaps is a square.
     """
 
     distribution: Optional[ProbabilisticCircuit] = None
     """
-    The distribution associated with the costmap.
+    The distribution associated with the costmaps.
     """
 
     def __init__(
@@ -128,7 +128,7 @@ class ProbabilisticCostmap:
                 world=self.world,
             )
         else:
-            raise NotImplementedError(f"Unknown costmap type {costmap_type}")
+            raise NotImplementedError(f"Unknown costmaps type {costmap_type}")
         self.create_distribution()
 
     @cached_property
@@ -154,13 +154,13 @@ class ProbabilisticCostmap:
 
     def create_distribution(self):
         """
-        Create a probabilistic circuit from the costmap.
+        Create a probabilistic circuit from the costmaps.
         """
         self.distribution = uniform_measure_of_event(self.create_event_from_map())
 
     def sample_to_pose(self, sample: np.ndarray) -> PoseStamped:
         """
-        Convert a sample from the costmap to a pose.
+        Convert a sample from the costmaps to a pose.
 
         :param sample: The sample to convert
         :return: The pose corresponding to the sample
@@ -180,7 +180,7 @@ class ProbabilisticCostmap:
 
     def visualize(self):
         """
-        Visualize the costmap for rviz.
+        Visualize the costmaps for rviz.
         """
         samples = self.distribution.sample(1000)
         likelihoods = self.distribution.likelihood(samples)

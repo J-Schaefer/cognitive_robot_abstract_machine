@@ -11,7 +11,7 @@ from pycram.datastructures.enums import AxisIdentifier, Arms
 from pycram.datastructures.pose import Vector3Stamped
 from pycram.datastructures.trajectory import PoseTrajectory
 from pycram.failures import TorsoGoalNotReached, ConfigurationNotReached
-from pycram.plans.factories import execute_single
+from pycram.plans.factories import execute_single, sequential
 from pycram.robot_plans.actions.base import ActionDescription
 from pycram.robot_plans.motions.gripper import MoveGripperMotion, MoveTCPWaypointsMotion
 from pycram.robot_plans.motions.robot_body import MoveJointsMotion
@@ -87,10 +87,11 @@ class SetGripperAction(ActionDescription):
 
     def execute(self) -> None:
         arms = [Arms.LEFT, Arms.RIGHT] if self.gripper == Arms.BOTH else [self.gripper]
-        for arm in arms:
-            SequentialPlan(
-                self.context, MoveGripperMotion(gripper=arm, motion=self.motion)
-            ).perform()
+        self.add_subplan(
+            sequential(
+                [MoveGripperMotion(gripper=arm, motion=self.motion) for arm in arms]
+            )
+        ).perform()
 
     def validate(
         self,
@@ -117,8 +118,8 @@ class ParkArmsAction(ActionDescription):
     def execute(self) -> None:
         joint_names, joint_poses = self.get_joint_poses()
 
-        SequentialPlan(
-            self.context, MoveJointsMotion(names=joint_names, positions=joint_poses)
+        self.add_subplan(
+            execute_single(MoveJointsMotion(names=joint_names, positions=joint_poses))
         ).perform()
 
     def get_joint_poses(self) -> Tuple[List[str], List[float]]:
@@ -260,7 +261,7 @@ class CarryAction(ActionDescription):
 
 
 @dataclass
-class FollowTCPPathAction(ActionDescription):
+class FollowToolCenterPointPathAction(ActionDescription):
     """
     Represents an action to move a robotic arm's TCP (Tool Center Point) along a
     path of poses.
@@ -285,7 +286,7 @@ class FollowTCPPathAction(ActionDescription):
             allow_gripper_collision=True,
         )
 
-        SequentialPlan(self.context, motion).perform()
+        self.add_subplan(execute_single(motion)).perform()
 
     def validate(
         self,

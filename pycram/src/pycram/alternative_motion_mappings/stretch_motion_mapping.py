@@ -27,20 +27,18 @@ class StretchMoveToolCenterPoint(MoveToolCenterPointMotion, AlternativeMotion[St
 
     @property
     def _motion_chart(self) -> Sequence:
-        tip = ViewManager().get_end_effector_view(self.arm, self.robot_view).tool_frame
+        tip = ViewManager().get_end_effector_view(self.arm, self.robot).tool_frame
         goal_copy = deepcopy(self.target.to_spatial_type())
-        goal_copy = self.world.transform(goal_copy, self.robot_view.root)
+        goal_copy = self.world.transform(goal_copy, self.robot.root)
         goal_point = goal_copy.to_position()
         goal_point.z = 0
         return Sequence(
             [
                 Pointing(
                     root_link=self.world.root,
-                    tip_link=self.robot_view.root,
+                    tip_link=self.robot.root,
                     goal_point=goal_point,
-                    pointing_axis=Vector3(
-                        0, -1, 0, reference_frame=self.robot_view.root
-                    ),
+                    pointing_axis=Vector3(0, -1, 0, reference_frame=self.robot.root),
                 ),
                 CartesianPose(
                     root_link=self.world.root,
@@ -82,7 +80,7 @@ class StretchClose(ClosingMotion, AlternativeMotion[Stretch]):
 
     @property
     def _motion_chart(self):
-        tip = ViewManager().get_end_effector_view(self.arm, self.robot_view).tool_frame
+        tip = ViewManager().get_end_effector_view(self.arm, self.robot).tool_frame
         cart = CartesianPose(
             name="Keep holding handle",
             root_link=self.object_part,
@@ -93,9 +91,9 @@ class StretchClose(ClosingMotion, AlternativeMotion[Stretch]):
         )
         align = AlignPlanes(
             root_link=self.world.root,
-            tip_link=self.robot_view.root,
+            tip_link=self.robot.root,
             goal_normal=Vector3(1, 0, 0, reference_frame=self.object_part),
-            tip_normal=Vector3(0, -1, 0, self.robot_view.root),
+            tip_normal=Vector3(0, -1, 0, self.robot.root),
         )
         close = Close(tip_link=tip, environment_link=self.object_part)
         return Parallel([cart, align, close])

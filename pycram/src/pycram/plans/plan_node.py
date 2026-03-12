@@ -4,7 +4,7 @@ import logging
 from abc import abstractmethod, ABC
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, Any, List, Type, TYPE_CHECKING
+from typing import Optional, Any, List, Type, TYPE_CHECKING, Iterable
 
 import rustworkx as rx
 from typing_extensions import Union
@@ -26,6 +26,14 @@ if TYPE_CHECKING:
     from pycram.robot_plans import ActionDescription, BaseMotion
 
 logger = logging.getLogger(__name__)
+
+
+def sort_by_layer_index(nodes: Iterable[PlanNode]) -> Iterable[PlanNode]:
+    """
+    :param nodes: The nodes to sort
+    :return: An iterator of the sorted nodes by layer index
+    """
+    return sorted(nodes, key=lambda node: node.layer_index)
 
 
 @dataclass(eq=False)
@@ -66,7 +74,9 @@ class PlanNode(PlanEntity):
 
     layer_index: int = field(default=0, init=False, repr=False)
     """
-    The position of this node in the plan graph, as tuple of layer and index in layer
+    The position of this node in its children.
+    The children of a node are interpreted as a list of nodes that have order.
+    rustworkx doesn't have order in the children, hence this attribute makes it possible.
     """
 
     @property
@@ -90,7 +100,7 @@ class PlanNode(PlanEntity):
         :return:  A list of child nodes
         """
         children = self.plan.plan_graph.successors(self.index)
-        return sorted(children, key=lambda node: node.layer_index)
+        return list(sort_by_layer_index(children))
 
     @property
     def recursive_children(self) -> List[PlanNode]:
@@ -107,31 +117,19 @@ class PlanNode(PlanEntity):
         return rec_children
 
     @property
-    def subtree(self) -> Plan:
+    def path(self) -> List[PlanNode]:
         """
-        Creates a new plan with this node as the new root
-
-        :return: A new plan
-        """
-        graph = self.plan.plan_graph.subgraph(
-            [self.index] + [child.index for child in self.recursive_children]
-        )
-        plan = Plan(root=self, context=self.plan.context)
-        plan.plan_graph = graph
-        return plan
-
-    @property
-    def all_parents(self) -> List[PlanNode]:
-        """
-        Returns all nodes above this node until the root node. The order is from this node to the root node.
-
-        :return: A list of all nodes above this
+        :return: The path from the root node to this node
         """
 
         paths = rx.all_shortest_paths(
             self.plan.plan_graph, self.index, self.plan.root.index, as_undirected=True
         )
         return [self.plan.plan_graph[i] for i in paths[0][1:]] if len(paths) > 0 else []
+
+    @property
+    def depth(self) -> int:
+        return len(self.path)
 
     @property
     def is_leaf(self) -> bool:
@@ -143,26 +141,55 @@ class PlanNode(PlanEntity):
         return self.children == []
 
     @property
-    def layer(self) -> List[PlanNode]:
-        return self.plan.get_layer_by_node(self)
+    def siblings(self) -> List[PlanNode]:
+        """
+        :return: All siblings of this node.
+        """
+        if self.parent is None:
+            return []
+        return list(
+            sort_by_layer_index(
+                child for child in self.parent.children if child is not self
+            )
+        )
+
+    @property
+    def left_siblings(self) -> List[PlanNode]:
+        return [
+            sibling
+            for sibling in self.siblings
+            if sibling.layer_index < self.layer_index
+        ]
 
     @property
     def left_neighbour(self) -> Optional[PlanNode]:
-        left_node = [
-            node
-            for node in self.layer
-            if node.layer_index[1] == self.layer_index[1] - 1
-        ]
-        return left_node[0] if left_node else None
+        return [
+            sibling
+            for sibling in self.siblings
+            if sibling.layer_index < self.layer_index
+        ][-1]
 
     @property
     def right_neighbour(self) -> Optional[PlanNode]:
-        right_node = [
-            node
-            for node in self.layer
-            if node.layer_index[1] == self.layer_index[1] + 1
-        ]
-        return right_node[0] if right_node else None
+        return [
+            sibling
+            for sibling in self.siblings
+            if sibling.layer_index > self.layer_index
+        ][0]
+
+    def get_previous_node_by_designator_type(
+        self, *type_: Type[Designator]
+    ) -> Optional[DesignatorNode]:
+        """
+        :param type_: The types of the designator to search for.
+        :return: The previous node with a designator of the specified type, or None if not found.
+        """
+        for sibling in self.left_siblings[::-1]:
+            if isinstance(sibling, DesignatorNode) and isinstance(
+                sibling.designator, type_
+            ):
+                return sibling
+        return None
 
     def __hash__(self):
         return id(self)
@@ -194,15 +221,6 @@ class PlanNode(PlanEntity):
     def perform(self):
         """
         Perform the node.
-        """
-
-    def mount_at_index(self, child: PlanNode, index: int = -1):
-        """
-        Mount a plan node and all its children at a specific index.
-
-        :param child:
-        :param index:
-        :return:
         """
 
 
@@ -356,7 +374,7 @@ class MotionNode(DesignatorNode):
         """
         Returns the next resolved action node in the plan above this motion node.
         """
-        return list(filter(lambda x: isinstance(x, ActionNode), self.all_parents))[0]
+        return list(filter(lambda x: isinstance(x, ActionNode), self.path))[0]
 
 
 ActionLike = Union[Match, Designator, PlanNode]

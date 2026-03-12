@@ -13,8 +13,9 @@ from pycram.datastructures.enums import (
 from pycram.datastructures.grasp import GraspDescription
 from pycram.datastructures.pose import PoseStamped
 from pycram.failures import ObjectNotPlacedAtTargetLocation, ObjectStillInContact
+from pycram.plans.factories import sequential, execute_single
 from pycram.robot_plans.actions.base import ActionDescription
-from pycram.robot_plans.actions.core.pick_up import PickUpAction
+from pycram.robot_plans.actions.core.pick_up import PickUpAction, ReachAction
 from pycram.robot_plans.motions.gripper import (
     MoveToolCenterPointMotion,
     MoveGripperMotion,
@@ -44,39 +45,35 @@ class PlaceAction(ActionDescription):
     """
     Arm that is currently holding the object
     """
-    _pre_perform_callbacks = []
-    """
-    List to save the callbacks which should be called before performing the action.
-    """
-
-    def __post_init__(self):
-        super().__post_init__()
 
     def execute(self) -> None:
         arm = ViewManager.get_arm_view(self.arm, self.robot)
         manipulator = arm.manipulator
 
-        previous_pick = self.plan.get_previous_node_by_designator_type(
-            self.plan_node, PickUpAction
+        previous_pick = self.plan_node.get_previous_node_by_designator_type(
+            PickUpAction
         )
         previous_grasp = (
-            previous_pick.designator_ref.grasp_description
+            previous_pick.designator.grasp_description
             if previous_pick
             else GraspDescription(
                 ApproachDirection.FRONT, VerticalAlignment.NoAlignment, manipulator
             )
         )
 
-        SequentialPlan(
-            self.context,
-            ReachActionDescription(
-                self.target_location,
-                self.arm,
-                previous_grasp,
-                self.object_designator,
-                reverse_reach_order=True,
-            ),
-            MoveGripperMotion(GripperState.OPEN, self.arm),
+        self.add_subplan(
+            sequential(
+                [
+                    ReachAction(
+                        self.target_location,
+                        self.arm,
+                        previous_grasp,
+                        self.object_designator,
+                        reverse_reach_order=True,
+                    ),
+                    MoveGripperMotion(GripperState.OPEN, self.arm),
+                ]
+            )
         ).perform()
 
         # Detaches the object from the robot
@@ -96,8 +93,8 @@ class PlaceAction(ActionDescription):
             self.target_location, self.object_designator, reverse=True
         )
 
-        SequentialPlan(
-            self.context, MoveToolCenterPointMotion(retract_pose, self.arm)
+        self.add_subplan(
+            execute_single(MoveToolCenterPointMotion(retract_pose, self.arm))
         ).perform()
 
     def validate(

@@ -28,12 +28,12 @@ def sequential(
 ) -> SequentialNode:
     from pycram.language import SequentialNode
 
-    result = SequentialNode()
+    root = SequentialNode()
     plan = Plan(context=context)
-    plan.add_node(result)
+    plan.add_node(root)
     for action_like in children:
-        plan.add_edge(result, make_node(action_like))
-    return result
+        plan.add_edge(root, make_node(action_like))
+    return root
 
 
 def make_node(action_like: ActionLike) -> PlanNode:
@@ -43,7 +43,8 @@ def make_node(action_like: ActionLike) -> PlanNode:
         ActionNode,
         MotionNode,
     )
-    from pycram.robot_plans import ActionDescription, BaseMotion
+    from pycram.robot_plans.actions.base import ActionDescription
+    from pycram.robot_plans import BaseMotion
 
     if isinstance(action_like, PlanNode):
         return action_like

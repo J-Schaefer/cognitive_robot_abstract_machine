@@ -199,16 +199,19 @@ class GraspingAction(ActionDescription):
             self.object_designator
         )
 
-        SequentialPlan(
-            self.context,
-            MoveToolCenterPointMotion(pre_pose, self.arm),
-            MoveGripperMotion(GripperState.OPEN, self.arm),
-            MoveToolCenterPointMotion(
-                grasp_pose, self.arm, allow_gripper_collision=True
-            ),
-            MoveGripperMotion(
-                GripperState.CLOSE, self.arm, allow_gripper_collision=True
-            ),
+        self.add_subplan(
+            sequential(
+                [
+                    MoveToolCenterPointMotion(pre_pose, self.arm),
+                    MoveGripperMotion(GripperState.OPEN, self.arm),
+                    MoveToolCenterPointMotion(
+                        grasp_pose, self.arm, allow_gripper_collision=True
+                    ),
+                    MoveGripperMotion(
+                        GripperState.CLOSE, self.arm, allow_gripper_collision=True
+                    ),
+                ]
+            )
         ).perform()
 
     def validate(

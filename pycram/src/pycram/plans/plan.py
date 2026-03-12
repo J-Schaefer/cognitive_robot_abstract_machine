@@ -79,6 +79,17 @@ class Plan:
         if self.context is not None:
             self.add_plan_entity(self.context)
 
+    def validate(self):
+        """
+        Check that the plan as constructed so far is valid.
+        A plan is valid if it is a tree.
+        """
+        if not (
+            len(self.plan_graph.edges()) == len(self.plan_graph.nodes()) - 1
+            and self.root
+        ):
+            raise ValueError("Plan is not a tree")
+
     @property
     def root(self):
         [result] = [node for node in self.all_nodes if node.parent is None]
@@ -118,6 +129,9 @@ class Plan:
 
     def add_plan_entity(self, entity: PlanEntity):
         entity.plan = self
+
+    def remove_plan_entity(self, entity: PlanEntity):
+        entity.plan = None
 
     def mount(self, other: Plan, mount_node: PlanNode = None):
         """
@@ -167,12 +181,18 @@ class Plan:
         self.add_plan_entity(node)
         node.index = self.plan_graph.add_node(node)
 
-    def add_edge(self, source: PlanNode, target: PlanNode, **attr):
+    def add_edge(
+        self, source: PlanNode, target: PlanNode, target_index: Optional[int] = None
+    ):
         """
         Adds an edge to the plan. Nodes that are not in the plan will be added to the plan.
 
         :param source: Origin node of the edge
         :param target: Target node of the edge
+        :param target_index: The index of the target node in the source nodes children.
+        If not target_index is given, the target node will be appended to the source's children.
+        If the target_index is given, the target node will be inserted at the given index in the source's children and
+        the later children are shifted to the right.
         """
         self.add_node(source)
         self.add_node(target)
@@ -182,6 +202,19 @@ class Plan:
             target.index,
             (source, target),
         )
+
+        # if no target index is given, the target is appended to the source's children'
+        if target_index is None:
+            target.layer_index = len(source.children) - 1
+            return
+
+        # shift all children that should come after target to the right
+        target.layer_index = target_index
+        for child in source.children:
+            if child is target:
+                continue
+            if child.layer_index >= target_index:
+                child.layer_index += 1
 
     def add_edges_from(
         self,
@@ -219,11 +252,7 @@ class Plan:
 
         :return: The return value of the root node
         """
-        previous_plan = Plan.current_plan
-        Plan.current_plan = self
-        self.initial_world = deepcopy(self.context.world)
         result = self.root.perform()
-        Plan.current_plan = previous_plan
         return result
 
     def re_perform(self):

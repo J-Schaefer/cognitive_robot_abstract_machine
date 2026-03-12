@@ -80,7 +80,7 @@ class SequentialNode(LanguageNode):
         result = None
         try:
             logger.info(f"Executing {self}")
-            result = self.perform_sequential(self.children[::-1])
+            result = self.perform_sequential(self.children)
             self.status = TaskStatus.SUCCEEDED
         except PlanFailure as e:
             self.status = TaskStatus.FAILED

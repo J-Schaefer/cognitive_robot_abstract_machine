@@ -1,6 +1,6 @@
-# used for delayed evaluation of typing until python 3.11 becomes mainstream
 from __future__ import annotations
 
+import logging
 import random
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -9,15 +9,18 @@ from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
-import psutil
-import random_events
-import logging
 from matplotlib import colors
 from skimage.measure import label
+from typing_extensions import Tuple, List, Optional, Iterator, Callable
+
+import random_events
 from probabilistic_model.probabilistic_circuit.rx.helper import uniform_measure_of_event
 from probabilistic_model.probabilistic_circuit.rx.probabilistic_circuit import (
     ProbabilisticCircuit,
 )
+from pycram.datastructures.pose import PoseStamped
+from pycram.datastructures.pose import TransformStamped
+from pycram.tf_transformations import quaternion_from_euler, quaternion_multiply
 from random_events.interval import Interval, reals, closed_open, closed
 from random_events.product_algebra import Event, SimpleEvent
 from random_events.variable import Continuous
@@ -25,16 +28,6 @@ from semantic_digital_twin.robots.abstract_robot import AbstractRobot
 from semantic_digital_twin.spatial_computations.raytracer import RayTracer
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.world_entity import Body
-from typing_extensions import Tuple, List, Optional, Iterator, Callable
-
-from pycram.datastructures.pose import PoseStamped
-from pycram.datastructures.pose import TransformStamped
-from pycram.tf_transformations import quaternion_from_euler, quaternion_multiply
-
-try:
-    from nav_msgs.msg import OccupancyGrid, MapMetaData
-except ImportError:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +42,10 @@ class OrientationGenerator:
         position: List[float], origin: PoseStamped, rotate_by_angle: float = 0
     ) -> List[float]:
         """
-        Generates an orientation such that the robot faces the origin of the costmap.
+        Generates an orientation such that the robot faces the origin of the costmaps.
 
-        :param position: The position in the costmap, already converted to the world coordinate frame.
-        :param origin: The origin of the costmap, the point which the robot should face.
+        :param position: The position in the costmaps, already converted to the world coordinate frame.
+        :param origin: The origin of the costmaps, the point which the robot should face.
         :param rotate_by_angle: Angle to rotate the orientation.
         :return: A quaternion of the calculated orientation.
         """
@@ -99,57 +92,31 @@ class OrientationGenerator:
 
 
 @dataclass
-class Rectangle:
-    """
-    A rectangle that is described by a lower and upper x and y value.
-    """
-
-    x_lower: float
-    x_upper: float
-    y_lower: float
-    y_upper: float
-
-    def translate(self, x: float, y: float):
-        """Translate the rectangle by x and y"""
-        self.x_lower += x
-        self.x_upper += x
-        self.y_lower += y
-        self.y_upper += y
-
-    def scale(self, x_factor: float, y_factor: float):
-        """Scale the rectangle by x_factor and y_factor"""
-        self.x_lower *= x_factor
-        self.x_upper *= x_factor
-        self.y_lower *= y_factor
-        self.y_upper *= y_factor
-
-
-@dataclass
 class Costmap:
     """
-    The base class of all Costmaps which implements the visualization of costmaps
-    in the World.
+    The base class of all Costmaps.
+    Costmaps describe regions in the world that are suitable for a certaint task.
     """
 
     resolution: float
     """
-    The distance in metre in the real-world which is represented by a single entry in the costmap. 
+    The distance in metre in the real-world which is represented by a single entry in the costmaps. 
     """
     height: int
     """
-    Height of the costmap.
+    Height of the costmaps.
     """
     width: int
     """
-    Width of the costmap.
+    Width of the costmaps.
     """
     origin: PoseStamped = field(kw_only=True, default_factory=lambda: PoseStamped())
     """
-    Origin pose of the costmap.
+    Origin pose of the costmaps.
     """
     map: np.ndarray = field(default_factory=lambda: np.zeros((10, 10)), kw_only=True)
     """
-    Numpy array to save the costmap distribution
+    Numpy array to save the costmaps distribution
     
     Costmaps represent the 2D distribution in a numpy array where axis 0 is the X-Axis of the coordinate system and axis 1 
     is the Y-Axis of the coordinate system. An increase in the index of the axis of the numpy array corresponds to an increase in the 
@@ -157,7 +124,7 @@ class Costmap:
     system is given by the resolution. 
 
     Furthermore, there is a difference in the origin of the two representations while the numpy arrays start from the top left 
-    corner, the origin given as PoseStamped is placed in the middle of the array. The costmap is build around the origin and 
+    corner, the origin given as PoseStamped is placed in the middle of the array. The costmaps is build around the origin and 
     since the array start from 0, 0 in the corner this conversion is necessary. 
 
                 y-axis      0, 10
@@ -172,7 +139,7 @@ class Costmap:
 
     world: World
     """
-    The world from which this costmap was created.
+    The world from which this costmaps was created.
     """
     vis_ids: List[int] = field(default_factory=list, init=False)
 
@@ -192,71 +159,6 @@ class Costmap:
     """
     An optional orientatoin generator to use to generate the orientation for a sampled pose
     """
-
-    def visualize(self) -> None:
-        """
-        Visualizes a costmap in the BulletWorld, the visualisation works by
-        subdividing the costmap in rectangles which are then visualized as pybullet
-        visual shapes.
-        """
-
-        return
-
-        # TODO: This needs to be fixed, when we have a visualization in the sem world
-        if self.vis_ids != []:
-            return
-
-        # working on a copy of the costmap, since found rectangles are deleted
-        map = np.copy(self.map)
-        boxes = []
-        # Finding all rectangles in the costmap
-        for i in range(0, map.shape[0]):
-            for j in range(0, map.shape[1]):
-                if map[i][j] > 0:
-                    curr_width = self._find_consectuive_line((i, j), map)
-                    curr_pose = (i, j)
-                    curr_height = self._find_max_box_height((i, j), curr_width, map)
-                    avg = np.average(map[i : i + curr_height, j : j + curr_width])
-                    boxes.append([curr_pose, curr_height, curr_width, avg])
-                    map[i : i + curr_height, j : j + curr_width] = 0
-        cells = []
-        # Creation of the visual shapes, for documentation of the visual shapes
-        # please look here: https://docs.google.com/document/d/10sXEhzFRSnvFcl3XxNGhnD4N2SedqwdAvK3dsihxVUA/edit#heading=h.q1gn7v6o58bf
-        for box in boxes:
-            box = BoxVisualShape(
-                Color(1, 0, 0, 0.6),
-                [
-                    (box[0][0] + box[1] / 2) * self.resolution,
-                    (box[0][1] + box[2] / 2) * self.resolution,
-                    0.0,
-                ],
-                [(box[1] * self.resolution) / 2, (box[2] * self.resolution) / 2, 0.001],
-            )
-            visual = self.world.create_visual_shape(box)
-            cells.append(visual)
-        # Set to 127 for since this is the maximal amount of links in a multibody
-        for cell_parts in self._chunks(cells, 127):
-            offset = [
-                [
-                    -self.height / 2 * self.resolution,
-                    -self.width / 2 * self.resolution,
-                    0.05,
-                ],
-                [0, 0, 0, 1],
-            ]
-            origin_transform = TransformStamped.from_list(
-                self.origin.position.to_list(), self.origin.orientation.to_list()
-            )
-            offset_transform = TransformStamped.from_list(offset[0], offset[1])
-            new_pose_transform = origin_transform * offset_transform
-            new_pose = PoseStamped.from_list(
-                new_pose_transform.translation.to_list(),
-                new_pose_transform.rotation.to_list(),
-            )
-            map_obj = self.world.create_multi_body_from_visual_shapes(
-                cell_parts, new_pose
-            )
-            self.vis_ids.append(map_obj)
 
     def _chunks(self, lst: List, n: int) -> Iterator[List]:
         """
@@ -279,11 +181,11 @@ class Costmap:
 
     def _find_consectuive_line(self, start: Tuple[int, int], map: np.ndarray) -> int:
         """
-        Finds the number of consecutive entries in the costmap which are greater
+        Finds the number of consecutive entries in the costmaps which are greater
         than zero.
 
-        :param start: The indices in the costmap from which the consecutive line should be found.
-        :param map: The costmap in which the line should be found.
+        :param start: The indices in the costmaps from which the consecutive line should be found.
+        :param map: The costmaps in which the line should be found.
         :return: The length of the consecutive line of entries greater than zero.
         """
         width = map.shape[1]
@@ -299,14 +201,14 @@ class Costmap:
         self, start: Tuple[int, int], length: int, map: np.ndarray
     ) -> int:
         """
-        Finds the maximal height for a rectangle with a given width in a costmap.
+        Finds the maximal height for a rectangle with a given width in a costmaps.
         The method traverses one row at a time and checks if all entries for the
         given width are greater than zero. If an entry is less or equal than zero
         the height is returned.
 
-        :param start: The indices in the costmap from which the method should start.
+        :param start: The indices in the costmaps from which the method should start.
         :param length: The given width for the rectangle
-        :param map: The costmap in which should be searched.
+        :param map: The costmaps in which should be searched.
         :return: The height of the rectangle.
         """
         height, width = map.shape
@@ -320,7 +222,7 @@ class Costmap:
 
     def merge(self, other_cm: Costmap) -> Costmap:
         """
-        Merges the values of two costmaps and returns a new costmap that has for
+        Merges the values of two costmaps and returns a new costmaps that has for
         every cell the merged values of both inputs. To merge two costmaps they
         need to fulfill 3 constrains:
 
@@ -330,8 +232,8 @@ class Costmap:
 
         If any of these constrains is not fulfilled a ValueError will be raised.
 
-        :param other_cm: The other costmap with which this costmap should be merged.
-        :return: A new costmap that contains the merged values
+        :param other_cm: The other costmaps with which this costmaps should be merged.
+        :return: A new costmaps that contains the merged values
         """
         if self.width != other_cm.width or self.height != other_cm.height:
             raise ValueError("You can only merge costmaps of the same size.")
@@ -358,7 +260,7 @@ class Costmap:
             new_map = (new_map / np.max(new_map)).reshape((self.height, self.width))
         else:
             new_map = new_map.reshape((self.height, self.width))
-            logger.warning("Merged costmap is empty.")
+            logger.warning("Merged costmaps is empty.")
         return Costmap(
             resolution=self.resolution,
             height=self.height,
@@ -385,7 +287,7 @@ class Costmap:
 
     def partitioning_rectangles(self) -> List[Rectangle]:
         """
-        Partition the map attached to this costmap into rectangles. The rectangles are axis aligned, exhaustive and
+        Partition the map attached to this costmaps into rectangles. The rectangles are axis aligned, exhaustive and
         disjoint sets.
 
         :return: A list containing the partitioning rectangles
@@ -394,7 +296,7 @@ class Costmap:
         origin = np.array([self.height / 2, self.width / 2]) * -1
         rectangles = []
 
-        # for every index pair (i, j) in the occupancy costmap
+        # for every index pair (i, j) in the occupancy costmaps
         for i in range(0, self.map.shape[0]):
             for j in range(0, self.map.shape[1]):
 
@@ -404,7 +306,7 @@ class Costmap:
                     curr_pose = (i, j)
                     curr_height = self._find_max_box_height((i, j), curr_width, ocm_map)
 
-                    # calculate the rectangle in the costmap
+                    # calculate the rectangle in the costmaps
                     x_lower = curr_pose[0]
                     x_upper = curr_pose[0] + curr_height
                     y_lower = curr_pose[1]
@@ -423,9 +325,9 @@ class Costmap:
 
     def __iter__(self) -> Iterator[PoseStamped]:
         """
-        A generator that crates pose candidates from a given costmap. The generator
+        A generator that crates pose candidates from a given costmaps. The generator
         selects the highest 100 values and returns the corresponding positions.
-        Orientations are calculated such that the Robot faces the center of the costmap.
+        Orientations are calculated such that the Robot faces the center of the costmaps.
 
         :Yield: A tuple of position and orientation
         """
@@ -435,7 +337,7 @@ class Costmap:
             or OrientationGenerator.generate_origin_orientation
         )
 
-        # Determines how many positions should be sampled from the costmap
+        # Determines how many positions should be sampled from the costmaps
         if (
             self.number_of_samples == -1
             or self.number_of_samples > self.map.flatten().shape[0]
@@ -463,8 +365,8 @@ class Costmap:
             for ind in indices:
                 if seg_map[ind[0]][ind[1]] == 0:
                     continue
-                # The position is calculated by creating a vector from the 2D position in the costmap (given by x and y)
-                # and the center of the costmap (since this is the origin). This vector is then turned into a transformation
+                # The position is calculated by creating a vector from the 2D position in the costmaps (given by x and y)
+                # and the center of the costmaps (since this is the origin). This vector is then turned into a transformation
                 # and multiplied with the transformation of the origin.
                 vector_to_origin = (center - ind) * self.resolution
                 point_to_origin = TransformStamped.from_list(
@@ -483,7 +385,7 @@ class Costmap:
 
     def segment_map(self) -> List[np.ndarray]:
         """
-        Finds partitions in the costmap and isolates them, a partition is a number of entries in the costmap which are
+        Finds partitions in the costmaps and isolates them, a partition is a number of entries in the costmaps which are
         neighbours. Returns a list of numpy arrays with one partition per array.
 
         :return: A list of numpy arrays with one partition per array
@@ -599,7 +501,7 @@ class OccupancyCostmap(Costmap):
         """
         Creates an Occupancy Costmap for the specified World.
         This map marks every position as valid that has no object above it. After
-        creating the costmap the distance to obstacle parameter is applied.
+        creating the costmaps the distance to obstacle parameter is applied.
         """
 
         res = self.create_ray_mask_around_origin()
@@ -625,8 +527,8 @@ class OccupancyCostmap(Costmap):
 @dataclass
 class VisibilityCostmap(Costmap):
     """
-    A costmap that represents the visibility of a specific point for every position around
-    this point. For a detailed explanation on how the creation of the costmap works
+    A costmaps that represents the visibility of a specific point for every position around
+    this point. For a detailed explanation on how the creation of the costmaps works
     please look here: `PhD Thesis (page 173) <https://mediatum.ub.tum.de/doc/1239461/1239461.pdf>`_
     """
 
@@ -645,7 +547,7 @@ class VisibilityCostmap(Costmap):
     def _create_images(self) -> List[np.ndarray]:
         """
         Creates four depth images in every direction around the point
-        for which the costmap should be created. The depth images are converted
+        for which the costmaps should be created. The depth images are converted
         to metre, meaning that every entry in the depth images represents the
         distance to the next object in metre.
 
@@ -723,18 +625,18 @@ class VisibilityCostmap(Costmap):
         depth_indices[res == 0, :1] = indices[res == 0, :1]
         depth_indices[res == 0, 1:2] = indices[res == 0, 1:2]
 
-        # Convert back to origin in the middle of the costmap
+        # Convert back to origin in the middle of the costmaps
         depth_indices[:, :, :1] -= self.width / 2
         depth_indices[:, :, 1:2] = np.absolute(
             self.width / 2 - depth_indices[:, :, 1:2]
         )
 
-        # Sets the y index for the coordinates of the middle of the costmap to 1,
+        # Sets the y index for the coordinates of the middle of the costmaps to 1,
         # the computed value is 0 which would cause an error in the next step where
         # the calculation divides the x coordinates by the y coordinates
         depth_indices[int(self.width / 2), int(self.width / 2), 1] = 1
 
-        # Calculate columns for the respective position in the costmap
+        # Calculate columns for the respective position in the costmaps
         columns = (
             np.around(
                 (
@@ -748,7 +650,7 @@ class VisibilityCostmap(Costmap):
         )
 
         # An array with size * size that contains the euclidean distance to the
-        # origin (in the middle of the costmap) from every cell
+        # origin (in the middle of the costmaps) from every cell
         distances = np.maximum(
             np.linalg.norm(
                 np.dstack(
@@ -784,10 +686,10 @@ class VisibilityCostmap(Costmap):
         r = np.arange(self.width)
         # Calculates a mask from the r_min and r_max values. This mask is for every
         # coordinate respectively and determines which values from the computed column
-        # of the depth image should be taken into account for the costmap.
+        # of the depth image should be taken into account for the costmaps.
         # A Mask of a single coordinate has the length of the column of the depth image
         # and together with the computed column at this coordinate determines which
-        # values of the depth image make up the value of the visibility costmap at this
+        # values of the depth image make up the value of the visibility costmaps at this
         # point.
         mask = ((rs[:, 0, None] <= r) & (rs[:, 1, None] > r)).reshape(
             (self.width, self.width, self.width)
@@ -799,7 +701,7 @@ class VisibilityCostmap(Costmap):
         for i in range(4):
             row_masks = mask[res == i].T
             # This statement does several things, first it takes the values from
-            # the depth image for this quarter of the costmap. The values taken are
+            # the depth image for this quarter of the costmaps. The values taken are
             # the complete columns of the depth image (which where computed beforehand)
             # and checks if the values in them are greater than the distance to the
             # respective coordinates. This does not take the row ranges into account.
@@ -811,11 +713,11 @@ class VisibilityCostmap(Costmap):
             # This applies the created mask of the row ranges to the values of
             # the columns which are compared in the previous statement
             masked = np.ma.masked_array(values, mask=~row_masks)
-            # The calculated values are added to the costmap
+            # The calculated values are added to the costmaps
             map[res == i] = np.sum(masked, axis=0)
         map /= np.max(map)
         # Weird flipping shit so that the map fits the orientation of the visualization.
-        # the costmap in itself is consistent and just needs to be flipped to fit the world coordinate system
+        # the costmaps in itself is consistent and just needs to be flipped to fit the world coordinate system
         map = np.flip(map, axis=0)
         map = np.flip(map)
         self.map = map
@@ -839,12 +741,12 @@ class GaussianCostmap(Costmap):
         the specified size.
 
         :param mean: The mean input for the gaussian distribution, this also specifies
-            the length of the side of the resulting costmap. The costmap is Created
+            the length of the side of the resulting costmaps. The costmaps is Created
             as a square.
         :param sigma: The sigma input for the gaussian distribution.
-        :param resolution: The resolution of the costmap, this specifies how much
+        :param resolution: The resolution of the costmaps, this specifies how much
             meter a pixel represents.
-        :param origin: The origin of the costmap around which it will be created.
+        :param origin: The origin of the costmaps around which it will be created.
         """
         self.gau: np.ndarray = self._gaussian_window(mean, sigma)
         self.map: np.ndarray = np.outer(self.gau, self.gau)
@@ -879,7 +781,7 @@ class GaussianCostmap(Costmap):
 @dataclass
 class RingCostmap(Costmap):
     """
-    Creates a ring costmap, similar to the gaussian costmap but this looks more like a donut. Can be used to create poses
+    Creates a ring costmaps, similar to the gaussian costmaps but this looks more like a donut. Can be used to create poses
     for reaching a point for the robot.
     """
 
@@ -890,7 +792,7 @@ class RingCostmap(Costmap):
 
     distance: float
     """
-    Distance between the center of the costmap and the center of the ring. A distance of 0 results in a gaussian costmap
+    Distance between the center of the costmaps and the center of the ring. A distance of 0 results in a gaussian costmaps
     """
 
     def __post_init__(self):
@@ -909,298 +811,6 @@ class RingCostmap(Costmap):
             -((distance_from_center - radius_in_pixels) ** 2) / (2 * self.std**2)
         )
         return ring_costmap
-
-
-class SemanticCostmap(Costmap):
-    """
-    Semantic Costmaps represent a 2D distribution over a link of an Object. An example of this would be a Costmap for a
-    table surface.
-    """
-
-    def __init__(self, body: Body, resolution: float = 0.02):
-        """
-        Creates a semantic costmap for the given parameter. The semantic costmap will be on top of the link of the given
-        Object.
-
-        :param body: The body for which the costmap should be created.
-        :param resolution: Resolution of the final costmap (how much meters one pixel represents)
-        """
-        self.world: World = body._world
-        self.body: Body = body
-        self.resolution: float = resolution
-        self.origin: PoseStamped = PoseStamped.from_spatial_type(self.body.global_pose)
-        self.height: int = 0
-        self.width: int = 0
-        self.map: np.ndarray = np.zeros((self.height, self.width))
-        self.generate_map()
-
-    def get_edges_map(
-        self, margin_in_meters: float, horizontal_only: bool = False
-    ) -> Costmap:
-        """
-        Return a Costmap with only the edges of the original Costmap marked as possible positions.
-
-        :param margin_in_meters: The edge thickness in meters that should be marked as possible positions.
-        :param horizontal_only: If True only the horizontal edges will be marked as possible positions.
-        :return: The modified Costmap.
-        """
-        mask = np.zeros(self.map.shape)
-        edge_tolerance = int(margin_in_meters / self.resolution)
-        mask[:edge_tolerance] = 1
-        mask[-edge_tolerance:] = 1
-        if not horizontal_only:
-            mask[:, :edge_tolerance] = 1
-            mask[:, -edge_tolerance:] = 1
-        return Costmap(
-            self.resolution, self.height, self.width, self.origin, mask, self.world
-        )
-
-    def generate_map(self) -> None:
-        """
-        Generates the semantic costmap according to the provided parameters. To do this the axis aligned bounding box (AABB)
-        for the link name will be used. Height and width of the final Costmap will be the x and y sizes of the AABB.
-        """
-        bb_collection = self.body.collision.as_bounding_box_collection_in_frame(
-            self.body
-        )
-        max_x = (
-            max([bb.max_x for bb in bb_collection.bounding_boxes]) // self.resolution
-        )
-        min_x = (
-            min([bb.min_x for bb in bb_collection.bounding_boxes]) // self.resolution
-        )
-        max_y = (
-            max([bb.max_y for bb in bb_collection.bounding_boxes]) // self.resolution
-        )
-        min_y = (
-            min([bb.min_y for bb in bb_collection.bounding_boxes]) // self.resolution
-        )
-        map = np.zeros((int((max_x - min_x)), int((max_y - min_y))))
-        for bb in bb_collection.bounding_boxes:
-            points_2d = np.dstack(np.mgrid[: map.shape[0], : map.shape[1]])
-            bb_min_x = (bb.min_x // self.resolution) + map.shape[0] // 2 + 1
-            bb_max_x = (bb.max_x // self.resolution) + map.shape[0] // 2 + 1
-            bb_min_y = (bb.min_y // self.resolution) + map.shape[1] // 2 + 1
-            bb_max_y = (bb.max_y // self.resolution) + map.shape[1] // 2 + 1
-
-            polygon = np.array(
-                [
-                    [bb_min_x, bb_max_x],
-                    [bb_min_x, bb_min_y],
-                    [bb_max_x, bb_min_y],
-                    [bb_max_x, bb_max_y],
-                ]
-            )
-
-            yy, xx = np.mgrid[: map.shape[0], : map.shape[1]]
-            polygon = np.array(
-                [
-                    [bb_min_y, bb_max_y],
-                    [bb_min_y, bb_min_x],
-                    [bb_max_y, bb_min_x],
-                    [bb_max_y, bb_max_x],
-                ]
-            )
-            points = np.vstack((xx.ravel(), yy.ravel())).T
-            mask = self.points_in_poly(points, polygon).reshape(
-                (map.shape[0], map.shape[1])
-            )
-
-            map[mask] = 1
-        self.map = map
-        self.width = map.shape[1]
-        self.height = map.shape[0]
-
-    @staticmethod
-    def points_in_poly(points, poly):
-        # Ray casting algorithm for point-in-polygon
-        n = poly.shape[0]
-        inside = np.zeros(points.shape[0], dtype=bool)
-        x, y = points[:, 0], points[:, 1]
-        for i in range(n):
-            j = (i + 1) % n
-            xi, yi = poly[i]
-            xj, yj = poly[j]
-            intersect = ((yi > y) != (yj > y)) & (
-                x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi
-            )
-            inside ^= intersect
-        return inside
-
-
-class AlgebraicSemanticCostmap(SemanticCostmap):
-    """
-    Class for a semantic costmap that is based on an algebraic set-description of the valid area.
-    """
-
-    x: Continuous = Continuous("x")
-    """
-    The variable for height.
-    """
-
-    y: Continuous = Continuous("y")
-    """
-    The variable for width.
-    """
-
-    original_valid_area: Optional[SimpleEvent]
-    """
-    The original rectangle of the valid area.
-    """
-
-    valid_area: Optional[Event]
-    """
-    A description of the valid positions as set.
-    """
-
-    number_of_samples: int
-    """
-    The number of samples to generate for the iter.
-    """
-
-    def __init__(self, body: Body, number_of_samples=1000):
-        super().__init__(body, resolution=0.02)
-        self.number_of_samples = number_of_samples
-        self.world = body._world
-
-    def check_valid_area_exists(self):
-        assert self.valid_area is not None, (
-            "The map has to be created before semantics can be applied. "
-            "Call 'generate_map first'"
-        )
-
-    def left(self, margin=0.0) -> Event:
-        """
-        Create an event left of the origins Y-Coordinate.
-        :param margin: The margin of the events left bound.
-        :return: The left event.
-        """
-        self.check_valid_area_exists()
-        y_origin = self.origin.position.y
-        left = self.original_valid_area[self.y].simple_sets[0].lower
-        left += margin
-        event = SimpleEvent(
-            {self.x: reals(), self.y: random_events.interval.open(left, y_origin)}
-        ).as_composite_set()
-        return event
-
-    def right(self, margin=0.0) -> Event:
-        """
-        Create an event right of the origins Y-Coordinate.
-        :param margin: The margin of the events right bound.
-        :return: The right event.
-        """
-        self.check_valid_area_exists()
-        y_origin = self.origin.position.y
-        right = self.original_valid_area[self.y].simple_sets[0].upper
-        right -= margin
-        event = SimpleEvent(
-            {self.x: reals(), self.y: closed_open(y_origin, right)}
-        ).as_composite_set()
-        return event
-
-    def top(self, margin=0.0) -> Event:
-        """
-        Create an event above the origins X-Coordinate.
-        :param margin: The margin of the events upper bound.
-        :return: The top event.
-        """
-        self.check_valid_area_exists()
-        x_origin = self.origin.position.x
-        top = self.original_valid_area[self.x].simple_sets[0].upper
-        top -= margin
-        event = SimpleEvent(
-            {self.x: random_events.interval.closed_open(x_origin, top), self.y: reals()}
-        ).as_composite_set()
-        return event
-
-    def bottom(self, margin=0.0) -> Event:
-        """
-        Create an event below the origins X-Coordinate.
-        :param margin: The margin of the events lower bound.
-        :return: The bottom event.
-        """
-        self.check_valid_area_exists()
-        x_origin = self.origin.position.x
-        lower = self.original_valid_area[self.x].simple_sets[0].lower
-        lower += margin
-        event = SimpleEvent(
-            {self.x: random_events.interval.open(lower, x_origin), self.y: reals()}
-        ).as_composite_set()
-        return event
-
-    def inner(self, margin=0.2):
-        min_x = self.original_valid_area[self.x].simple_sets[0].lower
-        max_x = self.original_valid_area[self.x].simple_sets[0].upper
-        min_y = self.original_valid_area[self.y].simple_sets[0].lower
-        max_y = self.original_valid_area[self.y].simple_sets[0].upper
-
-        min_x += margin
-        max_x -= margin
-        min_y += margin
-        max_y -= margin
-
-        inner_event = SimpleEvent(
-            {self.x: closed(min_x, max_x), self.y: closed(min_y, max_y)}
-        ).as_composite_set()
-        return inner_event
-
-    def border(self, margin=0.2):
-        return ~self.inner(margin)
-
-    def generate_map(self) -> None:
-        super().generate_map()
-        valid_area = None
-        for rectangle in self.partitioning_rectangles():
-            # rectangle.scale(1/self.resolution, 1/self.resolution)
-            rectangle.translate(self.origin.position.x, self.origin.position.y)
-            rectangle_event = SimpleEvent(
-                {
-                    self.x: closed(rectangle.x_lower, rectangle.x_upper),
-                    self.y: closed(rectangle.y_lower, rectangle.y_upper),
-                }
-            ).as_composite_set()
-            if valid_area is None:
-                valid_area = rectangle_event
-            else:
-                valid_area |= rectangle_event
-
-        assert len(valid_area.simple_sets) == 1, (
-            "The map at the basis of a Semantic costmap must be an axis aligned"
-            "bounding box"
-        )
-        self.valid_area = valid_area
-        self.original_valid_area = self.valid_area.simple_sets[0]
-
-    def as_distribution(self) -> ProbabilisticCircuit:
-        model = uniform_measure_of_event(self.valid_area)
-        return model
-
-    def sample_to_pose(self, sample: np.ndarray) -> PoseStamped:
-        """
-        Convert a sample from the costmap to a pose.
-
-        :param sample: The sample to convert
-        :return: The pose corresponding to the sample
-        """
-        x = sample[0]
-        y = sample[1]
-        position = [x, y, self.origin.position.z]
-        angle = (
-            np.arctan2(
-                position[1] - self.origin.position.y,
-                position[0] - self.origin.position.x,
-            )
-            + np.pi
-        )
-        orientation = list(quaternion_from_euler(0, 0, angle, axes="sxyz"))
-        return PoseStamped.from_list(position, orientation, self.world.root)
-
-    def __iter__(self) -> Iterator[PoseStamped]:
-        model = self.as_distribution()
-        samples = model.sample(self.number_of_samples)
-        for sample in samples:
-            yield self.sample_to_pose(sample)
 
 
 cmap = colors.ListedColormap(["white", "black", "green", "red", "blue"])

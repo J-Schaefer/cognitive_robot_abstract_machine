@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 class PlanNodeIsNone(DataclassException):
     """
     Raised when an instance managed by a plan node has no plan node.
+
+    Most likely raised when an action created a subplan without calling `ActionDescription.add_subplan`
     """
 
     instance: Designator
@@ -21,4 +23,7 @@ class PlanNodeIsNone(DataclassException):
     """
 
     def __post_init__(self):
-        self.message = f"{self.instance} has no plan node."
+        self.message = (
+            f"{self.instance} has no plan node. Did you forget to call `add_subplan` when creating"
+            f"plans inside actions?"
+        )

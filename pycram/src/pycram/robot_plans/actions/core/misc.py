@@ -42,9 +42,6 @@ class DetectAction(ActionDescription):
     The region in which the object should be detected
     """
 
-    def __post_init__(self):
-        super().__post_init__()
-
     def execute(self) -> None:
         if not self.object_sem_annotation and self.region:
             raise AttributeError(

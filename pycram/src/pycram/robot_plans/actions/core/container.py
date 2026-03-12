@@ -12,6 +12,8 @@ from pycram.datastructures.enums import (
     VerticalAlignment,
 )
 from pycram.datastructures.grasp import GraspDescription
+from pycram.plans.factories import sequential
+from pycram.robot_plans.actions.core.pick_up import GraspingAction
 from pycram.robot_plans.actions.base import ActionDescription
 from pycram.robot_plans.motions.container import OpeningMotion, ClosingMotion
 from pycram.robot_plans.motions.gripper import MoveGripperMotion
@@ -49,15 +51,16 @@ class OpenAction(ActionDescription):
             manipulator,
         )
 
-        SequentialPlan(
-            self.context,
-            GraspingActionDescription(
-                self.object_designator, self.arm, grasp_description
-            ),
-            OpeningMotion(self.object_designator, self.arm),
-            MoveGripperMotion(
-                GripperState.OPEN, self.arm, allow_gripper_collision=True
-            ),
+        self.add_subplan(
+            sequential(
+                [
+                    GraspingAction(self.object_designator, self.arm, grasp_description),
+                    OpeningMotion(self.object_designator, self.arm),
+                    MoveGripperMotion(
+                        GripperState.OPEN, self.arm, allow_gripper_collision=True
+                    ),
+                ]
+            )
         ).perform()
 
     def validate(
@@ -99,15 +102,16 @@ class CloseAction(ActionDescription):
             manipulator,
         )
 
-        SequentialPlan(
-            self.context,
-            GraspingActionDescription(
-                self.object_designator, self.arm, grasp_description
-            ),
-            ClosingMotion(self.object_designator, self.arm),
-            MoveGripperMotion(
-                GripperState.OPEN, self.arm, allow_gripper_collision=True
-            ),
+        self.add_subplan(
+            sequential(
+                [
+                    GraspingAction(self.object_designator, self.arm, grasp_description),
+                    ClosingMotion(self.object_designator, self.arm),
+                    MoveGripperMotion(
+                        GripperState.OPEN, self.arm, allow_gripper_collision=True
+                    ),
+                ]
+            )
         ).perform()
 
     def validate(

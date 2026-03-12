@@ -100,6 +100,27 @@ def test_add_node(urdf_context):
     assert plan is node2.plan
 
 
+def test_add_edge_with_layer_index():
+    """
+    Test that the layer index is correctly set when adding an edge.
+    """
+
+    root = PlanNode()
+    plan = Plan()
+    plan.add_node(root)
+    child1 = PlanNode()
+    child2 = PlanNode()
+    plan.add_edge(root, child1)
+    plan.add_edge(root, child2)
+
+    child3 = PlanNode()
+    plan.add_edge(root, child3, 1)
+    assert root.layer_index == 0
+    assert child1.layer_index == 0
+    assert child2.layer_index == 2
+    assert child3.layer_index == 1
+
+
 # def test_mount(urdf_context):
 #     world, context = urdf_context
 #     plan1 = Plan(context)
@@ -177,9 +198,9 @@ def test_add_node(urdf_context):
 #     node3 = PlanNode()
 #     plan.add_edge(node2, node3)
 #
-#     assert node.all_parents == []
-#     assert node2.all_parents == [node]
-#     assert node3.all_parents == [node2, node]
+#     assert node.path == []
+#     assert node2.path == [node]
+#     assert node3.path == [node2, node]
 #
 #
 # def test_plan_node_children(urdf_context):

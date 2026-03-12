@@ -8,7 +8,9 @@ from typing_extensions import Optional, Any
 
 from pycram.config.action_conf import ActionConfig
 from pycram.datastructures.pose import PoseStamped
+from pycram.plans.factories import sequential
 from pycram.robot_plans.actions.base import ActionDescription
+from pycram.robot_plans.actions.core.navigation import NavigateAction, LookAtAction
 from pycram.tf_transformations import quaternion_from_euler
 
 
@@ -46,12 +48,15 @@ class FaceAtAction(ActionDescription):
             robot_position.position.to_list(), orientation, self.world.root
         )
 
-        # turn robot
-        SequentialPlan(
-            self.context,
-            NavigateActionDescription(new_robot_pose, self.keep_joint_states),
-            # look at target
-            LookAtActionDescription(self.pose),
+        self.add_subplan(
+            sequential(
+                [
+                    NavigateAction(
+                        new_robot_pose, self.keep_joint_states
+                    ),  # turn robot
+                    LookAtAction(self.pose),  # look at the target
+                ]
+            )
         ).perform()
 
     def validate(

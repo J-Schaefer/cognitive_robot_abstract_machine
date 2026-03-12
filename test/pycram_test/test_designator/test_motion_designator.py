@@ -12,15 +12,14 @@ from pycram.datastructures.enums import (
 )
 from pycram.datastructures.grasp import GraspDescription
 from pycram.datastructures.pose import PoseStamped
-from pycram.plans.factories import sequential
+from pycram.plans.factories import sequential, execute_single
 
 from pycram.plans.plan_node import MotionNode, ActionNode
 from pycram.motion_executor import simulated_robot, real_robot
-from pycram.robot_plans import (
-    PickUpAction,
-    NavigateAction,
-    MoveTorsoAction,
-)
+from pycram.robot_plans.actions.core.navigation import NavigateAction
+from pycram.robot_plans.actions.core.pick_up import PickUpAction
+from pycram.robot_plans.actions.core.robot_body import MoveTorsoAction
+
 from semantic_digital_twin.datastructures.definitions import TorsoState
 from semantic_digital_twin.robots.pr2 import PR2
 
@@ -80,7 +79,10 @@ def test_pick_up_motion(immutable_model_world):
 def test_move_motion_chart(immutable_model_world):
     world, view, context = immutable_model_world
     motion = MoveMotion(PoseStamped.from_list([1, 1, 1], frame=world.root))
-    SequentialPlan(context, motion)
+    plan = execute_single(
+        motion,
+        context=context,
+    )
 
     msc = motion.motion_chart
 
@@ -93,7 +95,7 @@ def test_alternative_mapping(hsr_apartment_world):
     world, view, context = hsr_apartment_world
     move_motion = MoveMotion(PoseStamped.from_list([1, 1, 1], frame=world.root))
 
-    plan = SequentialPlan(context, move_motion)
+    plan = execute_single(move_motion, context=context)
 
     with real_robot:
         assert move_motion.get_alternative_motion()

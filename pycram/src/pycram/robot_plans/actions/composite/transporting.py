@@ -6,7 +6,14 @@ from typing import List
 
 import numpy as np
 
-from krrood.entity_query_language.factories import an, entity, variable
+from krrood.entity_query_language.factories import an, entity, variable, the
+from pycram.plans.factories import sequential, execute_single
+from pycram.robot_plans.actions.composite.facing import FaceAtAction
+from pycram.robot_plans.actions.core.container import OpenAction
+from pycram.robot_plans.actions.core.navigation import NavigateAction
+from pycram.robot_plans.actions.core.pick_up import PickUpAction
+from pycram.robot_plans.actions.core.placing import PlaceAction
+from pycram.robot_plans.actions.core.robot_body import ParkArmsAction, MoveTorsoAction
 from semantic_digital_twin.datastructures.definitions import TorsoState
 from semantic_digital_twin.reasoning.predicates import InsideOf
 from semantic_digital_twin.semantic_annotations.semantic_annotations import Drawer
@@ -45,6 +52,7 @@ class TransportAction(ActionDescription):
     place_rotation_agnostic: Optional[bool] = False
     """
     If True, the robot will place the object in the same orientation as it is itself, no matter how the object was grasped.
+    This is currently not supported and will be added by luca if he wants it.
     """
 
     def inside_container(self) -> List[Body]:
@@ -56,19 +64,27 @@ class TransportAction(ActionDescription):
                 bodies.append(body)
         return bodies
 
+    def open_container(self, container: Body):
+
+        drawer_annotation = an(
+            entity(
+                drawer := variable(Drawer, domain=self.world.semantic_annotations)
+            ).where(drawer.root == container)
+        ).to_list()
+        if len(drawer_annotation) == 0:
+            return
+
+        self.add_subplan(
+            execute_single(
+                OpenAction(drawer_annotation[0].handle.body, self.arm),
+            )
+        ).perform()
+
     def execute(self) -> None:
         for container in self.inside_container():
-            sem_anno = an(
-                entity(
-                    drawer := variable(Drawer, domain=self.world.semantic_annotations)
-                ).where(drawer.root == container)
-            ).tolist()
-            if sem_anno:
-                SequentialPlan(
-                    self.context,
-                    OpenActionDescription(sem_anno[0].handle.body, self.arm),
-                ).perform()
-        SequentialPlan(self.context, ParkArmsActionDescription(Arms.BOTH)).perform()
+            self.open_container(container)
+
+        self.add_subplan(execute_single(ParkArmsAction(Arms.BOTH))).perform()
         pickup_loc = CostmapLocation(
             target=PoseStamped.from_spatial_type(self.object_designator.global_pose),
             reachable_arm=self.arm,
@@ -82,53 +98,39 @@ class TransportAction(ActionDescription):
                 f"Found no pose for the robot to grasp the object: {self.object_designator} with arm: {self.arm}"
             )
 
-        SequentialPlan(
-            self.context,
-            NavigateActionDescription(pickup_pose, True),
-            PickUpActionDescription(
-                self.object_designator,
-                pickup_pose.arm,
-                grasp_description=pickup_pose.grasp_description,
-            ),
-            ParkArmsActionDescription(Arms.BOTH),
-            MoveTorsoActionDescription(TorsoState.HIGH),
-            NavigateActionDescription(
-                CostmapLocation(
-                    target=self.target_location,
-                    reachable_arm=self.arm,
-                    reachable_for=self.robot,
-                    grasp_descriptions=pickup_pose.grasp_description,
-                ),
-                True,
-            ),
+        self.add_subplan(
+            sequential(
+                [
+                    NavigateAction(pickup_pose, True),
+                    PickUpAction(
+                        self.object_designator,
+                        pickup_pose.arm,
+                        grasp_description=pickup_pose.grasp_description,
+                    ),
+                    ParkArmsAction(Arms.BOTH),
+                    MoveTorsoAction(TorsoState.HIGH),
+                    NavigateAction(
+                        CostmapLocation(
+                            target=self.target_location,
+                            reachable_arm=self.arm,
+                            reachable_for=self.robot,
+                            grasp_descriptions=pickup_pose.grasp_description,
+                        ),
+                        True,
+                    ),
+                ]
+            )
         ).perform()
 
-        if self.place_rotation_agnostic:
-            # Placing rotation agnostic currently means that the robot will position its gripper in the same orientation
-            # as it is itself, no matter how the object was grasped
-            robot_rotation = robot_desig_resolved.get_pose().orientation
-            self.target_location.orientation = robot_rotation
-            approach_direction = GraspDescription(
-                pickup_pose.grasp_description.approach_direction,
-                VerticalAlignment.NoAlignment,
-                False,
+        self.add_subplan(
+            sequential(
+                [
+                    PlaceAction(
+                        self.object_designator, self.target_location, pickup_pose.arm
+                    ),
+                    ParkArmsAction(Arms.BOTH),
+                ]
             )
-            side_grasp = np.array(
-                robot_desig_resolved.robot_description.get_arm_chain(
-                    pickup_pose.arm
-                ).end_effector.grasps[approach_direction]
-            )
-            # Inverting the quaternion for the used grasp to cancel it out during placing, since placing considers the
-            # object orientation relative to the gripper )
-            side_grasp *= np.array([-1, -1, -1, 1])
-            self.target_location.rotate_by_quaternion(side_grasp.tolist())
-
-        SequentialPlan(
-            self.context,
-            PlaceActionDescription(
-                self.object_designator, self.target_location, pickup_pose.arm
-            ),
-            ParkArmsActionDescription(Arms.BOTH),
         ).perform()
 
     def validate(
@@ -161,23 +163,21 @@ class PickAndPlaceAction(ActionDescription):
     Description of the grasp to pick up the target
     """
 
-    def __post_init__(self):
-        super().__post_init__()
-
     def execute(self) -> None:
-        SequentialPlan(
-            self.context,
-            ParkArmsActionDescription(Arms.BOTH),
-            PickUpActionDescription(
-                self.object_designator,
-                self.arm,
-                grasp_description=self.grasp_description,
-            ),
-            ParkArmsActionDescription(Arms.BOTH),
-            PlaceActionDescription(
-                self.object_designator, self.target_location, self.arm
-            ),
-            ParkArmsActionDescription(Arms.BOTH),
+        self.add_subplan(
+            sequential(
+                [
+                    ParkArmsAction(Arms.BOTH),
+                    PickUpAction(
+                        self.object_designator,
+                        self.arm,
+                        grasp_description=self.grasp_description,
+                    ),
+                    ParkArmsAction(Arms.BOTH),
+                    PlaceAction(self.object_designator, self.target_location, self.arm),
+                    ParkArmsAction(Arms.BOTH),
+                ]
+            )
         ).perform()
 
     def validate(
@@ -221,13 +221,14 @@ class MoveAndPlaceAction(ActionDescription):
     """
 
     def execute(self):
-        SequentialPlan(
-            self.context,
-            NavigateActionDescription(self.standing_position, self.keep_joint_states),
-            FaceAtActionDescription(self.target_location, self.keep_joint_states),
-            PlaceActionDescription(
-                self.object_designator, self.target_location, self.arm
-            ),
+        self.add_subplan(
+            sequential(
+                [
+                    NavigateAction(self.standing_position, self.keep_joint_states),
+                    FaceAtAction(self.target_location, self.keep_joint_states),
+                    PlaceAction(self.object_designator, self.target_location, self.arm),
+                ]
+            )
         ).perform()
 
     def validate(
@@ -268,18 +269,18 @@ class MoveAndPickUpAction(ActionDescription):
     Keep the joint states of the robot the same during the navigation.
     """
 
-    def __post_init__(self):
-        super().__post_init__()
-
     def execute(self):
         obj_pose = PoseStamped.from_spatial_type(self.object_designator.global_pose)
-        SequentialPlan(
-            self.context,
-            NavigateActionDescription(self.standing_position, self.keep_joint_states),
-            FaceAtActionDescription(obj_pose, self.keep_joint_states),
-            PickUpActionDescription(
-                self.object_designator, self.arm, self.grasp_description
-            ),
+        self.add_subplan(
+            sequential(
+                [
+                    NavigateAction(self.standing_position, self.keep_joint_states),
+                    FaceAtAction(obj_pose, self.keep_joint_states),
+                    PickUpAction(
+                        self.object_designator, self.arm, self.grasp_description
+                    ),
+                ]
+            )
         ).perform()
 
     def validate(
