@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from functools import lru_cache
 
 import numpy as np
 import scipy.sparse as sp
@@ -21,6 +22,9 @@ class QPData(ABC):
 
     @property
     def num_slack_variables(self) -> int:
+        """
+        Returns the total number of slack variables.
+        """
         return self.num_inequality_slack_variables + self.num_equality_slack_variables
 
     @abstractmethod
@@ -83,13 +87,22 @@ class QPDataExplicit(QPData):
 
     @property
     def dense_eq_matrix(self) -> np.ndarray:
+        """
+        Converts the sparse equality matrix into a dense array.
+        """
         return self.equality_matrix.toarray()
 
     @property
     def dense_neq_matrix(self) -> np.ndarray:
+        """
+        Converts the sparse inequality matrix into a dense array.
+        """
         return self.inequality_matrix.toarray()
 
     def to_two_sided_inequality(self) -> QPDataTwoSidedInequality:
+        """
+        Converts the explicit QP format to a format with only two-sided inequalities.
+        """
         A2 = sp.eye(len(self.box_upper_constraints), format="csc")
         if self.equality_matrix.shape[0] * self.equality_matrix.shape[1] != 0:
             A2 = sp.vstack((A2, self.equality_matrix))
@@ -165,6 +178,9 @@ class QPDataExplicit(QPData):
         bE_filter: np.ndarray,
         zero_quadratic_weight_filter: np.ndarray,
     ) -> sp.csc_matrix:
+        """
+        Filters the equality matrix by removing specified rows and columns associated with inactive motion statechart nodes.
+        """
         if len(eq_matrix.shape) > 1 and eq_matrix.shape[0] * eq_matrix.shape[1] > 0:
             return eq_matrix[bE_filter, :][:, zero_quadratic_weight_filter]
         return eq_matrix
@@ -175,11 +191,18 @@ class QPDataExplicit(QPData):
         bA_filter: np.ndarray,
         zero_quadratic_weight_filter: np.ndarray,
     ) -> sp.csc_matrix:
+        """
+        Filters the inequality matrix by removing specified rows and columns associated with inactive motion statechart nodes.
+        """
         if len(neq_matrix.shape) > 1 and neq_matrix.shape[0] * neq_matrix.shape[1] > 0:
             return neq_matrix[:, zero_quadratic_weight_filter][bA_filter, :]
         return neq_matrix
 
     def pretty_print_problem(self):
+        """
+        Returns a human-readable string representation of the QP problem.
+        Use this to create test cases for QPs that cannot be solved.
+        """
         return (
             f"QPDataExplicit(\n"
             f"    quadratic_weights={self._np_array_to_str(self.quadratic_weights)},\n"
@@ -197,9 +220,15 @@ class QPDataExplicit(QPData):
         )
 
     def _np_array_to_str(self, array: np.ndarray, dtype: str = "float") -> str:
+        """
+        Converts a numpy array to a string representation for debugging.
+        """
         return f"np.array({array.tolist()}, dtype={dtype})".replace("inf", "np.inf")
 
     def _sparse_matrix_to_str(self, matrix: sp.csc_matrix, spaces: int = 4) -> str:
+        """
+        Converts a sparse matrix to a string representation for debugging.
+        """
         return (
             f"sp.csc_matrix(\n"
             f"{' '*spaces}(\n"
@@ -276,7 +305,7 @@ class QPDataExplicit(QPData):
             print(f"        WARNING: this is very large.")
 
 
-@dataclass
+@dataclass(eq=False)
 class QPDataTwoSidedInequality(QPData):
     """
     Represents a QP problem for solvers that require the following format:
@@ -294,75 +323,113 @@ class QPDataTwoSidedInequality(QPData):
     inequality_lower_bounds: np.ndarray
     inequality_upper_bounds: np.ndarray
 
+    def __hash__(self):
+        return id(self)
+
     @property
     def num_box_constraints(self) -> int:
+        """
+        Returns the number of box constraints.
+        """
         return self.quadratic_weights.shape[0]
 
     @property
     def box_lower_constraints(self) -> np.ndarray:
+        """
+        Returns the lower bounds of the box constraints.
+        """
         return self.inequality_lower_bounds[: self.num_box_constraints]
 
     @property
     def box_upper_constraints(self) -> np.ndarray:
+        """
+        Returns the upper bounds of the box constraints.
+        """
         return self.inequality_upper_bounds[: self.num_box_constraints]
 
     @property
     def eq_matrix(self) -> sp.csc_matrix:
-        return self.inequality_matrix[self.bE_start : self.bA_start, :]
+        """
+        Extracts the equality constraint matrix from the combined inequality matrix.
+        """
+        return self.inequality_matrix[
+            self.start_index_of_equality_constraints : self.start_index_of_inequality_constraints,
+            :,
+        ]
 
     @property
-    def bE_start(self) -> int:
+    def start_index_of_equality_constraints(self) -> int:
+        """
+        Returns the starting index of the equality constraints in the combined bounds.
+        """
         return self.num_box_constraints
 
     @property
-    def bA_start(self) -> int:
+    def start_index_of_inequality_constraints(self) -> int:
+        """
+        Returns the starting index of the inequality constraints in the combined bounds.
+        """
         return (
             self.inequality_lower_bounds.shape[0] - self.num_inequality_slack_variables
         )
 
     def apply_filters(self) -> Self:
-        b_bE_bA_filter = np.ones(
+        combined_constraint_filter = np.ones(
             self.inequality_lower_bounds.shape[0],
             dtype=bool,
         )
-        b_zero_inf_filter_view = b_bE_bA_filter[: self.num_box_constraints]
-        bE_filter_view = b_bE_bA_filter[self.bE_start : self.bA_start]
-        bA_filter_view = b_bE_bA_filter[self.bA_start :]
-        bE_bA_filter = b_bE_bA_filter[self.bE_start :]
+        box_zero_inf_filter_view = combined_constraint_filter[
+            : self.num_box_constraints
+        ]
+        equality_filter_view = combined_constraint_filter[
+            self.start_index_of_equality_constraints : self.start_index_of_inequality_constraints
+        ]
+        inequality_filter_view = combined_constraint_filter[
+            self.start_index_of_inequality_constraints :
+        ]
+        constraint_filter = combined_constraint_filter[
+            self.start_index_of_equality_constraints :
+        ]
 
         zero_quadratic_weight_filter = self.quadratic_weights != 0
         zero_quadratic_weight_filter[: -self.num_slack_variables] = True
 
         slack_part = zero_quadratic_weight_filter[-self.num_slack_variables :]
-        bE_part = slack_part[: self.num_equality_slack_variables]
-        if len(bE_part) > 0:
-            bE_filter_view[-len(bE_part) :] = bE_part
+        equality_part = slack_part[: self.num_equality_slack_variables]
+        if len(equality_part) > 0:
+            equality_filter_view[-len(equality_part) :] = equality_part
 
-        bA_part = slack_part[self.num_equality_slack_variables :]
-        if len(bA_part) > 0:
-            bA_filter_view[-len(bA_part) :] = bA_part
+        inequality_part = slack_part[self.num_equality_slack_variables :]
+        if len(inequality_part) > 0:
+            inequality_filter_view[-len(inequality_part) :] = inequality_part
 
-        b_finite_filter = np.isfinite(self.box_lower_constraints) | np.isfinite(
+        box_finite_filter = np.isfinite(self.box_lower_constraints) | np.isfinite(
             self.box_upper_constraints
         )
-        b_zero_inf_filter_view[::] = zero_quadratic_weight_filter & b_finite_filter
-        Ai_inf_filter = b_finite_filter  # [zero_quadratic_weight_filter]
+        box_zero_inf_filter_view[::] = zero_quadratic_weight_filter & box_finite_filter
+        box_identity_matrix_inf_filter = (
+            box_finite_filter  # [zero_quadratic_weight_filter]
+        )
 
-        neq_matrix = self.inequality_matrix[:, zero_quadratic_weight_filter][
-            bE_bA_filter, :
+        inequality_matrix = self.inequality_matrix[:, zero_quadratic_weight_filter][
+            constraint_filter, :
         ]
 
-        self._nAi_Ai_cache = {}
         box_matrix = self._direct_limit_model(
-            self.quadratic_weights.shape[0], Ai_inf_filter, two_sided=True
+            self.quadratic_weights.shape[0],
+            box_identity_matrix_inf_filter,
         )[:, zero_quadratic_weight_filter][zero_quadratic_weight_filter, :]
 
         return QPDataTwoSidedInequality(
             quadratic_weights=self.quadratic_weights[zero_quadratic_weight_filter],
             linear_weights=self.linear_weights[zero_quadratic_weight_filter],
-            inequality_matrix=sp.vstack((box_matrix, neq_matrix)),
-            inequality_lower_bounds=self.inequality_lower_bounds[b_bE_bA_filter],
-            inequality_upper_bounds=self.inequality_upper_bounds[b_bE_bA_filter],
+            inequality_matrix=sp.vstack((box_matrix, inequality_matrix)),
+            inequality_lower_bounds=self.inequality_lower_bounds[
+                combined_constraint_filter
+            ],
+            inequality_upper_bounds=self.inequality_upper_bounds[
+                combined_constraint_filter
+            ],
             num_equality_slack_variables=self.num_equality_slack_variables,
             num_inequality_slack_variables=self.num_inequality_slack_variables,
         )
@@ -371,37 +438,21 @@ class QPDataTwoSidedInequality(QPData):
         self,
         dimensions_after_zero_filter: int,
         Ai_inf_filter: np.ndarray | None = None,
-        two_sided: bool = True,
     ) -> sp.csc_matrix:
         """
         These models are often identical, yet the computation is expensive. Caching to the rescue
         """
+        nI_I = self._cached_eyes(dimensions_after_zero_filter)
         if Ai_inf_filter is None:
-            key = hash(dimensions_after_zero_filter)
-        else:
-            key = hash((dimensions_after_zero_filter, Ai_inf_filter.tobytes()))
-        if key not in self._nAi_Ai_cache:
-            nI_I = self._cached_eyes(dimensions_after_zero_filter, two_sided)
-            if Ai_inf_filter is None:
-                self._nAi_Ai_cache[key] = nI_I
-            else:
-                self._nAi_Ai_cache[key] = nI_I[Ai_inf_filter]
-        return self._nAi_Ai_cache[key]
+            return nI_I
+        return nI_I[Ai_inf_filter]
 
-    def _cached_eyes(self, dimensions: int, two_sided: bool = False) -> sp.csc_matrix:
-        if two_sided:
-            data = np.ones(dimensions, dtype=float)
-            row_indices = np.arange(dimensions)
-            col_indices = np.arange(dimensions + 1)
-            return sp.csc_matrix((data, row_indices, col_indices))
-        else:
-            d2 = dimensions * 2
-            data = np.ones(d2, dtype=float)
-            data[::2] *= -1
-            r1 = np.arange(dimensions)
-            r2 = np.arange(dimensions, d2)
-            row_indices = np.empty((d2,), dtype=int)
-            row_indices[0::2] = r1
-            row_indices[1::2] = r2
-            col_indices = np.arange(0, d2 + 1, 2)
-            return sp.csc_matrix((data, row_indices, col_indices))
+    @lru_cache
+    def _cached_eyes(self, dimensions: int) -> sp.csc_matrix:
+        """
+        Creates and caches identity or selection matrices for constraint models.
+        """
+        data = np.ones(dimensions, dtype=float)
+        row_indices = np.arange(dimensions)
+        col_indices = np.arange(dimensions + 1)
+        return sp.csc_matrix((data, row_indices, col_indices))
