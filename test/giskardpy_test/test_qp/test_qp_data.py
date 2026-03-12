@@ -1,18 +1,13 @@
 import numpy as np
 import pytest
 import scipy.sparse as sp
+
 from giskardpy.qp.qp_data import (
     QPData,
-    ConditioningStrategy,
-    HessianOneConditioningStrategy,
-    JerkOneConditioningStrategy,
     QPDataExplicit,
 )
-from giskardpy.qp.solvers.qp_solver_gurobi import QPSolverGurobi
-from giskardpy.qp.solvers.qp_solver_qpSWIFT import QPSolverQPSwift
-from giskardpy.qp.solvers.qp_solver_qpalm import QPSolverQPalm
 from giskardpy.qp.solvers.qp_solver_piqp import QPSolverPIQP
-from giskardpy.qp.exceptions import InfeasibleException
+from giskardpy.qp.solvers.qp_solver_qpSWIFT import QPSolverQPSwift
 
 
 @pytest.fixture()
