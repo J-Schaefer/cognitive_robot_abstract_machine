@@ -14,13 +14,14 @@ from krrood.entity_query_language.factories import (
     underspecified,
     variable_from,
 )
+from krrood.entity_query_language.query_graph import QueryGraph
 from krrood.ormatic.dao import to_dao
 from krrood.parametrization.model_registries import DictRegistry
 from krrood.parametrization.parameterizer import UnderspecifiedParameters
 from probabilistic_model.probabilistic_circuit.rx.helper import fully_factorized
 from random_events.set import Set
 from random_events.variable import Symbolic
-from ..dataset.example_classes import Pose, Position, Orientation, Atom
+from ..dataset.example_classes import Pose, Position, Orientation, Atom, Element
 
 
 def test_selective_query_multiple_backends(session, database):
@@ -85,7 +86,9 @@ def test_generative_eql_backend():
     )
     q.resolve()
     q.where(q.variable.type > q.variable.charge)
-
     backend = EntityQueryLanguageBackend()
-    r = list(backend.evaluate(q))
-    print(r)
+    results = list(backend.evaluate(q))
+    assert len(results) == 6
+    for result in results:
+        assert isinstance(result.element, Element)
+        assert result.type > result.charge

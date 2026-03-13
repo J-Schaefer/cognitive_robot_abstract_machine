@@ -4,27 +4,40 @@ from dataclasses import dataclass, field
 from typing import Iterable, TypeVar
 
 from sqlalchemy.orm import sessionmaker
+from typing_extensions import Dict
 
-from krrood.entity_query_language.core.base_expressions import SymbolicExpression
+from krrood.entity_query_language.core.base_expressions import (
+    Selectable,
+    SymbolicExpression,
+)
+from krrood.entity_query_language.core.variable import Variable
 from krrood.entity_query_language.exceptions import (
     NoSolutionFound,
     GenerativeBackendQueryIsNotUnderspecifiedVariable,
+    UnderspecifiedStatementInfeasibleForEQLGeneration,
 )
-from krrood.entity_query_language.factories import variable_from, set_of, variable
-from krrood.entity_query_language.query.match import Match
+from krrood.entity_query_language.factories import (
+    set_of,
+    variable,
+    variable_from,
+    entity,
+    an,
+)
+from krrood.entity_query_language.query.match import (
+    Match,
+    AttributeMatch,
+    MatchVariable,
+)
 from krrood.entity_query_language.query.query import Query
+from krrood.entity_query_language.query_graph import QueryGraph
 from krrood.ormatic.eql_interface import eql_to_sql
 from krrood.parametrization.model_registries import (
     ModelRegistry,
     FullyFactorizedRegistry,
 )
 from krrood.parametrization.parameterizer import (
-    MatchVariable,
     UnderspecifiedParameters,
 )
-from probabilistic_model.probabilistic_circuit.rx.helper import fully_factorized
-from probabilistic_model.probabilistic_model import ProbabilisticModel
-from random_events.variable import Symbolic
 
 T = TypeVar("T")
 
@@ -95,45 +108,90 @@ class EntityQueryLanguageBackend(SelectiveBackend):
     """
 
     def evaluate(self, expression: Query) -> Iterable:
-        if isinstance(expression, Match):
+        if isinstance(expression, Match) and not isinstance(expression, MatchVariable):
             yield from self._evaluate_underspecified(expression)
         yield from expression.evaluate()
 
     def _evaluate_underspecified(self, expression: Match[T]) -> Iterable[T]:
+        """
+        Evaluate an underspecified match expression by generating results from its constructor.
+
+        :param expression: The underspecified match expression.
+        :return: A newly generated instance of `T` that is compliant with the match expression's constraints.
+        """
+
+        variables: Dict[str, Variable] = {}
+
         for attribute_match in expression.matches_with_variables:
-            if isinstance(
-                attribute_match.assigned_value, type(Ellipsis)
-            ) and not issubclass(attribute_match.assigned_variable._type_, enum.Enum):
-                raise ValueError(
-                    f"Leaf statements in underspecified queries must be concrete objects or a symbolic expression."
-                    f"If the assignment is Ellipsis it must, the type of the field must be an Enum, otherwise EQL cant"
-                    f"generate it. If your looking for more flexible generations, try ProbabilisticBackend."
-                    f"Got {attribute_match.name_from_variable_access_path} = {attribute_match.assigned_variable._type_}."
-                )
+            self._check_if_attribute_match_is_suitable_for_generation(attribute_match)
+            variables[attribute_match.name_from_variable_access_path] = (
+                self._convert_attribute_match_to_variable(attribute_match)
+            )
 
-            # convert ellipsis assignments for enum fields to symbolic expressions
-            if isinstance(
-                attribute_match.assigned_value, type(Ellipsis)
-            ) and issubclass(attribute_match.assigned_variable._type_, enum.Enum):
-                attribute_match.assigned_variable._value_ = variable(
-                    attribute_match.assigned_variable._type_,
-                    list(attribute_match.assigned_variable._type_),
-                )
-
-            # convert concrete objects to symbolic expressions
-            else:
-                attribute_match.assigned_variable._value_ = variable(
-                    type(attribute_match.assigned_value),
-                    [attribute_match.assigned_value],
-                )
-        all_combinations = set_of(
-            *[
-                attribute_match.assigned_variable
-                for attribute_match in expression.matches_with_variables
-            ]
+        expression.variable._update_domain_(
+            self._generate_raw_results(expression, variables)
         )
+        filtered_results = an(entity(expression.variable)).where(
+            *expression._where_conditions_
+        )
+        yield from filtered_results.evaluate()
+
+    def _check_if_attribute_match_is_suitable_for_generation(
+        self, attribute_match: AttributeMatch
+    ):
+        """
+        Raise an error if an assignment in the match cannot be used to generate solutions.
+        :param attribute_match: The attribute match to check.
+        """
+        if isinstance(
+            attribute_match.assigned_value, type(Ellipsis)
+        ) and not issubclass(attribute_match.assigned_variable._type_, enum.Enum):
+            raise UnderspecifiedStatementInfeasibleForEQLGeneration(attribute_match)
+
+    def _convert_attribute_match_to_variable(self, attribute_match: AttributeMatch):
+        """
+        Convert an attribute match to a variable, handling ellipsis assignments for enum fields.
+        :param attribute_match: The attribute match to convert.
+        :return: A variable representing the attribute match.
+        """
+        # convert ellipsis assignments for enum fields to symbolic expressions
+        if isinstance(attribute_match.assigned_value, type(Ellipsis)) and issubclass(
+            attribute_match.assigned_variable._type_, enum.Enum
+        ):
+            result = variable(
+                attribute_match.assigned_variable._type_,
+                list(attribute_match.assigned_variable._type_),
+            )
+
+        # keep symbolic expressions as is
+        elif isinstance(attribute_match.assigned_value, SymbolicExpression):
+            result = attribute_match.assigned_value
+
+        # convert concrete objects to symbolic expressions
+        else:
+            result = variable(
+                type(attribute_match.assigned_value),
+                [attribute_match.assigned_value],
+            )
+        return result
+
+    def _generate_raw_results(
+        self, expression: Match[T], variables: Dict[str, Variable]
+    ) -> Iterable[T]:
+        """
+        Generate instances from a given match expression and variables.
+        :param expression: The match expression to generate instances from.
+        :param variables: The variables used in the match expression.
+        :return: A generator yielding instances generated from the match expression.
+        """
+        all_combinations = set_of(*variables.values())
         for combination in all_combinations.evaluate():
-            print(combination)
+            for variable_name, value in zip(variables, combination.values()):
+                mapped_variable = expression._get_mapped_variable_by_name(variable_name)
+                mapped_variable._value_ = value
+
+            expression._update_kwargs_from_literal_values()
+            yield expression.construct_instance()
 
 
 @dataclass

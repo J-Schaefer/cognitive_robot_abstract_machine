@@ -70,7 +70,7 @@ class AbstractMatchExpression(Generic[T], ABC):
     """
     The type of the variable.
     """
-    variable: Optional[Selectable[T]] = field(default=None, kw_only=True)
+    variable: Optional[Variable[T]] = field(default=None, kw_only=True)
     """
     The created variable from the type and kwargs.
     """

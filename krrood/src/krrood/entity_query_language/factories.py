@@ -8,7 +8,10 @@ import operator
 
 from typing_extensions import Union, Iterable
 
-from krrood.entity_query_language.core.base_expressions import SymbolicExpression, TruthValueOperator
+from krrood.entity_query_language.core.base_expressions import (
+    SymbolicExpression,
+    TruthValueOperator,
+)
 from krrood.entity_query_language.core.mapped_variable import (
     FlatVariable,
     CanBehaveLikeAVariable,
@@ -134,7 +137,7 @@ def underspecified(
 def variable(
     type_: Type[T],
     domain: Optional[DomainType],
-) -> Union[T, Selectable[T]]:
+) -> Union[T, Selectable[T], Variable[T]]:
     """
     Declare a symbolic variable that can be used inside queries.
 
