@@ -107,6 +107,28 @@ def find_best_jerk_limit(
     return best_jerk_limit
 
 
+def _sorter(*args: dict) -> Tuple[List[sm.SymbolicScalar], np.ndarray]:
+    """
+    Sorts every arg dict individually and then appends all of them.
+    :arg args: a bunch of dicts
+    :return: list
+    """
+    result = []
+    result_names = []
+    for arg in args:
+        result.extend(__helper(arg))
+        result_names.extend(__helper_names(arg))
+    return result, np.array(result_names)
+
+
+def __helper(param: dict):
+    return [x for _, x in sorted(param.items())]
+
+
+def __helper_names(param: dict):
+    return [x for x, _ in sorted(param.items())]
+
+
 @dataclass
 class ProblemDataPart(ABC):
     """
@@ -172,25 +194,6 @@ class ProblemDataPart(ABC):
     @property
     def jerk_constraints(self) -> List[DerivativeInequalityConstraint]:
         return self.get_derivative_constraints(Derivatives.jerk)
-
-    def _sorter(self, *args: dict) -> Tuple[List[sm.SymbolicScalar], np.ndarray]:
-        """
-        Sorts every arg dict individually and then appends all of them.
-        :arg args: a bunch of dicts
-        :return: list
-        """
-        result = []
-        result_names = []
-        for arg in args:
-            result.extend(self.__helper(arg))
-            result_names.extend(self.__helper_names(arg))
-        return result, np.array(result_names)
-
-    def __helper(self, param: dict):
-        return [x for _, x in sorted(param.items())]
-
-    def __helper_names(self, param: dict):
-        return [x for x, _ in sorted(param.items())]
 
     def _remove_columns_columns_where_variables_are_zero(
         self, free_variable_model: sm.Matrix, max_derivative: Derivatives
@@ -319,7 +322,7 @@ class Weights(ProblemDataPart):
         components.extend(self.eq_derivative_weight_expressions())
         components.append(self.inequality_weight_expressions())
         components.extend(self.derivative_weight_expressions())
-        weights, _ = self._sorter(*components)
+        weights, _ = _sorter(*components)
         quadratic_weights = []
         linear_weights = []
         for quadratic_weight, linear_weight in weights:
@@ -420,7 +423,7 @@ class Weights(ProblemDataPart):
         return error_slack_weights
 
     def get_free_variable_symbols(self, order: Derivatives) -> List[sm.FloatVariable]:
-        return self._sorter(
+        return _sorter(
             {
                 v.variables.position: v.variables.data[order]
                 for v in self.degrees_of_freedom
@@ -565,8 +568,8 @@ class FreeVariableBounds(ProblemDataPart):
             lb_params.append(lower_slack)
             ub_params.append(upper_slack)
 
-        lb, self.names = self._sorter(*lb_params)
-        ub, _ = self._sorter(*ub_params)
+        lb, self.names = _sorter(*lb_params)
+        ub, _ = _sorter(*ub_params)
         self.names_without_slack = self.names[:num_free_variables]
         self.names_slack = self.names[num_free_variables:]
 
@@ -680,7 +683,7 @@ class EqualityBounds(ProblemDataPart):
             num_derivative_constraints += len(bound)
             bounds.append(bound)
 
-        bounds, self.names = self._sorter(*bounds)
+        bounds, self.names = _sorter(*bounds)
         self.names_derivative_links = self.names[:num_derivative_links]
         # self.names_equality_constraints = self.names[num_derivative_links:]
         return sm.Vector(bounds)
@@ -826,8 +829,8 @@ class InequalityBounds(ProblemDataPart):
             lb_params.append(lower)
             ub_params.append(upper)
 
-        lbA, self.names = self._sorter(*lb_params)
-        ubA, _ = self._sorter(*ub_params)
+        lbA, self.names = _sorter(*lb_params)
+        ubA, _ = _sorter(*ub_params)
 
         self.names_derivative_links = self.names[:num_derivative_constraints]
         self.names_neq_constraints = self.names[
@@ -849,14 +852,14 @@ class EqualityModel(ProblemDataPart):
     """
 
     def equality_constraint_expressions(self) -> List[sm.Matrix]:
-        return self._sorter(
+        return _sorter(
             {c.name: c.expression for c in self.constraint_collection.eq_constraints}
         )[0]
 
     def get_free_variable_symbols(
         self, derivative: Derivatives
     ) -> List[sm.FloatVariable]:
-        return self._sorter(
+        return _sorter(
             {
                 v.variables.position.name: v.variables.data[derivative]
                 for v in self.degrees_of_freedom
@@ -864,7 +867,7 @@ class EqualityModel(ProblemDataPart):
         )[0]
 
     def get_eq_derivative_constraint_expressions(self, derivative: Derivatives):
-        return self._sorter(
+        return _sorter(
             {
                 c.name: c.expression
                 for c in self.constraint_collection.eq_derivative_constraints
@@ -1181,12 +1184,12 @@ class InequalityModel(ProblemDataPart):
         return len([v for v in self.degrees_of_freedom if not v.has_position_limits()])
 
     def inequality_constraint_expressions(self) -> List[sm.Matrix]:
-        return self._sorter(
+        return _sorter(
             {c.name: c.expression for c in self.constraint_collection.neq_constraints}
         )[0]
 
     def get_derivative_constraint_expressions(self, derivative: Derivatives):
-        return self._sorter(
+        return _sorter(
             {
                 c.name: c.expression
                 for c in self.constraint_collection.derivative_constraints
@@ -1195,7 +1198,7 @@ class InequalityModel(ProblemDataPart):
         )[0]
 
     def get_free_variable_symbols(self, order: Derivatives):
-        return self._sorter(
+        return _sorter(
             {
                 v.variables.position.name: v.variables.data[order]
                 for v in self.degrees_of_freedom
