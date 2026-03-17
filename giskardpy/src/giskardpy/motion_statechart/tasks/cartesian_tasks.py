@@ -170,7 +170,15 @@ class CartesianPositionTrajectory(CartesianTask):
     """
 
     threshold: float = field(default=0.01, kw_only=True)
-    """Distance threshold for goal achievement in meters."""
+    """
+    Distance threshold for goal achievement in meters.
+    """
+
+    look_ahead_distance: float = field(default=0.01, kw_only=True)
+    """
+    Distance from the current position to tracking target.
+    Increasing this value can increase the tracking velocity, but might reduce tracking accuracy.
+    """
 
     reference_velocity: Optional[float] = field(
         default_factory=lambda: CartesianPosition.default_reference_velocity,
@@ -311,7 +319,7 @@ class CartesianPositionTrajectory(CartesianTask):
         # Aim for a point 'threshold' distance away from the PROJECTED point
         # This ensures that the target point is always 'threshold' away along the path,
         # which creates a vector that pulls the robot back to the path AND forward.
-        return p_projected + unit_tangent * self.threshold
+        return p_projected + unit_tangent * self.look_ahead_distance
 
     def on_tick(
         self, context: MotionStatechartContext
