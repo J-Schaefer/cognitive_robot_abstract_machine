@@ -18,7 +18,7 @@ class QPSolverPIQP(QPSolver[QPDataExplicit]):
     def __post_init__(self):
         self.solver.settings.eps_abs = 1e-6
         self.solver.settings.eps_rel = 1e-7
-        self.solver.settings.eps_duality_gap_abs = 1e-4
+        self.solver.settings.eps_duality_gap_abs = 1e-5
         self.solver.settings.eps_duality_gap_rel = 1e-5
         self.solver.settings.reg_lower_limit = 1e-11
         # self.solver.settings.kkt_solver = piqp.KKTSolver.sparse_multistage
