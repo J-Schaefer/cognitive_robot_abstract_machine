@@ -63,4 +63,5 @@ jobs:
 
       - name: Run Script
         run: |
+          cd cognitive_robot_abstract_machine
           bash ./${{inputs.script}}
