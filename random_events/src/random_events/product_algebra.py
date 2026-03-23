@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 import textwrap
 from dataclasses import field, dataclass
-from typing import Any, Iterable, Self, Dict, Optional, Tuple
+from typing import Any, Iterable, Self, Dict, Optional, Tuple, Mapping
 
 import numpy as np
 import plotly.graph_objects as go
@@ -139,6 +139,12 @@ class SimpleEvent(AbstractSimpleSet, VariableMap):
         key = self.get_variable(key)
         self._setitem_without_cpp(key, value)
         self._update_cpp_object()
+
+    def __or__(self, other):
+        if not isinstance(other, Mapping):
+            return NotImplemented
+        items = itertools.chain(self.items(), other.items())
+        return self.__class__.from_data({variable: value for variable, value in items})
 
     def marginal(self, variables: VariableSet) -> SimpleEvent:
         """
