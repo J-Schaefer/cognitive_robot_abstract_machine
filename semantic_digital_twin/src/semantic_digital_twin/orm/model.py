@@ -97,19 +97,18 @@ class Vector3Mapping(AlternativeMapping[Vector3]):
     y: float
     z: float
 
-    reference_frame: Optional[KinematicStructureEntity] = field(
-        init=False, default=None
-    )
+    reference_frame: Optional[KinematicStructureEntity]
 
     @classmethod
     def from_domain_object(cls, obj: Vector3):
         x, y, z, _ = obj.to_np().tolist()
-        result = cls(x=x, y=y, z=z)
-        result.reference_frame = obj.reference_frame
+        result = cls(x=x, y=y, z=z, reference_frame=obj.reference_frame)
         return result
 
     def to_domain_object(self) -> Vector3:
-        return Vector3(x=self.x, y=self.y, z=self.z, reference_frame=None)
+        return Vector3(
+            x=self.x, y=self.y, z=self.z, reference_frame=self.reference_frame
+        )
 
 
 @dataclass
@@ -118,19 +117,18 @@ class Point3Mapping(AlternativeMapping[Point3]):
     y: float
     z: float
 
-    reference_frame: Optional[KinematicStructureEntity] = field(
-        init=False, default=None
-    )
+    reference_frame: Optional[KinematicStructureEntity]
 
     @classmethod
     def from_domain_object(cls, obj: Point3):
         x, y, z, _ = obj.to_np().tolist()
-        result = cls(x=x, y=y, z=z)
-        result.reference_frame = obj.reference_frame
+        result = cls(x=x, y=y, z=z, reference_frame=obj.reference_frame)
         return result
 
     def to_domain_object(self) -> Point3:
-        return Point3(x=self.x, y=self.y, z=self.z, reference_frame=None)
+        return Point3(
+            x=self.x, y=self.y, z=self.z, reference_frame=self.reference_frame
+        )
 
 
 @dataclass
@@ -140,15 +138,12 @@ class QuaternionMapping(AlternativeMapping[Quaternion]):
     z: float
     w: float
 
-    reference_frame: Optional[KinematicStructureEntity] = field(
-        init=False, default=None
-    )
+    reference_frame: Optional[KinematicStructureEntity]
 
     @classmethod
     def from_domain_object(cls, obj: Quaternion):
         x, y, z, w = obj.to_np().tolist()
-        result = cls(x=x, y=y, z=z, w=w)
-        result.reference_frame = obj.reference_frame
+        result = cls(x=x, y=y, z=z, w=w, reference_frame=obj.reference_frame)
         return result
 
     def to_domain_object(self) -> Quaternion:
@@ -157,26 +152,22 @@ class QuaternionMapping(AlternativeMapping[Quaternion]):
             y=self.y,
             z=self.z,
             w=self.w,
-            reference_frame=None,
+            reference_frame=self.reference_frame,
         )
 
 
 @dataclass
 class RotationMatrixMapping(AlternativeMapping[RotationMatrix]):
     rotation: Quaternion
-    reference_frame: Optional[KinematicStructureEntity] = field(
-        init=False, default=None
-    )
+    reference_frame: Optional[KinematicStructureEntity]
 
     @classmethod
     def from_domain_object(cls, obj: RotationMatrix):
-        result = cls(rotation=obj.to_quaternion())
-        result.reference_frame = obj.reference_frame
+        result = cls(rotation=obj.to_quaternion(), reference_frame=obj.reference_frame)
         return result
 
     def to_domain_object(self) -> RotationMatrix:
         result = RotationMatrix.from_quaternion(self.rotation)
-        result.reference_frame = None
         return result
 
 
@@ -186,26 +177,28 @@ class HomogeneousTransformationMatrixMapping(
 ):
     position: Point3
     rotation: Quaternion
-    reference_frame: Optional[KinematicStructureEntity] = field(
-        init=False, default=None
-    )
-    child_frame: Optional[KinematicStructureEntity] = field(init=False, default=None)
+
+    reference_frame: Optional[KinematicStructureEntity]
+    child_frame: Optional[KinematicStructureEntity]
 
     @classmethod
     def from_domain_object(cls, obj: HomogeneousTransformationMatrix):
         position = obj.to_position()
         rotation = obj.to_quaternion()
-        result = cls(position=position, rotation=rotation)
-        result.reference_frame = obj.reference_frame
-        result.child_frame = obj.child_frame
+        result = cls(
+            position=position,
+            rotation=rotation,
+            reference_frame=obj.reference_frame,
+            child_frame=obj.child_frame,
+        )
 
         return result
 
     def to_domain_object(self) -> HomogeneousTransformationMatrix:
         return HomogeneousTransformationMatrix.from_point_rotation_matrix(
             point=self.position,
-            rotation_matrix=RotationMatrix.from_quaternion(self.rotation),
-            reference_frame=None,
+            rotation_matrix=self.rotation.to_rotation_matrix(),
+            reference_frame=self.reference_frame,
             child_frame=self.child_frame,
         )
 

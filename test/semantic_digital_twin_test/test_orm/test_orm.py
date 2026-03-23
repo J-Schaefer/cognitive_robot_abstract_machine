@@ -151,6 +151,10 @@ def test_pr2_world(pr2_world_state_reset, session):
     queried_world = session.scalar(select(WorldMappingDAO))
     reconstructed: World = queried_world.from_dao()
 
+    q = select(RevoluteConnectionDAO)
+    r = session.scalars(q).all()
+    assert len(r) > 0
+
 
 def test_pr2_semantic_annotation_and_safe_to_db(
     rclpy_node, pr2_world_state_reset, session

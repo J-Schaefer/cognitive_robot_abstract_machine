@@ -934,17 +934,34 @@ class DataAccessObject(HasGeneric[T]):
             for i, wi in enumerate(discovery_order)
             if pending_counts[id(wi.dao_instance)] == 0
         ]
-        unresolved_indices = set(range(len(discovery_order)))
+        unresolved_indices = list(range(len(discovery_order)))
 
         # Process objects in topological order.
+        retries: Dict[int, int] = {}
         while unresolved_indices:
             current_index = self._pick_next_ready_index(
                 ready_indices, unresolved_indices
             )
-            unresolved_indices.remove(current_index)
-
             work_item = discovery_order[current_index]
-            self._finalize_work_item(work_item, state)
+
+            try:
+                self._finalize_work_item(work_item, state)
+                unresolved_indices.remove(current_index)
+            except Exception:  # put non working items to the back
+                print(
+                    "moving work item to the end as its not working yet",
+                    type(work_item.domain_object),
+                )
+                # If finalization fails, we retry it later.
+                # To prevent infinite loops, we cap the number of retries.
+                retries[current_index] = retries.get(current_index, 0) + 1
+
+                if retries[current_index] > len(discovery_order) or not ready_indices:
+                    raise
+                # Put it back to be processed later.
+                ready_indices.append(current_index)
+                unresolved_indices.append(current_index)
+                continue
 
             # Update dependants and move newly ready ones to the queue.
             for dependant_id in dependants[id(work_item.dao_instance)]:
@@ -980,7 +997,7 @@ class DataAccessObject(HasGeneric[T]):
         return dependants, pending_counts
 
     def _pick_next_ready_index(
-        self, ready_indices: List[int], unresolved_indices: Set[int]
+        self, ready_indices: List[int], unresolved_indices: List[int]
     ) -> int:
         """
         Pick the next object to resolve from the ready queue.

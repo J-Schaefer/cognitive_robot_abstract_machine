@@ -3540,6 +3540,11 @@ class HomogeneousTransformationMatrixMappingDAO(
         nullable=True,
         use_existing_column=True,
     )
+    child_frame_id: Mapped[typing.Optional[builtins.int]] = mapped_column(
+        ForeignKey("KinematicStructureEntityDAO.database_id", use_alter=True),
+        nullable=True,
+        use_existing_column=True,
+    )
 
     position: Mapped[Point3MappingDAO] = relationship(
         "Point3MappingDAO", uselist=False, foreign_keys=[position_id], post_update=True
@@ -3548,6 +3553,12 @@ class HomogeneousTransformationMatrixMappingDAO(
         "QuaternionMappingDAO",
         uselist=False,
         foreign_keys=[rotation_id],
+        post_update=True,
+    )
+    child_frame: Mapped[KinematicStructureEntityDAO] = relationship(
+        "KinematicStructureEntityDAO",
+        uselist=False,
+        foreign_keys=[child_frame_id],
         post_update=True,
     )
 
