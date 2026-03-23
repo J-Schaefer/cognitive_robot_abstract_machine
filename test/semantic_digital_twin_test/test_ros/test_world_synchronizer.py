@@ -293,64 +293,66 @@ def test_model_synchronization_creation_only(rclpy_node):
 
 
 def test_model_synchronization_merge_full_world(rclpy_node):
+    for _ in range(15):
+        w1 = World(name="w1")
+        w2 = World(name="w2")
 
-    w1 = World(name="w1")
-    w2 = World(name="w2")
-
-    synchronizer_1 = ModelSynchronizer(
-        node=rclpy_node,
-        _world=w1,
-    )
-    synchronizer_2 = ModelSynchronizer(
-        node=rclpy_node,
-        _world=w2,
-    )
-
-    pr2_world = URDFParser.from_file(
-        os.path.join(
-            Path(files("semantic_digital_twin")).parent.parent,
-            "resources",
-            "urdf",
-            "pr2_kinematic_tree.urdf",
+        synchronizer_1 = ModelSynchronizer(
+            node=rclpy_node,
+            _world=w1,
         )
-    ).parse()
+        synchronizer_2 = ModelSynchronizer(
+            node=rclpy_node,
+            _world=w2,
+        )
 
-    def wait_for_sync(timeout=3.0, interval=0.05):
-        start = time.time()
-        while time.time() - start < timeout:
+        pr2_world = URDFParser.from_file(
+            os.path.join(
+                Path(files("semantic_digital_twin")).parent.parent,
+                "resources",
+                "urdf",
+                "pr2_kinematic_tree.urdf",
+            )
+        ).parse()
+
+        def wait_for_sync(timeout=3.0, interval=0.05):
+            start = time.time()
+            while time.time() - start < timeout:
+                body_ids_1 = [body.id for body in w1.kinematic_structure_entities]
+                body_ids_2 = [body.id for body in w2.kinematic_structure_entities]
+                if body_ids_1 == body_ids_2:
+                    return body_ids_1, body_ids_2
+                time.sleep(interval)
+
             body_ids_1 = [body.id for body in w1.kinematic_structure_entities]
             body_ids_2 = [body.id for body in w2.kinematic_structure_entities]
-            if body_ids_1 == body_ids_2:
-                return body_ids_1, body_ids_2
-            time.sleep(interval)
+            return body_ids_1, body_ids_2
 
-        body_ids_1 = [body.id for body in w1.kinematic_structure_entities]
-        body_ids_2 = [body.id for body in w2.kinematic_structure_entities]
-        return body_ids_1, body_ids_2
+        with w1.modify_world():
+            new_body = Body(name=PrefixedName("b3"))
+            w1.add_kinematic_structure_entity(new_body)
 
-    with w1.modify_world():
-        new_body = Body(name=PrefixedName("b3"))
-        w1.add_kinematic_structure_entity(new_body)
+        fixed_connection = FixedConnection(child=new_body, parent=pr2_world.root)
+        w1.merge_world(pr2_world, fixed_connection)
 
-    fixed_connection = FixedConnection(child=new_body, parent=pr2_world.root)
-    w1.merge_world(pr2_world, fixed_connection)
+        body_ids_1, body_ids_2 = wait_for_sync()
 
-    body_ids_1, body_ids_2 = wait_for_sync()
+        assert body_ids_1 == body_ids_2
+        assert len(w1.kinematic_structure_entities) == len(
+            w2.kinematic_structure_entities
+        )
 
-    assert body_ids_1 == body_ids_2
-    assert len(w1.kinematic_structure_entities) == len(w2.kinematic_structure_entities)
+        w1_connection_hashes = [hash(c) for c in w1.connections]
+        w2_connection_hashes = [hash(c) for c in w2.connections]
+        assert (
+            w1_connection_hashes == w2_connection_hashes
+        ), f"w1: {[c.name for c in w1.connections]}, w2: {[c.name for c in w2.connections]}, If this feels flaky, contact @LucaKro"
+        assert [d.id for d in w1.degrees_of_freedom] == [
+            d.id for d in w2.degrees_of_freedom
+        ], f"w1: {[d.name for d in w1.degrees_of_freedom]}, w2: {[d.name for d in w2.degrees_of_freedom]}, If this feels flaky, contact @LucaKro"
 
-    w1_connection_hashes = [hash(c) for c in w1.connections]
-    w2_connection_hashes = [hash(c) for c in w2.connections]
-    assert (
-        w1_connection_hashes == w2_connection_hashes
-    ), f"w1: {[c.name for c in w1.connections]}, w2: {[c.name for c in w2.connections]}, If this feels flaky, contact @LucaKro"
-    assert [d.id for d in w1.degrees_of_freedom] == [
-        d.id for d in w2.degrees_of_freedom
-    ], f"w1: {[d.name for d in w1.degrees_of_freedom]}, w2: {[d.name for d in w2.degrees_of_freedom]}, If this feels flaky, contact @LucaKro"
-
-    synchronizer_1.close()
-    synchronizer_2.close()
+        synchronizer_1.close()
+        synchronizer_2.close()
 
 
 def test_callback_pausing(rclpy_node):
