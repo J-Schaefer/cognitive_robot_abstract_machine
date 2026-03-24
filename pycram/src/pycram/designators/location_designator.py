@@ -766,10 +766,10 @@ class ProbabilisticSemanticLocation(LocationDesignatorDescription):
             # We create a Gaussian distribution around the surface sample, which is used to sample the
             # navigation poses.
             x_p = GaussianDistribution(
-                SpatialVariables.x.value, surface_sample[0], scale
+                variable=SpatialVariables.x.value, location=surface_sample[0], scale=scale
             )
             y_p = GaussianDistribution(
-                SpatialVariables.y.value, surface_sample[1], scale
+                variable=SpatialVariables.y.value, location=surface_sample[1], scale=scale
             )
 
             # Add all the variables to the circuit
