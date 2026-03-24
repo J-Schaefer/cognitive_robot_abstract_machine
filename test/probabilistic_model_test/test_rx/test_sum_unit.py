@@ -1,13 +1,8 @@
 import unittest
-
-from matplotlib import pyplot as plt
+from krrood.adapters.json_serializer import to_json, from_json
 from random_events.interval import closed
-from random_events.variable import Continuous
-from typing_extensions import Union
-
 from probabilistic_model.distributions.uniform import UniformDistribution
 from probabilistic_model.probabilistic_circuit.rx.probabilistic_circuit import *
-import plotly.graph_objects as go
 
 
 class NormalizationTestCase(unittest.TestCase):
@@ -111,8 +106,8 @@ class SumUnitTestCase(unittest.TestCase):
 
     def test_serialization(self):
         event = SimpleEvent.from_data({self.x: closed(0, 0.5)}).as_composite_set()
-        serialized = self.model.to_json()
-        deserialized = ProbabilisticCircuit.from_json(serialized)
+        serialized = to_json(self.model)
+        deserialized = from_json(serialized)
         self.assertEqual(self.model.probability(event), deserialized.probability(event))
 
     def test_conditional_inference(self):

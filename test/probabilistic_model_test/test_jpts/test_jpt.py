@@ -14,6 +14,8 @@ from jpt import infer_from_dataframe as old_infer_from_dataframe
 from jpt.learning.impurity import Impurity
 from jpt.trees import JPT as OldJPT
 from matplotlib import pyplot as plt
+
+from krrood.adapters.json_serializer import to_json, from_json
 from random_events.interval import closed
 from random_events.product_algebra import SimpleEvent
 from random_events.variable import Variable, Continuous
@@ -66,14 +68,14 @@ class VariableTestCase(unittest.TestCase):
 
     def test_serialization_integer(self):
         variable = Integer("x", 2, 1)
-        serialized = variable.to_json()
-        deserialized = Variable.from_json(serialized)
+        serialized = to_json(variable)
+        deserialized = from_json(serialized)
         self.assertEqual(variable, deserialized)
 
     def test_serialization_continuous(self):
         variable = ScaledContinuous("x", 2, 3, 1.0, 0.1, 10)
-        serialized = variable.to_json()
-        deserialized = Variable.from_json(serialized)
+        serialized = to_json(variable)
+        deserialized = from_json(serialized)
         self.assertEqual(variable, deserialized)
 
 
@@ -254,8 +256,8 @@ class JPTTestCase(unittest.TestCase):
     def test_serialization(self):
         self.model.min_samples_per_leaf = 10
         self.model.fit(self.data)
-        serialized = self.model.to_json()
-        deserialized = JPT.from_json(serialized)
+        serialized = to_json(self.model)
+        deserialized = from_json(serialized)
         self.assertEqual(self.model, deserialized)
 
 
@@ -283,8 +285,8 @@ class BreastCancerTestCase(unittest.TestCase):
         cls.pc = cls.model.fit(cls.data)
 
     def test_serialization(self):
-        json_dict = self.model.to_json()
-        model = JPT.from_json(json_dict)
+        json_dict = to_json(self.model)
+        model = from_json(json_dict)
 
         self.assertEqual(model, self.model)
 
@@ -295,7 +297,7 @@ class BreastCancerTestCase(unittest.TestCase):
 
         with open(file.name, "r") as f:
             model_ = json.load(f)
-        model_ = JPT.from_json(model_)
+        model_ = from_json(model_)
 
         self.assertEqual(model, model_)
         file.close()
@@ -319,8 +321,8 @@ class BreastCancerTestCase(unittest.TestCase):
         self.assertIsInstance(marginal.root, SumUnit)
 
     def test_serialization_of_circuit(self):
-        json_dict = self.pc.to_json()
-        model = ProbabilisticCircuit.from_json(json_dict)
+        json_dict = to_json(self.pc)
+        model = from_json(json_dict)
         event = SimpleEvent.from_data(
             {variable: variable.domain for variable in self.model.variables}
         ).as_composite_set()
@@ -356,9 +358,9 @@ class MNISTTestCase(unittest.TestCase):
         cls.model.fit(df)
 
     def test_serialization(self):
-        json_dict = self.model.to_json()
+        json_dict = to_json(self.model)
         # print(json_dict)
-        model = JPT.from_json(json_dict)
+        model = from_json(json_dict)
         self.assertEqual(model, self.model)
 
         file = tempfile.NamedTemporaryFile()
@@ -368,7 +370,7 @@ class MNISTTestCase(unittest.TestCase):
 
         with open(file.name, "r") as f:
             model_ = json.load(f)
-        model_ = JPT.from_json(model_)
+        model_ = from_json(model_)
         self.assertEqual(model, model_)
         file.close()
 

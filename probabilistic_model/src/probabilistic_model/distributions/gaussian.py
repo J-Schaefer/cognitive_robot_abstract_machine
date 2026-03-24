@@ -160,14 +160,6 @@ class GaussianDistribution(ContinuousDistribution):
         memo[id_self] = result
         return result
 
-    def to_json(self) -> Dict[str, Any]:
-        return {**super().to_json(), "location": self.location, "scale": self.scale}
-
-    @classmethod
-    def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
-        variable = Continuous.from_json(data["variable"])
-        return cls(variable=variable, location=data["location"], scale=data["scale"])
-
     @property
     def abbreviated_symbol(self) -> str:
         return "N"
@@ -364,20 +356,6 @@ class TruncatedGaussianDistribution(
         )
         memo[id_self] = result
         return result
-
-    def to_json(self) -> Dict[str, Any]:
-        return {**super().to_json(), "interval": self.interval.to_json()}
-
-    @classmethod
-    def _from_json(cls, data: Dict[str, Any]) -> Self:
-        variable = Continuous.from_json(data["variable"])
-        interval = SimpleInterval.from_json(data["interval"])
-        return cls(
-            variable=variable,
-            interval=interval,
-            location=data["location"],
-            scale=data["scale"],
-        )
 
     def transform_to_standard_normal(self, number: float) -> float:
         """

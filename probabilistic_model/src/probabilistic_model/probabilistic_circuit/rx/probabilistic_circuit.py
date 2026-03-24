@@ -1,4 +1,5 @@
 from __future__ import annotations
+import numpy.typing as npt
 
 import copy
 import itertools
@@ -37,7 +38,7 @@ from probabilistic_model.distributions import (
     ContinuousDistribution,
 )
 from probabilistic_model.distributions.helper import make_dirac
-from probabilistic_model.error import IntractableError
+from probabilistic_model.exceptions import IntractableError
 from probabilistic_model.interfaces.drawio.drawio import (
     DrawIOInterface,
     circled_product,
@@ -53,7 +54,7 @@ from probabilistic_model.utils import MissingDict
 from random_events.interval import SimpleInterval, Interval
 from random_events.product_algebra import VariableMap, SimpleEvent, Event
 from random_events.set import Set
-from krrood.adapters.json_serializer import SubclassJSONSerializer
+from krrood.adapters.json_serializer import SubclassJSONSerializer, to_json, from_json
 from random_events.variable import Variable, Symbolic, Continuous, Integer
 
 
@@ -286,10 +287,10 @@ class LeafUnit(Unit):
     def leaves(self) -> List[LeafUnit]:
         return []
 
-    def log_likelihood(self, events: np.array):
+    def log_likelihood(self, events: npt.NDArray):
         self.result_of_current_query = self.distribution.log_likelihood(events)
 
-    def cdf(self, events: np.array):
+    def cdf(self, events: npt.NDArray):
         self.result_of_current_query = self.distribution.cdf(events)
 
     def probability_of_simple_event(self, event: SimpleEvent):
@@ -320,7 +321,7 @@ class LeafUnit(Unit):
                 result[variable_to_index_map[variable]] = moment[variable]
         self.result_of_current_query = result
 
-    def sample(self, samples: np.array, variable_to_index_map: Dict[Variable, int]):
+    def sample(self, samples: npt.NDArray, variable_to_index_map: Dict[Variable, int]):
         """
         Sample from the distribution and write the samples into the samples array.
         :param samples: The array to write the samples into.
@@ -348,12 +349,12 @@ class LeafUnit(Unit):
 
     def to_json(self):
         result = super().to_json()
-        result["distribution"] = self.distribution.to_json()
+        result["distribution"] = to_json(self.distribution)
         return result
 
     @classmethod
     def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
-        distribution = SubclassJSONSerializer.from_json(data["distribution"])
+        distribution = from_json(data["distribution"])
         return cls(distribution)
 
     def log_conditional_in_place(self, point: Dict[Variable, Any]):
@@ -503,13 +504,13 @@ class SumUnit(InnerUnit):
         self.result_of_current_query = support
 
     @property
-    def log_weights(self) -> np.array:
+    def log_weights(self) -> npt.NDArray:
         """
         :return: The log_weights of the subcircuits.
         """
         return np.array([weight for weight, _ in self.log_weighted_subcircuits])
 
-    def sample(self, *args, **kwargs) -> np.array:
+    def sample(self, *args, **kwargs):
         weights, subcircuits = self.log_weights, self.subcircuits
 
         subcircuit_indices = list(range(len(subcircuits)))
@@ -734,7 +735,7 @@ class SumUnit(InnerUnit):
             arg_log_max |= event
         self.result_of_current_query = (arg_log_max, log_max)
 
-    def subcircuit_index_of_samples(self, samples: np.array) -> np.array:
+    def subcircuit_index_of_samples(self, samples: npt.NDArray) -> npt.NDArray:
         """
         :return: the index of the subcircuit where p(sample) > 0 and None if p(sample) = 0 for all subcircuits.
         """
@@ -1027,7 +1028,7 @@ class ProbabilisticCircuit(ProbabilisticModel, SubclassJSONSerializer):
         else:
             raise ValueError(f"No root found.")
 
-    def log_likelihood(self, events: np.array) -> np.array:
+    def log_likelihood(self, events: npt.NDArray) -> npt.NDArray:
         variable_to_index_map = self.variable_to_index_map
         for layer in reversed(self.layers):
             for unit in layer:  # open all the procesess
@@ -1047,7 +1048,7 @@ class ProbabilisticCircuit(ProbabilisticModel, SubclassJSONSerializer):
                     unit.log_forward()  # Synch trheads 1
         return self.root.result_of_current_query
 
-    def cdf(self, events: np.array) -> np.array:
+    def cdf(self, events: npt.NDArray) -> npt.NDArray:
         variable_to_index_map = self.variable_to_index_map
         for layer in reversed(self.layers):
             for unit in layer:
@@ -1081,7 +1082,7 @@ class ProbabilisticCircuit(ProbabilisticModel, SubclassJSONSerializer):
     def log_mode(self, check_determinism: bool = True) -> Tuple[Event, float]:
         if check_determinism:
             if not self.is_deterministic():
-                raise IntractableError("The circuit is not deterministic.")
+                raise IntractableError(self)
         [unit.log_mode() for layer in reversed(self.layers) for unit in layer]
         return self.root.result_of_current_query
 
@@ -1266,7 +1267,7 @@ class ProbabilisticCircuit(ProbabilisticModel, SubclassJSONSerializer):
         result = self.__deepcopy__()
         return result.marginal_in_place(variables)
 
-    def sample(self, amount: int) -> np.array:
+    def sample(self, amount: int) -> npt.NDArray:
 
         # initialize all results
         for node in self.graph.nodes():
@@ -1402,12 +1403,12 @@ class ProbabilisticCircuit(ProbabilisticModel, SubclassJSONSerializer):
         return cls()
 
     @classmethod
-    def _from_json(cls, data: Dict[str, Any]) -> Self:
+    def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
         result = cls.parameters_from_json(data)
         hash_remap: Dict[int, Unit] = dict()
 
         for index, node_data in data["index_to_node_map"].items():
-            node = Unit.from_json(node_data)
+            node = from_json(node_data)
             hash_remap[int(index)] = node
             result.add_node(node)
 

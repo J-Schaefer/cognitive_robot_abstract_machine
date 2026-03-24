@@ -31,7 +31,7 @@ class SetElement(AbstractSimpleSet):
     A hash map is created to map the hash of each element to the element.
     """
 
-    _cpp_object: rl.SetElement = field(default_factory=lambda: rl.SetElement(set()))
+    cpp_object: rl.SetElement = field(default_factory=lambda: rl.SetElement(set()))
 
     element: Hashable = field(init=False)
     """
@@ -58,12 +58,12 @@ class SetElement(AbstractSimpleSet):
                 f"All elements: {all_elements}"
             )
         if element is None:
-            instance._cpp_object = rl.SetElement(set())
+            instance.cpp_object = rl.SetElement(set())
         else:
             if not isinstance(all_elements, Tuple):
                 instance.all_elements = tuple(all_elements)
             element_index = instance.all_elements.index(element)
-            instance._cpp_object = rl.SetElement(
+            instance.cpp_object = rl.SetElement(
                 element_index, set(instance.hash_map.keys())
             )
             instance.element = element
@@ -130,7 +130,7 @@ class Set(AbstractCompositeSet):
     Use :func:`from_simple_sets` class method to create a set from a list of simple sets, do not use the constructor directly.
     """
 
-    _cpp_object: rl.Set = field(default_factory=lambda: rl.Set(set(), set()))
+    cpp_object: rl.Set = field(default_factory=lambda: rl.Set(set(), set()))
     simple_set_example: SetElement = field(init=False)
     all_elements: Tuple[Hashable] = field(init=False)
 
@@ -139,14 +139,14 @@ class Set(AbstractCompositeSet):
         instance = cls.__new__(cls)
         if len(simple_sets) > 0:
             instance.simple_set_example = simple_sets[0]
-            instance._cpp_object = rl.Set(
-                {simple_set._cpp_object for simple_set in simple_sets},
-                instance.simple_set_example._cpp_object.all_elements,
+            instance.cpp_object = rl.Set(
+                {simple_set.cpp_object for simple_set in simple_sets},
+                instance.simple_set_example.cpp_object.all_elements,
             )
             instance.all_elements = simple_sets[0].all_elements
 
         else:
-            instance._cpp_object = rl.Set(set(), set())
+            instance.cpp_object = rl.Set(set(), set())
             instance.all_elements = tuple()
         return instance
 

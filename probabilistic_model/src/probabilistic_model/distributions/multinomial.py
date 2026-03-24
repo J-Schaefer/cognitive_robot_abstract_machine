@@ -3,8 +3,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import numpy.typing as npt
+
+from random_events.exceptions import ShapeMismatchError
 from random_events.product_algebra import SimpleEvent, Event
-from krrood.adapters.json_serializer import SubclassJSONSerializer
 from random_events.variable import Symbolic, Variable
 from typing_extensions import Self, Any, Iterable, List, Optional, Tuple, Dict
 
@@ -21,12 +22,12 @@ from probabilistic_model.utils import MissingDict
 
 
 @dataclass
-class MultinomialDistribution(ProbabilisticModel, SubclassJSONSerializer):
+class MultinomialDistribution(ProbabilisticModel):
     """
     A multinomial distribution over symbolic random variables.
     """
 
-    _variables: Tuple[Symbolic, ...]
+    distribution_variables: Tuple[Symbolic, ...]
     """
     The variables of the distribution.
     """
@@ -46,15 +47,11 @@ class MultinomialDistribution(ProbabilisticModel, SubclassJSONSerializer):
             self.probabilities /= self.probabilities.sum()
 
         if shape != self.probabilities.shape:
-            raise ValueError(
-                "The number of variables must match the number of dimensions in the probability array."
-                "Variables: {}".format(self.variables),
-                "Dimensions: {}".format(self.probabilities.shape),
-            )
+            raise ShapeMismatchError(self.variables, self.probabilities.shape)
 
     @property
     def variables(self) -> Tuple[Symbolic, ...]:
-        return tuple(self._variables)
+        return tuple(self.distribution_variables)
 
     @property
     def support(self) -> Event:
@@ -180,7 +177,7 @@ class MultinomialDistribution(ProbabilisticModel, SubclassJSONSerializer):
         indices = self.indices_from_simple_event(event)
         return self.probabilities[np.ix_(*indices)].sum()
 
-    def log_likelihood(self, events: np.array) -> np.array:
+    def log_likelihood(self, events: npt.NDArray) -> npt.NDArray:
         return np.log(self.probabilities[tuple(events.T)])
 
     def log_truncated(self, event: Event) -> Tuple[Optional[Self], float]:
@@ -215,7 +212,7 @@ class MultinomialDistribution(ProbabilisticModel, SubclassJSONSerializer):
             for variable in self.variables
         )
 
-    def probabilities_from_simple_event(self, event: SimpleEvent) -> np.ndarray:
+    def probabilities_from_simple_event(self, event: SimpleEvent) -> npt.NDArray:
         """
         Calculate the probabilities array for a simple event.
 
@@ -302,16 +299,3 @@ class MultinomialDistribution(ProbabilisticModel, SubclassJSONSerializer):
         self.probabilities[tuple(uniques.astype(int).T)] = counts
         self.normalize()
         return self
-
-    def to_json(self) -> Dict[str, Any]:
-        return {
-            **SubclassJSONSerializer.to_json(self),
-            "variables": [variable.to_json() for variable in self.variables],
-            "probabilities": self.probabilities.tolist(),
-        }
-
-    @classmethod
-    def _from_json(cls, data: Dict[str, Any]) -> Self:
-        variables = [Variable.from_json(variable) for variable in data["variables"]]
-        probabilities = np.array(data["probabilities"])
-        return cls(variables, probabilities)

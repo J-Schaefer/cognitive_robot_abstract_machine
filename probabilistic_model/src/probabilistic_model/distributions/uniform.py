@@ -134,15 +134,6 @@ class UniformDistribution(ContinuousDistributionWithFiniteSupport):
         memo[id_self] = result
         return result
 
-    def to_json(self) -> Dict[str, Any]:
-        return {**super().to_json(), "interval": self.interval.to_json()}
-
-    @classmethod
-    def _from_json(cls, data: Dict[str, Any]) -> Self:
-        variable = Continuous.from_json(data["variable"])
-        interval = SimpleInterval.from_json(data["interval"])
-        return cls(variable=variable, interval=interval)
-
     def x_axis_points_for_plotly(self) -> List[Union[None, float]]:
         interval_size = self.upper - self.lower
         x = [

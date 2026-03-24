@@ -1,5 +1,6 @@
 import unittest
 
+from krrood.adapters.json_serializer import to_json, from_json
 from random_events.interval import closed, open, closed_open
 from random_events.variable import Integer, Continuous
 
@@ -99,8 +100,8 @@ class ProductUnitTestCase(unittest.TestCase):
         event = SimpleEvent.from_data(
             {self.x: closed(0, 0.5), self.y: closed(3, 3.5)}
         ).as_composite_set()
-        serialized = self.model.to_json()
-        deserialized = ProbabilisticCircuit.from_json(serialized)
+        serialized = to_json(self.model)
+        deserialized = from_json(serialized)
         self.assertEqual(deserialized.probability(event), self.model.probability(event))
 
     def test_copy(self):

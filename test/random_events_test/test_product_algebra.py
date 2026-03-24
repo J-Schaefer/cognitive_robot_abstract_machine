@@ -3,6 +3,7 @@ import unittest
 import plotly.graph_objects as go
 from sortedcontainers import SortedSet
 
+from krrood.adapters.json_serializer import to_json, from_json
 from random_events.interval import *
 from random_events.product_algebra import SimpleEvent, Event
 from random_events.set import SetElement, Set
@@ -140,7 +141,6 @@ class EventTestCase(unittest.TestCase):
     def test_to_json(self):
         sa = SetElement.from_data("a", str_set)
         sb = SetElement.from_data("b", str_set)
-        sc = SetElement.from_data("c", str_set)
         event = SimpleEvent.from_data(
             {
                 self.a: Set.from_simple_sets(sa, sb),
@@ -148,7 +148,7 @@ class EventTestCase(unittest.TestCase):
                 self.y: Interval.from_simple_sets(SimpleInterval.from_data(0, 1)),
             }
         )
-        event_ = AbstractSimpleSet.from_json(event.to_json())
+        event_ = from_json(to_json(event))
         self.assertEqual(event_, event)
 
     def test_plot_2d(self):
@@ -233,7 +233,7 @@ class EventTestCase(unittest.TestCase):
         a1 = Symbolic(name="a", domain=str_set_domain)
         a2 = Symbolic(name="a", domain=str_set_domain)
         self.assertEqual(a1, a2)
-        self.assertEqual(a1._cpp_object, a2._cpp_object)
+        self.assertEqual(a1.cpp_object, a2.cpp_object)
 
     def test_to_json_multiple_events(self):
         sa = SetElement.from_data("a", str_set)
@@ -242,7 +242,7 @@ class EventTestCase(unittest.TestCase):
         event = SimpleEvent.from_data(
             {self.x: closed(0, 1), self.y: SimpleInterval.from_data(3, 5), self.a: Set.from_simple_sets(sa, sb)}
         ).as_composite_set()
-        event_ = AbstractSimpleSet.from_json(event.to_json())
+        event_ = from_json(to_json(event))
         self.assertEqual(event_, event)
 
     def test_bounding_box(self):

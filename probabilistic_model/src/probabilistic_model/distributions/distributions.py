@@ -26,7 +26,7 @@ from probabilistic_model.utils import MissingDict, interval_as_array
 
 @dataclass
 class UnivariateDistribution(
-    ProbabilisticModel, SubclassJSONSerializer, DrawIOInterface
+    ProbabilisticModel, DrawIOInterface
 ):
     """
     Abstract Base class for Univariate distributions.
@@ -74,9 +74,6 @@ class UnivariateDistribution(
 
     def __eq__(self, other: Self):
         return self.variables == other.variables and isinstance(other, self.__class__)
-
-    def to_json(self) -> Dict[str, Any]:
-        return {**super().to_json(), "variable": self.variable.to_json()}
 
     def composite_set_from_event(self, event: Event) -> AbstractCompositeSet:
         """
@@ -347,17 +344,6 @@ class DiscreteDistribution(UnivariateDistribution):
         traces.append(go.Bar(x=mode, y=[max_likelihood] * len(mode), name="Mode"))
         return traces
 
-    def to_json(self) -> Dict[str, Any]:
-        return {**super().to_json(), "probabilities": list(self.probabilities.items())}
-
-    @classmethod
-    def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
-        variable = Variable.from_json(data["variable"])
-        probabilities = MissingDict(float)
-        for key, value in data["probabilities"]:
-            probabilities[key] = value
-        return cls(variable=variable, probabilities=probabilities)
-
     def normalize(self):
         """
         Normalize the distribution.
@@ -526,21 +512,6 @@ class SymbolicDistribution(DiscreteDistribution):
             probabilities[hash(set_element)] = count / len(data)
         self.probabilities = probabilities
         return self
-
-    def to_json(self) -> Dict[str, Any]:
-        hashes = list(self.variable.domain.hash_map.keys())
-        probabilities = {hashes.index(h): p for h, p in self.probabilities.items()}
-        result = super().to_json()
-        result["probabilities"] = list(probabilities.items())
-        return result
-
-    @classmethod
-    def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
-        variable = Variable.from_json(data["variable"])
-        probabilities = MissingDict(float)
-        for key, value in data["probabilities"]:
-            probabilities[hash(variable.domain.simple_sets[key])] = value
-        return cls(variable=variable, probabilities=probabilities)
 
 
 @dataclass(eq=False)
@@ -748,20 +719,6 @@ class DiracDeltaDistribution(ContinuousDistribution):
         )
         memo[id_self] = result
         return result
-
-    def to_json(self) -> Dict[str, Any]:
-        return {
-            **super().to_json(),
-            "location": self.location,
-            "density_cap": self.density_cap,
-        }
-
-    @classmethod
-    def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
-        variable = Continuous.from_json(data["variable"])
-        location = data["location"]
-        density_cap = data["density_cap"]
-        return cls(variable=variable, location=location, density_cap=density_cap)
 
     def plot(self, **kwargs) -> List:
         lower_border = self.location - 1

@@ -4,7 +4,7 @@ import numpy as np
 import plotly.graph_objects as go
 from numpy import testing
 from random_events.interval import closed, closed_open
-from krrood.adapters.json_serializer import SubclassJSONSerializer
+from krrood.adapters.json_serializer import SubclassJSONSerializer, from_json, to_json
 from random_events.variable import Continuous
 from scipy.special import logsumexp
 
@@ -239,8 +239,8 @@ class InductionStepTestCase(unittest.TestCase):
         data = np.random.normal(0, 1, 100).tolist()
         distribution = NygaDistribution(self.variable, min_likelihood_improvement=0.01)
         distribution.fit(data)
-        serialized = distribution.to_json()
-        deserialized = SubclassJSONSerializer.from_json(serialized)
+        serialized = to_json(distribution)
+        deserialized = from_json(serialized)
         self.assertIsInstance(deserialized, NygaDistribution)
         self.assertEqual(distribution, deserialized)
 

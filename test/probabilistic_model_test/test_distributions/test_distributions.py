@@ -1,7 +1,7 @@
 import unittest
 from enum import IntEnum
 
-from krrood.adapters.json_serializer import SubclassJSONSerializer
+from krrood.adapters.json_serializer import to_json, from_json
 
 from probabilistic_model.distributions.distributions import *
 from probabilistic_model.utils import MissingDict
@@ -84,8 +84,8 @@ class IntegerDistributionTestCase(unittest.TestCase):
         # fig.show()
 
     def test_serialization(self):
-        serialized = self.model.to_json()
-        deserialized = SubclassJSONSerializer.from_json(serialized)
+        serialized = to_json(self.model)
+        deserialized = from_json(serialized)
         self.assertIsInstance(deserialized, DiscreteDistribution)
         self.assertEqual(deserialized, self.model)
 
@@ -214,8 +214,8 @@ class DiracDeltaDistributionTestCase(unittest.TestCase):
         self.assertEqual(self.model.moment(order, center)[self.x], 0)
 
     def test_serialization(self):
-        serialized = self.model.to_json()
-        deserialized = SubclassJSONSerializer.from_json(serialized)
+        serialized = to_json(self.model)
+        deserialized = from_json(serialized)
         self.assertIsInstance(deserialized, DiracDeltaDistribution)
         self.assertEqual(deserialized, self.model)
 

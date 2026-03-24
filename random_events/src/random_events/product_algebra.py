@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 from sortedcontainers import SortedDict, SortedValuesView, SortedSet
 from typing_extensions import List, TYPE_CHECKING, Union, Set as teSet
 
-from krrood.adapters.json_serializer import SubclassJSONSerializer
+from krrood.adapters.json_serializer import SubclassJSONSerializer, from_json, to_json
 from random_events.interval import Interval, SimpleInterval
 from random_events.sigma_algebra import AbstractSimpleSet, AbstractCompositeSet
 from random_events.variable import Variable, Continuous
@@ -77,7 +77,7 @@ class SimpleEvent(AbstractSimpleSet, VariableMap):
     Use :func:`from_data` class method to create a simple event from a dictionary, do not use the constructor directly.
     """
 
-    _cpp_object: rl.SimpleEvent = field(default_factory=rl.SimpleEvent)
+    cpp_object: rl.SimpleEvent = field(default_factory=rl.SimpleEvent)
 
     @classmethod
     def from_data(cls, *args, **kwargs) -> Self:
@@ -89,9 +89,9 @@ class SimpleEvent(AbstractSimpleSet, VariableMap):
         return instance
 
     def _update_cpp_object(self):
-        self._cpp_object = rl.SimpleEvent(
+        self.cpp_object = rl.SimpleEvent(
             {
-                variable._cpp_object: value._cpp_object
+                variable.cpp_object: value.cpp_object
                 for variable, value in self.items()
             }
         )
@@ -108,11 +108,11 @@ class SimpleEvent(AbstractSimpleSet, VariableMap):
         variables = [
             variable
             for variable in self.variables
-            if variable._cpp_object in cpp_object.variable_map
+            if variable.cpp_object in cpp_object.variable_map
         ]
         result = {
             variable: self[variable]._from_cpp(
-                cpp_object.variable_map[variable._cpp_object]
+                cpp_object.variable_map[variable.cpp_object]
             )
             for variable in variables
         }
@@ -154,7 +154,7 @@ class SimpleEvent(AbstractSimpleSet, VariableMap):
         :return: The marginal event
         """
         return self._from_cpp(
-            self._cpp_object.marginal({variable._cpp_object for variable in variables})
+            self.cpp_object.marginal({variable.cpp_object for variable in variables})
         )
 
     def non_empty_to_string(self) -> str:
@@ -171,7 +171,7 @@ class SimpleEvent(AbstractSimpleSet, VariableMap):
         )
 
     def variables_to_json(self) -> List:
-        return [variable.to_json() for variable in self.keys()]
+        return [to_json(variable) for variable in self.keys()]
 
     def assignments_to_json(self) -> List:
         return [assignment.to_json() for assignment in self.values()]
@@ -188,7 +188,7 @@ class SimpleEvent(AbstractSimpleSet, VariableMap):
 
     @classmethod
     def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
-        variables = [Variable.from_json(variable) for variable in data["variables"]]
+        variables = [from_json(variable) for variable in data["variables"]]
         assignments = [
             AbstractCompositeSet.from_json(assignment)
             for assignment in data["assignments"]
@@ -415,7 +415,7 @@ class Event(AbstractCompositeSet):
     Use :func:`from_simple_sets` class method to create an event from a list of simple events, do not use the constructor directly.
     """
 
-    _cpp_object: rl.Event = field(default_factory=lambda: rl.Event(set()))
+    cpp_object: rl.Event = field(default_factory=lambda: rl.Event(set()))
     simple_set_example: SimpleEvent = field(init=False)
 
     @classmethod
@@ -426,8 +426,8 @@ class Event(AbstractCompositeSet):
         instance.simple_set_example = (
             SimpleEvent.from_data() if not simple_sets else simple_sets[0]
         )
-        instance._cpp_object = rl.Event(
-            {simple_set._cpp_object for simple_set in simple_sets}
+        instance.cpp_object = rl.Event(
+            {simple_set.cpp_object for simple_set in simple_sets}
         )
 
         instance.fill_missing_variables()
@@ -492,11 +492,11 @@ class Event(AbstractCompositeSet):
 
         all_variables = self.variables | set(variables)
         self.simple_set_example.fill_missing_variables(all_variables)
-        self.simple_set_example._cpp_object.fill_missing_variables(
-            {variable._cpp_object for variable in all_variables}
+        self.simple_set_example.cpp_object.fill_missing_variables(
+            {variable.cpp_object for variable in all_variables}
         )
-        self._cpp_object.fill_missing_variables(
-            {variable._cpp_object for variable in all_variables}
+        self.cpp_object.fill_missing_variables(
+            {variable.cpp_object for variable in all_variables}
         )
 
     def fill_missing_variables_pure(
@@ -528,8 +528,8 @@ class Event(AbstractCompositeSet):
         :return: The marginal event
         """
         return self._from_cpp(
-            self._cpp_object.marginal(
-                {self.get_variable(v.name)._cpp_object for v in variables}
+            self.cpp_object.marginal(
+                {self.get_variable(v.name).cpp_object for v in variables}
             )
         )
 
@@ -610,7 +610,7 @@ class Event(AbstractCompositeSet):
         self.fill_missing_variables()
 
     def to_json(self) -> Dict[str, Any]:
-        variables = [variable.to_json() for variable in self.variables]
+        variables = [to_json(variable) for variable in self.variables]
         simple_sets = [
             simple_set.to_json_assignments_only() for simple_set in self.simple_sets
         ]
@@ -622,7 +622,7 @@ class Event(AbstractCompositeSet):
 
     @classmethod
     def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
-        variables = [Variable.from_json(variable) for variable in data["variables"]]
+        variables = [from_json(variable) for variable in data["variables"]]
         simple_sets = [
             SimpleEvent.from_json_given_variables(simple_set, variables)
             for simple_set in data["simple_sets"]

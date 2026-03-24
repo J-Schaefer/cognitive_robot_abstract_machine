@@ -3,6 +3,8 @@ import unittest
 from enum import IntEnum
 
 import numpy as np
+
+from krrood.adapters.json_serializer import from_json, to_json
 from random_events.product_algebra import SimpleEvent
 from random_events.set import Set
 from random_events.variable import Symbolic
@@ -238,8 +240,8 @@ class MultinomialInferenceTestCase(unittest.TestCase):
 
     def test_serialization(self):
         distribution = self.random_distribution
-        serialized = distribution.to_json()
-        deserialized = MultinomialDistribution.from_json(serialized)
+        serialized = to_json(distribution)
+        deserialized = from_json(serialized)
         self.assertEqual(distribution, deserialized)
 
 

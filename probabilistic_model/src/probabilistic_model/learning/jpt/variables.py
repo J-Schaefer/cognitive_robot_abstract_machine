@@ -1,10 +1,7 @@
 from dataclasses import dataclass, field
-from enum import IntEnum
-from typing import Optional
-
 import numpy as np
 import pandas as pd
-from random_events.set import SetElement, Set
+from random_events.set import Set
 from random_events.variable import (
     Variable,
     Continuous as REContinuous,
@@ -102,16 +99,6 @@ class Integer(REInteger):
     Standard Deviation of the random variable.
     """
 
-    def to_json(self) -> Dict[str, Any]:
-        result = super().to_json()
-        result["mean"] = self.mean
-        result["std"] = self.std
-        return result
-
-    @classmethod
-    def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
-        return cls(name=data["name"], mean=data["mean"], std=data["std"])
-
     def __eq__(self, other):
         return super().__eq__(other)
 
@@ -150,26 +137,6 @@ class Continuous(REContinuous):
     """
     The minimum number of samples per quantile passed to the Nyga Distributions.
     """
-
-    def to_json(self) -> Dict[str, Any]:
-        result = super().to_json()
-        result["mean"] = self.mean
-        result["std"] = self.std
-        result["minimal_distance"] = self.minimal_distance
-        result["min_likelihood_improvement"] = self.min_likelihood_improvement
-        result["min_samples_per_quantile"] = self.min_samples_per_quantile
-        return result
-
-    @classmethod
-    def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
-        return cls(
-            name=data["name"],
-            mean=data["mean"],
-            std=data["std"],
-            minimal_distance=data["minimal_distance"],
-            min_likelihood_improvement=data["min_likelihood_improvement"],
-            min_samples_per_quantile=data["min_samples_per_quantile"],
-        )
 
 
 @dataclass

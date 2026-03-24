@@ -10,7 +10,7 @@ class CPPWrapper(ABC):
     Class for wrapping C++ objects.
     """
 
-    _cpp_object: Any = field(init=False)
+    cpp_object: Any = field(init=False)
     """
     The C++ object that this class wraps.
     """

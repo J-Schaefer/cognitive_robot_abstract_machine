@@ -1,7 +1,7 @@
 import unittest
 
+from krrood.adapters.json_serializer import to_json, from_json
 from random_events.interval import *
-from random_events.sigma_algebra import AbstractSimpleSet, AbstractCompositeSet
 
 
 class SimpleIntervalTestCase(unittest.TestCase):
@@ -53,7 +53,7 @@ class SimpleIntervalTestCase(unittest.TestCase):
 
     def test_to_json(self):
         a = SimpleInterval.from_data(0, 1)
-        b = AbstractSimpleSet.from_json(a.to_json())
+        b = from_json(to_json(a))
         self.assertIsInstance(b, SimpleInterval)
         self.assertEqual(a, b)
 
@@ -133,7 +133,7 @@ class IntervalTestCase(unittest.TestCase):
     def test_to_json(self):
         a = SimpleInterval.from_data(0, 1)
         b = Interval.from_simple_sets(a)
-        c = AbstractCompositeSet.from_json(b.to_json())
+        c = from_json(to_json(b))
         self.assertIsInstance(c, Interval)
         self.assertEqual(b, c)
 

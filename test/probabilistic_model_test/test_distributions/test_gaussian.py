@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from krrood.adapters.json_serializer import SubclassJSONSerializer
+from krrood.adapters.json_serializer import from_json, to_json
 from probabilistic_model.distributions import DiracDeltaDistribution, GaussianDistribution, \
     TruncatedGaussianDistribution
 from random_events.interval import closed, reals, singleton, SimpleInterval, Bound
@@ -101,8 +101,8 @@ class GaussianDistributionTestCase(unittest.TestCase):
         # fig.show()
 
     def test_serialization(self):
-        serialized = self.distribution.to_json()
-        deserialized = SubclassJSONSerializer.from_json(serialized)
+        serialized = to_json(self.distribution)
+        deserialized = from_json(serialized)
         self.assertEqual(self.distribution, deserialized)
         self.assertIsInstance(deserialized, GaussianDistribution)
 
@@ -253,8 +253,8 @@ class TruncatedGaussianDistributionTestCase(unittest.TestCase):
         # fig.show()
 
     def test_serialization(self):
-        serialized = self.distribution.to_json()
-        deserialized = SubclassJSONSerializer.from_json(serialized)
+        serialized = to_json(self.distribution)
+        deserialized = from_json(serialized)
         self.assertEqual(self.distribution, deserialized)
         self.assertIsInstance(deserialized, GaussianDistribution)
 

@@ -8,9 +8,8 @@ import numpy as np
 import numpy.typing as npt
 import random_events
 from random_events.interval import closed, closed_open, SimpleInterval, Bound
-from random_events.product_algebra import SimpleEvent
-from krrood.adapters.json_serializer import SubclassJSONSerializer
-from random_events.variable import Continuous, Variable
+from random_events.product_algebra import SimpleEvent, Event
+from random_events.variable import Continuous
 from typing_extensions import Self
 
 from probabilistic_model.distributions import (
@@ -387,7 +386,7 @@ class InductionStep:
 
 
 @dataclass
-class NygaDistribution(SubclassJSONSerializer):
+class NygaDistribution:
     """
     A Nyga distribution is a way to learn a deterministic mixture of uniform distributions.
     """
@@ -473,28 +472,6 @@ class NygaDistribution(SubclassJSONSerializer):
         self.probabilistic_circuit.normalize()
         return self.probabilistic_circuit
 
-    def to_json(self) -> Dict[str, Any]:
-        return {
-            **super().to_json(),
-            "variable": self.variable.to_json(),
-            "min_samples_per_quantile": self.min_samples_per_quantile,
-            "min_likelihood_improvement": self.min_likelihood_improvement,
-            "probabilistic_circuit": self.probabilistic_circuit.to_json(),
-        }
-
-    @classmethod
-    def _from_json(cls, json_data: Dict[str, Any]) -> Self:
-
-        result = NygaDistribution(
-            variable=Continuous.from_json(json_data["variable"]),
-            min_samples_per_quantile=int(json_data["min_samples_per_quantile"]),
-            min_likelihood_improvement=float(json_data["min_likelihood_improvement"]),
-        )
-        result.probabilistic_circuit = ProbabilisticCircuit.from_json(
-            json_data["probabilistic_circuit"]
-        )
-        return result
-
     def empty_copy(self) -> Self:
         return self.__class__(
             variable=self.variable,
@@ -579,42 +556,3 @@ class NygaDistribution(SubclassJSONSerializer):
                 all_mixture_points[i - 1], all_mixture_points[i]
             )
         return all_mixture_points
-
-    def event_of_higher_density(
-        self, other: Self, own_node_weights, other_node_weights
-    ) -> random_events.product_algebra.Event:
-
-        sum_own_weights = 0.0
-        sum_other_weights = 0.0
-
-        all_mixture_points = set()
-        for leaf in self.leaves:
-            leaf: UniformDistribution
-            all_mixture_points.add(leaf.interval.lower)
-            all_mixture_points.add(leaf.interval.upper)
-            sum_own_weights += sum(own_node_weights.get(hash(leaf), [0]))
-
-        for leaf in other.leaves:
-            leaf: UniformDistribution
-            all_mixture_points.add(leaf.interval.lower)
-            all_mixture_points.add(leaf.interval.upper)
-            sum_other_weights += sum[other_node_weights.get(hash(leaf), [0])]
-
-        all_mixture_points = list(all_mixture_points)
-        all_mixture_points.sort()
-
-        resulting_event = random_events.product_algebra.SimpleInterval()
-
-        previous_point = -float("inf")
-        for point in all_mixture_points:
-            own_density = self.pdf(point) * sum_own_weights
-            other_density = other.pdf(point) * sum_other_weights
-            if own_density > other_density:
-                current_event = random_events.product_algebra.SimpleInterval.from_data(
-                    previous_point, point
-                )
-                resulting_event = resulting_event.union(current_event)
-
-        return random_events.product_algebra.Event.from_simple_sets(
-            {self.variable: resulting_event}
-        )

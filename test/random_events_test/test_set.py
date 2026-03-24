@@ -1,3 +1,4 @@
+from krrood.adapters.json_serializer import to_json, from_json
 from random_events.set import SetElement, Set
 import enum
 import unittest
@@ -46,7 +47,7 @@ class SetElementTestCase(unittest.TestCase):
 
     def test_to_json(self):
         a = SetElement.from_data("a", str_set)
-        b = AbstractSimpleSet.from_json(a.to_json())
+        b = from_json(to_json(a))
         self.assertEqual(a, b)
         self.assertEqual(a.all_elements, b.all_elements)
 
@@ -80,7 +81,7 @@ class SetTestCase(unittest.TestCase):
         a = SetElement.from_data("a", str_set)
         b = SetElement.from_data("b", str_set)
         s = Set.from_simple_sets(a, b)
-        s_ = AbstractSimpleSet.from_json(s.to_json())
+        s_ = from_json(to_json(s))
         self.assertEqual(s, s_)
 
     def test_from_iterable(self):

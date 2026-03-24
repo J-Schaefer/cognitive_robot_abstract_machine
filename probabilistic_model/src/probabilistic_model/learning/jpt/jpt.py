@@ -5,11 +5,10 @@ from typing import Tuple, Union, Optional, List, Iterable, Dict, Any
 
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 from jpt.learning.impurity import Impurity
-from plotly.subplots import make_subplots
+
+from krrood.adapters.json_serializer import SubclassJSONSerializer, from_json, to_json
 from random_events.product_algebra import VariableMap
-from krrood.adapters.json_serializer import SubclassJSONSerializer
 from random_events.variable import Variable
 from typing_extensions import Self
 
@@ -24,7 +23,6 @@ from probabilistic_model.distributions import (
     DiracDeltaDistribution,
     SymbolicDistribution,
     IntegerDistribution,
-    UnivariateDistribution,
 )
 from probabilistic_model.probabilistic_circuit.rx.probabilistic_circuit import (
     SumUnit,
@@ -349,6 +347,11 @@ class JPT(SubclassJSONSerializer):
         return result
 
     def construct_impurity(self) -> Impurity:
+        """
+        Construct the impurity object to be used in the model.
+        An impurity object is used to calculate the best split.
+        """
+
         min_samples_leaf = self.min_samples_leaf
 
         numeric_vars = np.array(
@@ -444,7 +447,7 @@ class JPT(SubclassJSONSerializer):
     def to_json(self) -> Dict[str, Any]:
         result = super().to_json()
         result["variables_from_init"] = [
-            variable.to_json() for variable in self.variables
+            to_json(variable) for variable in self.variables
         ]
         result["targets"] = [variable.name for variable in self.targets]
         result["features"] = [variable.name for variable in self.features]
@@ -460,7 +463,7 @@ class JPT(SubclassJSONSerializer):
     @classmethod
     def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
         variable_from_init = [
-            Variable.from_json(variable) for variable in data["variables_from_init"]
+            from_json(variable) for variable in data["variables_from_init"]
         ]
         name_to_variable_map = {
             variable.name: variable for variable in variable_from_init

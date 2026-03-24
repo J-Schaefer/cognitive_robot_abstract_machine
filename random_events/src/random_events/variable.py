@@ -21,7 +21,7 @@ compatible_types = (
 
 
 @dataclass
-class Variable(SubclassJSONSerializer, CPPWrapper):
+class Variable(CPPWrapper):
     """
     Parent class for all random variables.
     """
@@ -37,26 +37,19 @@ class Variable(SubclassJSONSerializer, CPPWrapper):
     """
 
     def __lt__(self, other: Self) -> bool:
-        return self._cpp_object < other._cpp_object
+        return self.cpp_object < other.cpp_object
 
     def __hash__(self) -> int:
         return self.name.__hash__()
 
     def __eq__(self, other):
-        return self._cpp_object == other._cpp_object
+        return self.cpp_object == other.cpp_object
 
     def __str__(self):
         return f"{self.__class__.__name__}({self.name}, {self.domain})"
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.name})"
-
-    def to_json(self) -> Dict[str, Any]:
-        return {**super().to_json(), "name": self.name, "domain": self.domain.to_json()}
-
-    @classmethod
-    def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
-        return cls(data["name"])
 
     @property
     @abstractmethod
@@ -102,7 +95,7 @@ class Continuous(Variable):
     domain: Interval = field(kw_only=True, default=reals())
 
     def __post_init__(self):
-        self._cpp_object = rl.Continuous(self.name)
+        self.cpp_object = rl.Continuous(self.name)
 
     @property
     def is_numeric(self):
@@ -137,7 +130,7 @@ class Symbolic(Variable):
 
     def __post_init__(self):
         self.domain = self.domain.__deepcopy__()
-        self._cpp_object = rl.Symbolic(self.name, self.domain._cpp_object)
+        self.cpp_object = rl.Symbolic(self.name, self.domain.cpp_object)
 
     @property
     def is_numeric(self):
@@ -148,10 +141,6 @@ class Symbolic(Variable):
         return cls(
             name=cpp_object.name, domain=cpp_object.domain._from_cpp(cpp_object.domain)
         )
-
-    @classmethod
-    def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
-        return cls(name=data["name"], domain=Set.from_json(data["domain"]))
 
     def make_value(self, value) -> Set:
         if not isinstance(value, Iterable):
@@ -192,7 +181,7 @@ class Integer(Variable):
     domain: Interval = field(kw_only=True, default=reals())
 
     def __post_init__(self):
-        self._cpp_object = rl.Integer(self.name)
+        self.cpp_object = rl.Integer(self.name)
 
     @property
     def is_numeric(self):
