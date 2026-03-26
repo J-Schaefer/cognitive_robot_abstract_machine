@@ -4,6 +4,7 @@ import threading
 import time
 import unittest
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Optional, Set, Tuple, List
 from uuid import uuid4
@@ -34,7 +35,7 @@ from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Fridge,
     Drawer,
 )
-from semantic_digital_twin.spatial_types import Vector3
+from semantic_digital_twin.spatial_types import Vector3, HomogeneousTransformationMatrix
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.connections import (
     Connection6DoF,
@@ -1021,6 +1022,47 @@ def test_attribute_update_modification_apply_direct():
     )
     mod.apply(w)
     assert b1 not in anno.entities
+
+
+def test_6dof_connection_json():
+    world = World()
+    b1_uuid = uuid.UUID(int=1)
+    b2_uuid = uuid.UUID(int=2)
+    b1 = Body(name=PrefixedName("b1"), id=b1_uuid)
+    b2 = Body(name=PrefixedName("b2"), id=b2_uuid)
+    with world.modify_world():
+        world.add_body(b1)
+        world.add_body(b2)
+        connection = Connection6DoF.create_with_dofs(parent=b1, child=b2, world=world)
+        world.add_connection(connection)
+    connection.origin = HomogeneousTransformationMatrix.from_xyz_rpy(
+        x=1, y=2, z=3, roll=np.pi
+    )
+
+    assert np.allclose(
+        connection.origin,
+        HomogeneousTransformationMatrix.from_xyz_rpy(x=1, y=2, z=3, roll=np.pi),
+    )
+
+    w2 = World()
+    b1_w2 = Body(name=PrefixedName("b1"), id=b1_uuid)
+    b2_w2 = Body(name=PrefixedName("b2"), id=b2_uuid)
+    with w2.modify_world(), world.modify_world():
+        w2.add_body(b1_w2)
+        w2.add_body(b2_w2)
+        degrees_of_freedom = deepcopy(world.degrees_of_freedom)
+        for dof in degrees_of_freedom:
+            world.remove_degree_of_freedom(dof)
+            w2.add_degree_of_freedom(dof)
+        copy = connection.copy_for_world(w2)
+        w2.add_connection(copy)
+        world.clear()
+
+    assert np.allclose(
+        copy.origin,
+        HomogeneousTransformationMatrix.from_xyz_rpy(x=1, y=2, z=3, roll=np.pi),
+    )
+    ...
 
 
 def test_skipping_incorrect_message(rclpy_node):

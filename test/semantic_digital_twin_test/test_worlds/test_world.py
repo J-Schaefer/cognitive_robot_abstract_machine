@@ -530,9 +530,6 @@ def test_merge_with_pose_rotation(world_setup, pr2_world_copy):
         torso_lift_link,
         pr2_world_copy.get_kinematic_structure_entity_by_name("r_shoulder_pan_link"),
     )
-    base_footprint = pr2_world_copy.get_kinematic_structure_entity_by_name(
-        "base_footprint"
-    )
 
     # Rotation is 90 degrees around z-axis, translation is 1 along x-axis
     pose = np.array(
@@ -545,6 +542,8 @@ def test_merge_with_pose_rotation(world_setup, pr2_world_copy):
     )
 
     world.merge_world_at_pose(pr2_world_copy, HomogeneousTransformationMatrix(pose))
+
+    base_footprint = world.get_kinematic_structure_entity_by_name("base_footprint")
 
     assert base_link in world.kinematic_structure_entities
     assert r_gripper_tool_frame in world.kinematic_structure_entities
