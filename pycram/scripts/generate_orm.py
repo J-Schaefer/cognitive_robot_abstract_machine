@@ -8,10 +8,9 @@ import giskardpy
 import pycram.locations.costmaps
 import pycram.orm.ormatic_interface
 import semantic_digital_twin.orm.ormatic_interface
-from giskardpy.motion_statechart.graph_node import MotionStatechartNode, Task
 from krrood.adapters.json_serializer import SubclassJSONSerializer
 from krrood.class_diagrams import ClassDiagram
-from krrood.ormatic.dao import AlternativeMapping
+from krrood.ormatic.data_access_objects.dao import AlternativeMapping
 from krrood.ormatic.helper import get_classes_of_ormatic_interface
 from krrood.ormatic.ormatic import ORMatic
 from krrood.ormatic.type_dict import TypeDict

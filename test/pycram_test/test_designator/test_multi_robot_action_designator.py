@@ -317,7 +317,7 @@ def test_follow_tcp_path_multi(immutable_multiple_robot_apartment):
         [
             MoveTorsoAction(TorsoState.HIGH),
             ParkArmsAction(Arms.BOTH),
-            FollowToolCenterPointPathAction(arm=Arms.LEFT, target_location=waypoints),
+            FollowToolCenterPointPathAction(arm=Arms.LEFT, target_locations=waypoints),
         ],
         context,
     )

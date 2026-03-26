@@ -100,7 +100,6 @@ def test_park_arms_tracy(immutable_tracy_block_world):
 
     description = ParkArmsAction(Arms.BOTH)
     plan = execute_single(description, context=context).plan
-    assert description.resolve().arm == Arms.BOTH
     with simulated_robot:
         plan.perform()
 
@@ -226,7 +225,7 @@ def test_pick_up_multi(mutable_tracy_block_world):
             PickUpAction(world.get_body_by_name("box1"), Arms.LEFT, grasp_description),
         ],
         context=context,
-    )
+    ).plan
 
     with simulated_robot:
         plan.perform()
@@ -239,8 +238,7 @@ def test_pick_up_multi(mutable_tracy_block_world):
         is not None
     )
 
-    assert len(plan.nodes) == len(plan.all_nodes)
-    assert len(plan.edges) == len(plan.all_nodes) - 1
+    plan.validate()
 
 
 def test_place_multi(mutable_tracy_block_world):

@@ -13,6 +13,7 @@ from pycram.motion_executor import simulated_robot
 from pycram.plans.factories import sequential, execute_single
 from pycram.robot_plans.actions.core.navigation import NavigateAction
 from pycram.robot_plans.actions.core.pick_up import PickUpAction
+from semantic_digital_twin.spatial_types.spatial_types import Pose
 
 
 def test_underspecified_action(mutable_model_world):
@@ -23,8 +24,8 @@ def test_underspecified_action(mutable_model_world):
     action = underspecified(NavigateAction)(
         target_location=variable_from(
             [
-                PoseStamped.from_list([1, 0, 0], frame=world.root),
-                PoseStamped.from_list([2, 0, 0], frame=world.root),
+                Pose.from_xyz_quaternion(1, 0, 0, reference_frame=world.root),
+                Pose.from_xyz_quaternion(2, 0, 0, reference_frame=world.root),
             ]
         ),
         keep_joint_states=True,
@@ -54,8 +55,12 @@ def test_underspecified_language(mutable_model_world):
                 target_location=(
                     target_locations := variable_from(
                         [
-                            PoseStamped.from_list([1, 0, 0], frame=world.root),
-                            PoseStamped.from_list([2, 0, 0], frame=world.root),
+                            Pose.from_xyz_quaternion(
+                                1, 0, 0, reference_frame=world.root
+                            ),
+                            Pose.from_xyz_quaternion(
+                                2, 0, 0, reference_frame=world.root
+                            ),
                         ]
                     )
                 ),

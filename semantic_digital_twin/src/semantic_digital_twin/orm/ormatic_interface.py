@@ -83,7 +83,10 @@ import typing_extensions
 import uuid
 
 
-from krrood.ormatic.dao import DataAccessObject, AssociationDataAccessObject
+from krrood.ormatic.data_access_objects.dao import (
+    DataAccessObject,
+    AssociationDataAccessObject,
+)
 from krrood.ormatic.custom_types import TypeType
 
 
@@ -3607,7 +3610,7 @@ class PoseMappingDAO(
         nullable=True,
         use_existing_column=True,
     )
-    rotation_id: Mapped[int] = mapped_column(
+    orientation_id: Mapped[int] = mapped_column(
         ForeignKey("QuaternionMappingDAO.database_id", use_alter=True),
         nullable=True,
         use_existing_column=True,
@@ -3616,10 +3619,10 @@ class PoseMappingDAO(
     position: Mapped[Point3MappingDAO] = relationship(
         "Point3MappingDAO", uselist=False, foreign_keys=[position_id], post_update=True
     )
-    rotation: Mapped[QuaternionMappingDAO] = relationship(
+    orientation: Mapped[QuaternionMappingDAO] = relationship(
         "QuaternionMappingDAO",
         uselist=False,
-        foreign_keys=[rotation_id],
+        foreign_keys=[orientation_id],
         post_update=True,
     )
 
@@ -4917,12 +4920,14 @@ class RevoluteConnectionDAO(
     }
 
 
-class DiffDriveDAO(
+class DifferentialDriveDAO(
     ActiveConnectionDAO,
-    DataAccessObject[semantic_digital_twin.world_description.connections.DiffDrive],
+    DataAccessObject[
+        semantic_digital_twin.world_description.connections.DifferentialDrive
+    ],
 ):
 
-    __tablename__ = "DiffDriveDAO"
+    __tablename__ = "DifferentialDriveDAO"
 
     database_id: Mapped[builtins.int] = mapped_column(
         ForeignKey(ActiveConnectionDAO.database_id),
@@ -4950,7 +4955,7 @@ class DiffDriveDAO(
     )
 
     __mapper_args__ = {
-        "polymorphic_identity": "DiffDriveDAO",
+        "polymorphic_identity": "DifferentialDriveDAO",
         "inherit_condition": database_id == ActiveConnectionDAO.database_id,
     }
 

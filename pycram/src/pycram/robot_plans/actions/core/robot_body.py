@@ -266,7 +266,7 @@ class FollowToolCenterPointPathAction(ActionDescription):
     path of poses.
     """
 
-    target_location: PoseTrajectory
+    target_locations: PoseTrajectory
     """
     Path poses for the TCP motion.
     """
@@ -277,7 +277,7 @@ class FollowToolCenterPointPathAction(ActionDescription):
     """
 
     def execute(self) -> None:
-        target_locations = list(self.target_location.poses)
+        target_locations = list(self.target_locations.poses)
 
         motion = MoveTCPWaypointsMotion(
             target_locations,

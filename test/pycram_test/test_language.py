@@ -43,7 +43,7 @@ def test_factory_construction():
 
 
 def test_simplify_tree():
-    act = NavigateAction(PoseStamped())
+    act = NavigateAction(Pose())
     act2 = MoveTorsoAction(TorsoState.HIGH)
     act3 = DetectAction(DetectionTechnique.TYPES)
     act4 = DetectAction(DetectionTechnique.TYPES)
@@ -55,7 +55,7 @@ def test_simplify_tree():
 
 
 def test_parallel_construction():
-    act = NavigateAction(PoseStamped())
+    act = NavigateAction(Pose())
     act2 = MoveTorsoAction(TorsoState.HIGH)
     act3 = DetectAction(DetectionTechnique.TYPES)
 
@@ -68,7 +68,7 @@ def test_parallel_construction():
 
 
 def test_try_in_order_construction():
-    act = NavigateAction(PoseStamped())
+    act = NavigateAction(Pose())
     act2 = MoveTorsoAction(TorsoState.HIGH)
     act3 = DetectAction(DetectionTechnique.TYPES)
 
@@ -79,7 +79,7 @@ def test_try_in_order_construction():
 
 
 def test_try_all_construction():
-    act = NavigateAction(PoseStamped())
+    act = NavigateAction(Pose())
     act2 = MoveTorsoAction(TorsoState.HIGH)
     act3 = DetectAction(DetectionTechnique.TYPES)
 
@@ -90,7 +90,7 @@ def test_try_all_construction():
 
 
 def test_combination_construction():
-    act = NavigateAction(PoseStamped())
+    act = NavigateAction(Pose())
     act2 = MoveTorsoAction(TorsoState.HIGH)
     act3 = DetectAction(DetectionTechnique.TYPES)
     root = parallel([sequential([act, act2]), act3])
@@ -124,7 +124,7 @@ def test_repeat_construction():
 
 def test_perform_execute_single(immutable_model_world):
     world, robot_view, context = immutable_model_world
-    act = NavigateAction(PoseStamped.from_list([0.3, 0.3, 0], frame=world.root))
+    act = NavigateAction(Pose.from_xyz_rpy(0.3, 0.3, 0, reference_frame=world.root))
     act2 = MoveTorsoAction(TorsoState.HIGH)
     act3 = ParkArmsAction(Arms.BOTH)
 
@@ -191,7 +191,7 @@ def test_exception_sequential(immutable_model_world):
     def raise_except():
         raise PlanFailure()
 
-    act = NavigateAction(PoseStamped().from_list(frame=world.root))
+    act = NavigateAction(Pose(reference_frame=world.root))
     act2 = code(raise_except)
 
     plan = sequential(
