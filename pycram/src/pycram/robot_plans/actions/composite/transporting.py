@@ -155,7 +155,7 @@ class TransportAction(ActionDescription):
         """
         return underspecified(NavigateAction)(
             target_location=variable(
-                PoseStamped,
+                Pose,
                 domain=CostmapLocation(
                     target=self.target_location,
                     reachable_arm=self.arm,
