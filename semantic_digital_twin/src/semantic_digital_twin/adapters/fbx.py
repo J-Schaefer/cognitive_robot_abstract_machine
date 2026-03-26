@@ -144,7 +144,7 @@ class FBXParser(MeshParser):
     def parse(self) -> World:
         """
         Parse the FBX file, each object in the FBX file is converted to a body in the world and the meshes are loaded
-        as TriangleMesh objects.
+        as Mesh objects.
 
         :return: A World containing content of the FBX file.
         """

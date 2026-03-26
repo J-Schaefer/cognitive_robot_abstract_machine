@@ -956,21 +956,21 @@ class Connection(WorldEntity, HasSimulatorProperties, SubclassJSONSerializer):
         :param world: Reference to the world where the reference frames are searched.
         :return: The other parent and child and new connection expressions with correct reference frames.
         """
-        other_parent = world.get_kinematic_structure_entity_by_name(self.parent.name)
-        other_child = world.get_kinematic_structure_entity_by_name(self.child.name)
+        other_parent = world.get_kinematic_structure_entity_by_id(self.parent.id)
+        other_child = world.get_kinematic_structure_entity_by_id(self.child.id)
 
         parent_T_connection = deepcopy(self.parent_T_connection_expression)
         parent_T_connection.reference_frame = (
-            world.get_kinematic_structure_entity_by_name(
-                parent_T_connection.reference_frame.name
+            world.get_kinematic_structure_entity_by_id(
+                parent_T_connection.reference_frame.id
             )
         )
 
         connection_T_child = deepcopy(self.connection_T_child_expression)
-        connection_T_child.child_frame = world.get_kinematic_structure_entity_by_name(
-            connection_T_child.child_frame.name
+        connection_T_child.child_frame = world.get_kinematic_structure_entity_by_id(
+            connection_T_child.child_frame.id
         )
-        return (other_parent, other_child, parent_T_connection, connection_T_child)
+        return other_parent, other_child, parent_T_connection, connection_T_child
 
     def copy_for_world(self, world: World) -> Self:
         """
