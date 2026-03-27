@@ -1181,13 +1181,7 @@ class World(HasSimulatorProperties):
             self.state.merge_state(other_state)
 
             if root_connection is not None:
-                child_id = root_connection.child.id
-                child = self.get_kinematic_structure_entity_by_id(child_id)
-                parent_id = root_connection.parent.id
-                parent = self.get_kinematic_structure_entity_by_id(parent_id)
-                root_connection.parent = parent
-                root_connection.child = child
-                root_connection.parent_T_connection_expression.reference_frame = parent
+                root_connection.update_references_for_world(self)
 
             if not root_connection and self_root:
                 other_root = self.get_kinematic_structure_entity_by_id(other_root_id)

@@ -994,6 +994,18 @@ class Connection(WorldEntity, HasSimulatorProperties, SubclassJSONSerializer):
             name=PrefixedName(self.name.name, prefix=self.name.prefix),
         )
 
+    def update_references_for_world(self, world: World):
+        """
+        Updates the parent and child references of this connection to the given world as well as the references from the expression.
+        """
+        child_id = self.child.id
+        child = world.get_kinematic_structure_entity_by_id(child_id)
+        parent_id = self.parent.id
+        parent = world.get_kinematic_structure_entity_by_id(parent_id)
+        self.parent = parent
+        self.child = child
+        self.parent_T_connection_expression.reference_frame = parent
+
 
 GenericConnection = TypeVar("GenericConnection", bound=Connection)
 
