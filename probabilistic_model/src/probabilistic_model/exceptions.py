@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 from krrood.utils import DataclassException
@@ -12,7 +13,7 @@ class IntractableError(DataclassException):
     For instance, the mode of a non-deterministic model.
     """
 
-    model: 'ProbabilisticModel'
+    model: ProbabilisticModel
 
     def __post_init__(self):
         self.message = f"Inference is intractable for {self.model}."
@@ -25,7 +26,7 @@ class UndefinedOperationError(DataclassException):
     For instance, invoking the CDF of a model that contains symbolic variables.
     """
 
-    model: 'ProbabilisticModel'
+    model: ProbabilisticModel
 
     def __post_init__(self):
         self.message = f"Operation is not defined for {self.model}."

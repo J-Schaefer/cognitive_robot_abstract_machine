@@ -1,9 +1,9 @@
-from dataclasses import dataclass, field, MISSING, fields
-from typing import Union, Optional
+from dataclasses import dataclass, field
+from typing import Optional
 import pandas as pd
 
 from krrood.utils import get_default_value
-from random_events.variable import Continuous, Integer, Symbolic
+from random_events.variable import Continuous, Integer, Symbolic, Variable
 from pandas.core.dtypes.common import is_integer_dtype, is_float_dtype, is_bool_dtype
 from random_events.set import Set
 from typing_extensions import List, Any
@@ -16,9 +16,9 @@ class AnnotatedVariable:
     They consist of an association object and some additional parameters.
     """
 
-    variable: Union[Continuous, Integer, Symbolic]
+    variable: Variable
     """
-    An association object.
+    The variable that is annotated.
     """
 
     mean: Optional[float] = field(default=0)
@@ -26,7 +26,7 @@ class AnnotatedVariable:
     Mean of the random variable.
     """
 
-    std: Optional[float] = field(default=1)
+    standard_deviation: Optional[float] = field(default=1)
     """
     Standard Deviation of the random variable.
     """
@@ -78,15 +78,15 @@ def infer_variables_from_dataframe(
     for column, datatype in zip(data.columns, data.dtypes):
         domain = None
         mean = get_default_value(AnnotatedVariable, "mean")
-        std = get_default_value(AnnotatedVariable, "std")
+        standard_deviation = get_default_value(AnnotatedVariable, "standard_deviation")
         if is_integer_dtype(datatype):
             variable_class = Integer
             mean = data[column].mean()
-            std = data[column].std()
+            standard_deviation = data[column].std()
         elif is_float_dtype(datatype):
             variable_class = Continuous
             mean = data[column].mean()
-            std = data[column].std()
+            standard_deviation = data[column].std()
         elif is_bool_dtype(datatype):
             variable_class = Symbolic
             domain = Set.from_iterable([True, False])
@@ -101,7 +101,7 @@ def infer_variables_from_dataframe(
         variable = variable_class(name=column, domain=domain)
         annotated_variable = AnnotatedVariable(variable=variable,
                                                mean=mean,
-                                               std=std,
+                                               standard_deviation=standard_deviation,
                                                minimal_distance=minimal_distance,
                                                min_likelihood_improvement=min_likelihood_improvement,
                                                min_samples_per_quantile=min_samples_per_quantile,

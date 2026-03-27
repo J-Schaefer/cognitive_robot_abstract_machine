@@ -95,12 +95,10 @@ def get_default_value(dataclass_type, field_name):
     """
     Return the default value for a given field in a dataclass.
 
-    Args:
-        dataclass_type: The dataclass class (not an instance)
-        field_name: Name of the field
+    :param dataclass_type: The dataclass type to get the default value for.
+    :param field_name: The name of the field to get the default value for.
 
-    Returns:
-        The default value if defined, otherwise raises KeyError
+    :return: The default value for the field.
     """
     for f in fields(dataclass_type):
         if f.name == field_name:
@@ -118,7 +116,9 @@ def get_default_values_for_dataclass(dataclass_type):
     """
     Return a dict mapping field names to their default values.
     Only includes fields that actually define a default.
+
     :param dataclass_type: The dataclass type to get the default values for.
+
     :return: A dict mapping field names to their default values.
     """
     defaults = {}

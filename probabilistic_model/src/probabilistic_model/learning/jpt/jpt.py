@@ -405,7 +405,7 @@ class JointProbabilityTree(SubclassJSONSerializer):
             [len(variable.domain.simple_sets) for variable in self.symbolic_variables]
         )
         max_variances = np.array(
-            [annotated_variable.std**2 for annotated_variable in self.annotated_variables]
+            [annotated_variable.standard_deviation ** 2 for annotated_variable in self.annotated_variables]
         )
 
         min_impurity_improvement = np.array(

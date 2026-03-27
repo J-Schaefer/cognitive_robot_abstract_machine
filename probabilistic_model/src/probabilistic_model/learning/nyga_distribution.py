@@ -52,7 +52,7 @@ class InductionStep:
     Excluded index of the last sample.
     """
 
-    nyga_distribution: NygaLearning
+    nyga_learning: NygaLearning
     """
     The Nyga Distribution to mount the quantile distributions into and read the parameters from.
     """
@@ -62,21 +62,21 @@ class InductionStep:
         """
         The variable of the distribution.
         """
-        return self.nyga_distribution.variable
+        return self.nyga_learning.variable
 
     @property
     def min_samples_per_quantile(self):
         """
         The minimal number of samples per quantile.
         """
-        return self.nyga_distribution.min_samples_per_quantile
+        return self.nyga_learning.min_samples_per_quantile
 
     @property
     def min_likelihood_improvement(self):
         """
         The relative, minimal likelihood improvement needed to create a new quantile.
         """
-        return self.nyga_distribution.min_likelihood_improvement
+        return self.nyga_learning.min_likelihood_improvement
 
     def left_connecting_point(self) -> float:
         """
@@ -316,7 +316,7 @@ class InductionStep:
             self.cumulative_log_weights,
             self.begin_index,
             split_index,
-            self.nyga_distribution,
+            self.nyga_learning,
         )
 
     def construct_right_induction_step(self, split_index: int) -> Self:
@@ -331,7 +331,7 @@ class InductionStep:
             self.cumulative_log_weights,
             split_index,
             self.end_index,
-            self.nyga_distribution,
+            self.nyga_learning,
         )
 
     def improvement_is_good_enough(self, maximum_log_likelihood: float) -> bool:
@@ -372,10 +372,10 @@ class InductionStep:
             # mount a uniform distribution
             distribution = self.create_uniform_distribution()
 
-            self.nyga_distribution.probabilistic_circuit.root.add_subcircuit(
+            self.nyga_learning.probabilistic_circuit.root.add_subcircuit(
                 UnivariateContinuousLeaf(
                     distribution,
-                    probabilistic_circuit=self.nyga_distribution.probabilistic_circuit,
+                    probabilistic_circuit=self.nyga_learning.probabilistic_circuit,
                 ),
                 np.log(weight),
             )
@@ -453,7 +453,7 @@ class NygaLearning:
             cumulative_log_weights=cumulative_log_weights,
             begin_index=0,
             end_index=len(sorted_unique_data),
-            nyga_distribution=self,
+            nyga_learning=self,
         )
 
         # initialize the queue

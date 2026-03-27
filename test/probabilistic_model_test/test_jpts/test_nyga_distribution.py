@@ -148,7 +148,7 @@ class InductionStepTestCase(unittest.TestCase):
         self.assertEqual(index, 3)
 
     def test_compute_best_split_without_result(self):
-        self.induction_step.nyga_distribution.min_samples_per_quantile = 4
+        self.induction_step.nyga_learning.min_samples_per_quantile = 4
         maximum, index = self.induction_step.compute_best_split()
         self.assertEqual(index, None)
         self.assertEqual(maximum, -float("inf"))
@@ -180,16 +180,16 @@ class InductionStepTestCase(unittest.TestCase):
 
     def test_fit(self):
         np.random.seed(69)
-        self.induction_step.nyga_distribution.min_samples_per_quantile = 20
-        self.induction_step.nyga_distribution.min_likelihood_improvement = 0
+        self.induction_step.nyga_learning.min_samples_per_quantile = 20
+        self.induction_step.nyga_learning.min_likelihood_improvement = 0
         data = np.random.normal(0, 1, 500).tolist()
-        distribution = self.induction_step.nyga_distribution
+        distribution = self.induction_step.nyga_learning
         pc = distribution.fit(data)
         self.assertLessEqual(
             len(pc.root.subcircuits),
             int(
                 len(data)
-                / self.induction_step.nyga_distribution.min_samples_per_quantile
+                / self.induction_step.nyga_learning.min_samples_per_quantile
             ),
         )
         self.assertAlmostEqual(logsumexp(pc.root.log_weights), 0.0)
@@ -197,7 +197,7 @@ class InductionStepTestCase(unittest.TestCase):
     def test_domain(self):
         np.random.seed(69)
         data = np.random.normal(0, 1, 100).tolist()
-        distribution = self.induction_step.nyga_distribution
+        distribution = self.induction_step.nyga_learning
         pc = distribution.fit(data)
         domain = pc.support
         self.assertEqual(len(domain.simple_sets), 1)
@@ -219,7 +219,7 @@ class InductionStepTestCase(unittest.TestCase):
     def test_plot(self):
         np.random.seed(69)
         data = np.random.normal(0, 1, 100)
-        distribution = self.induction_step.nyga_distribution
+        distribution = self.induction_step.nyga_learning
         pc = distribution.fit(data)
         fig = go.Figure(pc.plot())
         self.assertIsNotNone(fig)
@@ -227,7 +227,7 @@ class InductionStepTestCase(unittest.TestCase):
 
     def test_fit_from_singular_data(self):
         data = [1.0, 1.0]
-        distribution = self.induction_step.nyga_distribution
+        distribution = self.induction_step.nyga_learning
         pc = distribution.fit(data)
         self.assertEqual(len(pc.nodes()), 1)
         self.assertIsInstance(pc.root.distribution, DiracDeltaDistribution)
