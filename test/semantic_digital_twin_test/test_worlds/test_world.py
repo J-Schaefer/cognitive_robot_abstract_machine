@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 from numpy.testing import assert_raises
 
-from pycram_test.conftest import immutable_model_world
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.exceptions import (
     DuplicateWorldEntityError,
