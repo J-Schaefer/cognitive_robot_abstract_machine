@@ -143,7 +143,7 @@ def test_reach_action_multi(immutable_tracy_block_world):
             ),
         ],
         context=context,
-    )
+    ).plan
 
     with simulated_robot:
         plan.perform()

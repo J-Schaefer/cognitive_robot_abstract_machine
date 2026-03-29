@@ -378,7 +378,7 @@ class ActionNode(DesignatorNode):
         """
         return [
             motion_node.motion.motion_chart
-            for motion_node in self.children
+            for motion_node in self.descendants
             if isinstance(motion_node, MotionNode)
         ]
 
