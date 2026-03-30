@@ -6,26 +6,21 @@ shape models to segmented object point clouds.
 
 from __future__ import annotations
 
-import csv
 import copy
 from dataclasses import dataclass
-from datetime import datetime
-from pathlib import Path
-import re
 
 import numpy as np
 import open3d as o3d
 from py_trees.common import Status
 from typing_extensions import List, Optional, Tuple, Dict, Any
 
-from robokudo.annotators.core import BaseAnnotator
+from robokudo.annotators.core import BaseAnnotator, ThreadedAnnotator
 from robokudo.types.annotation import Cuboid, Cylinder, Shape, Sphere
 from robokudo.types.scene import ObjectHypothesis
 from robokudo.utils.shape_fitting import (
     CuboidFit,
     CylinderFit,
     FittedShape,
-    FitDiagnostics,
     SphereFit,
     compute_fit_score,
     fit_cuboid,
@@ -45,24 +40,6 @@ from semantic_digital_twin.world_description.geometry import (
 
 
 @dataclass
-class ShapeCandidateEvaluation:
-    """Diagnostic summary for one shape candidate evaluation."""
-
-    shape_name: str
-    status: str
-    details: str
-    score: Optional[float] = None
-    inlier_ratio: Optional[float] = None
-    root_mean_square_error: Optional[float] = None
-    inlier_count: Optional[int] = None
-    total_point_count: Optional[int] = None
-    rejection_details: str = ""
-    filtered_point_cloud_file_path: str = ""
-    inlier_point_cloud_file_path: str = ""
-    selected: bool = False
-
-
-@dataclass
 class CylinderAxisCandidate:
     """Candidate axis direction together with a refitted cylinder."""
 
@@ -71,8 +48,40 @@ class CylinderAxisCandidate:
     fit: CylinderFit
 
 
-class ShapeEstimatorAnnotator(BaseAnnotator):
-    """Estimate primitive shapes for each object hypothesis."""
+class ShapeEstimatorAnnotator(ThreadedAnnotator):
+    """Estimate one primitive shape per object hypothesis point cloud.
+
+    Overview:
+    1. Validate input cloud (`minimum_point_count`) and optionally run
+       statistical outlier removal.
+    2. Fit enabled primitives (sphere/cylinder/cuboid) on the same filtered
+       points.
+    3. Apply post-fit stabilization:
+       - Cylinder: optional axis stabilization from principal/preferred axes.
+       - Cuboid: optional in-plane orientation stabilization for near-square faces.
+    4. Rank accepted candidates with `select_best_shape(...)`.
+    5. Convert the winning fit to a RoboKudo annotation (`Sphere`, `Cylinder`,
+       or `Cuboid`), keep inlier indices mapped to the original object cloud,
+       and publish visualization geometries.
+
+    Parameter groups:
+    - Global data quality: `minimum_point_count`, outlier removal settings.
+    - Shared fit behavior: `distance_threshold`, `robust_loss`.
+    - Shape gates:
+      sphere/cylinder/cuboid enable flags plus per-shape size and ratio limits.
+    - Candidate selection: `selection_score_tolerance` and cuboid preference
+      settings for close scores.
+    - Stabilization controls: cylinder axis and cuboid orientation stabilization.
+
+    Practical tuning order:
+    1. Set hard physical limits (max radii/heights/extents) for your scene.
+    2. Tune inlier thresholds (`distance_threshold`, per-shape min inlier ratio).
+    3. Tune selection preference parameters.
+    4. Only then tune stabilization triggers/tolerances.
+
+    This annotator intentionally favors robust, bounded fits for household-scale
+    objects.
+    """
 
     class Descriptor(BaseAnnotator.Descriptor):
         """Configuration descriptor for shape estimation."""
@@ -202,7 +211,6 @@ class ShapeEstimatorAnnotator(BaseAnnotator):
                 self.stabilize_ambiguous_cuboid_orientation: bool = True
                 """Whether ambiguous cuboid in-plane orientation should be stabilized."""
 
-                # self.cuboid_ambiguous_in_plane_extent_relative_difference: float = 0.15
                 self.cuboid_ambiguous_in_plane_extent_relative_difference: float = 0.3
                 """Maximum relative in-plane extent difference treated as orientation-ambiguous."""
 
@@ -211,32 +219,6 @@ class ShapeEstimatorAnnotator(BaseAnnotator):
 
                 self.log_rejection_reasons: bool = True
                 """Whether shape rejection reasons are logged when metrics logging is enabled."""
-
-                self.max_logged_rejection_reasons: int = 3
-                """Maximum number of rejection reasons included in one log line."""
-
-                self.log_candidate_table: bool = True
-                """Whether a compact per-object candidate table is logged on debug level."""
-
-                self.export_candidate_diagnostics: bool = True
-                """Whether candidate diagnostics are exported as point clouds and table rows."""
-
-                self.candidate_diagnostics_export_base_directory: str = (
-                    "/tmp/robokudo_shape_estimator_exports"
-                )
-                """Base directory where diagnostics export folders are created."""
-
-                self.export_session_timestamp_format: str = "%Y%m%d_%H%M%S"
-                """Timestamp format used for diagnostics export folder names."""
-
-                self.export_summary_table: bool = True
-                """Whether a CSV summary table is written to the diagnostics export folder."""
-
-                self.export_filtered_point_cloud: bool = True
-                """Whether each object filtered point cloud is exported."""
-
-                self.export_candidate_inlier_point_clouds: bool = True
-                """Whether inlier point clouds are exported for accepted candidates."""
 
         parameters = Parameters()
 
@@ -247,24 +229,19 @@ class ShapeEstimatorAnnotator(BaseAnnotator):
     ) -> None:
         """Initialize the shape estimator annotator."""
         super().__init__(name=name, descriptor=descriptor)
-        self._candidate_diagnostics_export_directory_path: Optional[Path] = None
-        self._candidate_diagnostics_summary_rows: List[Dict[str, str]] = []
-        self._candidate_diagnostics_export_enabled: bool = False
 
-    def update(self) -> Status:
+    def compute(self) -> Status:
         """Estimate shapes and publish annotations and 3D visualizations."""
         object_hypotheses = self.get_cas().filter_annotations_by_type(ObjectHypothesis)
 
         total_object_hypotheses = 0
         updated_object_hypotheses = 0
         visual_geometries: List[Dict[str, Any]] = []
-        self._initialize_candidate_diagnostics_export_session()
 
         for object_hypothesis in object_hypotheses:
             total_object_hypotheses += 1
             estimation_result = self._estimate_shape_for_object_hypothesis(
-                object_hypothesis=object_hypothesis,
-                object_index=total_object_hypotheses,
+                object_hypothesis=object_hypothesis
             )
             if estimation_result is None:
                 continue
@@ -277,23 +254,15 @@ class ShapeEstimatorAnnotator(BaseAnnotator):
         if len(visual_geometries) > 0:
             self.get_annotator_output_struct().set_geometries(visual_geometries)
 
-        self._finalize_candidate_diagnostics_export_session()
-
         self.feedback_message = (
             f"Estimated shapes for {updated_object_hypotheses}/"
             f"{total_object_hypotheses} object hypotheses."
         )
-        if self._candidate_diagnostics_export_enabled:
-            self.feedback_message += (
-                f" Diagnostics exported to "
-                f"{self._candidate_diagnostics_export_directory_path}."
-            )
         return Status.SUCCESS
 
     def _estimate_shape_for_object_hypothesis(
         self,
         object_hypothesis: ObjectHypothesis,
-        object_index: int,
     ) -> Optional[Tuple[Shape, List[Dict[str, Any]]]]:
         """Estimate one shape candidate for a single object hypothesis."""
         point_cloud = object_hypothesis.points
@@ -309,18 +278,9 @@ class ShapeEstimatorAnnotator(BaseAnnotator):
             return None
 
         points = np.asarray(filtered_cloud.points, dtype=np.float64)
-        object_export_token = self._build_object_export_token(
-            object_hypothesis=object_hypothesis, object_index=object_index
-        )
-        filtered_point_cloud_file_path = self._export_filtered_point_cloud(
-            filtered_cloud=filtered_cloud,
-            object_export_token=object_export_token,
-        )
         candidates: List[FittedShape] = []
-        candidate_evaluations: List[ShapeCandidateEvaluation] = []
 
         if self.descriptor.parameters.fit_sphere:
-            sphere_diagnostics = FitDiagnostics()
             sphere_fit = fit_sphere(
                 points=points,
                 distance_threshold=self.descriptor.parameters.distance_threshold,
@@ -336,46 +296,17 @@ class ShapeEstimatorAnnotator(BaseAnnotator):
                     self.descriptor.parameters.max_sphere_center_distance_to_bbox_diagonal_ratio
                 ),
                 min_inlier_ratio=self.descriptor.parameters.minimum_inlier_ratio,
-                diagnostics=sphere_diagnostics,
             )
-            if sphere_fit is not None:
-                candidates.append(sphere_fit)
-                sphere_inlier_cloud_file_path = (
-                    self._export_candidate_inlier_point_cloud(
-                        filtered_cloud=filtered_cloud,
-                        candidate_inlier_indices=sphere_fit.inlier_indices,
-                        object_export_token=object_export_token,
-                        shape_name="Sphere",
-                    )
-                )
-                candidate_evaluations.append(
-                    self._build_accepted_candidate_evaluation(
-                        shape_name="Sphere",
-                        fit_result=sphere_fit,
-                        total_point_count=len(points),
-                        filtered_point_cloud_file_path=filtered_point_cloud_file_path,
-                        inlier_point_cloud_file_path=sphere_inlier_cloud_file_path,
-                    )
-                )
-                self._log_candidate_metrics(object_hypothesis, sphere_fit)
-            else:
-                rejection_details = self._format_rejection_details(sphere_diagnostics)
-                candidate_evaluations.append(
-                    self._build_rejected_candidate_evaluation(
-                        shape_name="Sphere",
-                        rejection_details=rejection_details,
-                        total_point_count=len(points),
-                        filtered_point_cloud_file_path=filtered_point_cloud_file_path,
-                    )
-                )
+            if sphere_fit is None:
                 self._log_rejected_candidate(
                     object_hypothesis=object_hypothesis,
                     shape_name="Sphere",
-                    rejection_details=rejection_details,
                 )
+            else:
+                candidates.append(sphere_fit)
+                self._log_candidate_metrics(object_hypothesis, sphere_fit)
 
         if self.descriptor.parameters.fit_cylinder:
-            cylinder_diagnostics = FitDiagnostics()
             cylinder_fit = fit_cylinder(
                 points=points,
                 distance_threshold=self.descriptor.parameters.distance_threshold,
@@ -395,96 +326,41 @@ class ShapeEstimatorAnnotator(BaseAnnotator):
                 max_initializations=self.descriptor.parameters.cylinder_max_initializations,
                 consensus_trials=self.descriptor.parameters.cylinder_consensus_trials,
                 inlier_polishing_iterations=self.descriptor.parameters.cylinder_inlier_polishing_iterations,
-                diagnostics=cylinder_diagnostics,
             )
             if cylinder_fit is not None:
                 cylinder_fit = self._stabilize_cylinder_axis_if_tilted(
                     cylinder_fit=cylinder_fit,
                     points=points,
                 )
-                candidates.append(cylinder_fit)
-                cylinder_inlier_cloud_file_path = (
-                    self._export_candidate_inlier_point_cloud(
-                        filtered_cloud=filtered_cloud,
-                        candidate_inlier_indices=cylinder_fit.inlier_indices,
-                        object_export_token=object_export_token,
-                        shape_name="Cylinder",
-                    )
-                )
-                candidate_evaluations.append(
-                    self._build_accepted_candidate_evaluation(
-                        shape_name="Cylinder",
-                        fit_result=cylinder_fit,
-                        total_point_count=len(points),
-                        filtered_point_cloud_file_path=filtered_point_cloud_file_path,
-                        inlier_point_cloud_file_path=cylinder_inlier_cloud_file_path,
-                    )
-                )
-                self._log_candidate_metrics(object_hypothesis, cylinder_fit)
-            else:
-                rejection_details = self._format_rejection_details(cylinder_diagnostics)
-                candidate_evaluations.append(
-                    self._build_rejected_candidate_evaluation(
-                        shape_name="Cylinder",
-                        rejection_details=rejection_details,
-                        total_point_count=len(points),
-                        filtered_point_cloud_file_path=filtered_point_cloud_file_path,
-                    )
-                )
+            if cylinder_fit is None:
                 self._log_rejected_candidate(
                     object_hypothesis=object_hypothesis,
                     shape_name="Cylinder",
-                    rejection_details=rejection_details,
                 )
+            else:
+                candidates.append(cylinder_fit)
+                self._log_candidate_metrics(object_hypothesis, cylinder_fit)
 
         if self.descriptor.parameters.fit_cuboid:
-            cuboid_diagnostics = FitDiagnostics()
             cuboid_fit = fit_cuboid(
                 points=points,
                 distance_threshold=self.descriptor.parameters.cuboid_distance_threshold,
                 max_extent=self.descriptor.parameters.max_cuboid_extent_meters,
                 min_inlier_ratio=self.descriptor.parameters.cuboid_minimum_inlier_ratio,
-                diagnostics=cuboid_diagnostics,
             )
             if cuboid_fit is not None:
                 cuboid_fit = self._stabilize_cuboid_orientation_if_ambiguous(
                     cuboid_fit=cuboid_fit,
                     points=points,
                 )
-                candidates.append(cuboid_fit)
-                cuboid_inlier_cloud_file_path = (
-                    self._export_candidate_inlier_point_cloud(
-                        filtered_cloud=filtered_cloud,
-                        candidate_inlier_indices=cuboid_fit.inlier_indices,
-                        object_export_token=object_export_token,
-                        shape_name="Cuboid",
-                    )
-                )
-                candidate_evaluations.append(
-                    self._build_accepted_candidate_evaluation(
-                        shape_name="Cuboid",
-                        fit_result=cuboid_fit,
-                        total_point_count=len(points),
-                        filtered_point_cloud_file_path=filtered_point_cloud_file_path,
-                        inlier_point_cloud_file_path=cuboid_inlier_cloud_file_path,
-                    )
-                )
-                self._log_candidate_metrics(object_hypothesis, cuboid_fit)
-            else:
-                rejection_details = self._format_rejection_details(cuboid_diagnostics)
-                candidate_evaluations.append(
-                    self._build_rejected_candidate_evaluation(
-                        shape_name="Cuboid",
-                        rejection_details=rejection_details,
-                        total_point_count=len(points),
-                        filtered_point_cloud_file_path=filtered_point_cloud_file_path,
-                    )
-                )
+            if cuboid_fit is None:
                 self._log_rejected_candidate(
                     object_hypothesis=object_hypothesis,
                     shape_name="Cuboid",
-                    rejection_details=rejection_details,
                 )
+            else:
+                candidates.append(cuboid_fit)
+                self._log_candidate_metrics(object_hypothesis, cuboid_fit)
 
         best_fit = select_best_shape(
             candidates=candidates,
@@ -502,20 +378,6 @@ class ShapeEstimatorAnnotator(BaseAnnotator):
             cuboid_box_like_cube_axis_similarity_tolerance=(
                 self.descriptor.parameters.cuboid_box_like_cube_axis_similarity_tolerance
             ),
-        )
-        self._mark_selected_candidate(
-            candidate_evaluations=candidate_evaluations,
-            selected_fit=best_fit,
-        )
-        self._append_candidate_diagnostics_summary_rows(
-            object_hypothesis=object_hypothesis,
-            object_export_token=object_export_token,
-            candidate_evaluations=candidate_evaluations,
-        )
-        self._log_candidate_table(
-            object_hypothesis=object_hypothesis,
-            candidate_evaluations=candidate_evaluations,
-            selected_fit=best_fit,
         )
         if best_fit is None:
             return None
@@ -1052,269 +914,6 @@ class ShapeEstimatorAnnotator(BaseAnnotator):
             score=score,
         )
 
-    def _initialize_candidate_diagnostics_export_session(self) -> None:
-        """Initialize one diagnostics export session for the current update cycle."""
-        self._candidate_diagnostics_export_enabled = False
-        self._candidate_diagnostics_export_directory_path = None
-        self._candidate_diagnostics_summary_rows = []
-        if not self.descriptor.parameters.export_candidate_diagnostics:
-            return
-
-        timestamp = datetime.now().strftime(
-            self.descriptor.parameters.export_session_timestamp_format
-        )
-        export_directory_path = (
-            Path(self.descriptor.parameters.candidate_diagnostics_export_base_directory)
-            / f"shape_estimator_{timestamp}"
-        )
-        try:
-            export_directory_path.mkdir(parents=True, exist_ok=True)
-        except OSError as error:
-            self.rk_logger.warning(
-                f"{self.name} could not create diagnostics export directory "
-                f"{export_directory_path}: {error}"
-            )
-            return
-
-        self._candidate_diagnostics_export_directory_path = export_directory_path
-        self._candidate_diagnostics_export_enabled = True
-        self.rk_logger.info(
-            f"{self.name} diagnostics export directory: {export_directory_path}"
-        )
-
-    def _finalize_candidate_diagnostics_export_session(self) -> None:
-        """Write diagnostics summary table for the current update cycle."""
-        if not self._candidate_diagnostics_export_enabled:
-            return
-        if not self.descriptor.parameters.export_summary_table:
-            return
-        if self._candidate_diagnostics_export_directory_path is None:
-            return
-
-        summary_file_path = (
-            self._candidate_diagnostics_export_directory_path
-            / "candidate_diagnostics_summary.csv"
-        )
-        summary_field_names = self._candidate_diagnostics_summary_field_names()
-
-        try:
-            with summary_file_path.open(
-                "w", encoding="utf-8", newline=""
-            ) as file_handle:
-                writer = csv.DictWriter(file_handle, fieldnames=summary_field_names)
-                writer.writeheader()
-                writer.writerows(self._candidate_diagnostics_summary_rows)
-        except OSError as error:
-            self.rk_logger.warning(
-                f"{self.name} could not write diagnostics summary table "
-                f"{summary_file_path}: {error}"
-            )
-            return
-
-        self.rk_logger.info(
-            f"{self.name} wrote diagnostics summary table: {summary_file_path}"
-        )
-
-    def _candidate_diagnostics_summary_field_names(self) -> List[str]:
-        """Return CSV field names for diagnostics summary rows."""
-        return [
-            "object_name",
-            "object_export_token",
-            "shape_name",
-            "status",
-            "selected",
-            "score",
-            "inlier_ratio",
-            "root_mean_square_error",
-            "inlier_count",
-            "total_point_count",
-            "rejection_details",
-            "details",
-            "filtered_point_cloud_file_path",
-            "inlier_point_cloud_file_path",
-        ]
-
-    def _build_object_export_token(
-        self, object_hypothesis: ObjectHypothesis, object_index: int
-    ) -> str:
-        """Return an export token for one object hypothesis."""
-        object_name = object_hypothesis.id if object_hypothesis.id != "" else "object"
-        sanitized_object_name = self._sanitize_identifier(object_name)
-        return f"object_{object_index:04d}_{sanitized_object_name}"
-
-    def _sanitize_identifier(self, identifier: str) -> str:
-        """Return a filesystem-safe identifier token."""
-        sanitized_identifier = re.sub(r"[^A-Za-z0-9_.-]+", "_", identifier).strip("_")
-        if sanitized_identifier == "":
-            return "object"
-        return sanitized_identifier
-
-    def _export_filtered_point_cloud(
-        self,
-        filtered_cloud: o3d.geometry.PointCloud,
-        object_export_token: str,
-    ) -> str:
-        """Export the filtered point cloud for one object if enabled."""
-        if not self._candidate_diagnostics_export_enabled:
-            return ""
-        if not self.descriptor.parameters.export_filtered_point_cloud:
-            return ""
-        file_name = f"{object_export_token}__filtered_points.pcd"
-        return self._export_point_cloud_to_file(filtered_cloud, file_name)
-
-    def _export_candidate_inlier_point_cloud(
-        self,
-        filtered_cloud: o3d.geometry.PointCloud,
-        candidate_inlier_indices: np.ndarray,
-        object_export_token: str,
-        shape_name: str,
-    ) -> str:
-        """Export inlier point cloud for one accepted candidate if enabled."""
-        if not self._candidate_diagnostics_export_enabled:
-            return ""
-        if not self.descriptor.parameters.export_candidate_inlier_point_clouds:
-            return ""
-        if len(candidate_inlier_indices) == 0:
-            return ""
-
-        inlier_cloud = filtered_cloud.select_by_index(
-            candidate_inlier_indices.astype(np.int64).tolist()
-        )
-        sanitized_shape_name = self._sanitize_identifier(shape_name.lower())
-        file_name = f"{object_export_token}__{sanitized_shape_name}__inliers.pcd"
-        return self._export_point_cloud_to_file(inlier_cloud, file_name)
-
-    def _export_point_cloud_to_file(
-        self, point_cloud: o3d.geometry.PointCloud, file_name: str
-    ) -> str:
-        """Export one point cloud to the active diagnostics export directory."""
-        if self._candidate_diagnostics_export_directory_path is None:
-            return ""
-
-        file_path = self._candidate_diagnostics_export_directory_path / file_name
-        export_successful = o3d.io.write_point_cloud(str(file_path), point_cloud)
-        if not export_successful:
-            self.rk_logger.warning(
-                f"{self.name} could not write diagnostics point cloud: {file_path}"
-            )
-            return ""
-        return str(file_path)
-
-    def _build_accepted_candidate_evaluation(
-        self,
-        shape_name: str,
-        fit_result: FittedShape,
-        total_point_count: int,
-        filtered_point_cloud_file_path: str,
-        inlier_point_cloud_file_path: str,
-    ) -> ShapeCandidateEvaluation:
-        """Build diagnostics entry for one accepted candidate."""
-        return ShapeCandidateEvaluation(
-            shape_name=shape_name,
-            status="accepted",
-            details=self._fit_summary(fit_result),
-            score=float(fit_result.score),
-            inlier_ratio=float(fit_result.inlier_ratio),
-            root_mean_square_error=float(fit_result.root_mean_square_error),
-            inlier_count=int(len(fit_result.inlier_indices)),
-            total_point_count=int(total_point_count),
-            filtered_point_cloud_file_path=filtered_point_cloud_file_path,
-            inlier_point_cloud_file_path=inlier_point_cloud_file_path,
-        )
-
-    def _build_rejected_candidate_evaluation(
-        self,
-        shape_name: str,
-        rejection_details: str,
-        total_point_count: int,
-        filtered_point_cloud_file_path: str,
-    ) -> ShapeCandidateEvaluation:
-        """Build diagnostics entry for one rejected candidate."""
-        return ShapeCandidateEvaluation(
-            shape_name=shape_name,
-            status="rejected",
-            details=rejection_details,
-            rejection_details=rejection_details,
-            total_point_count=int(total_point_count),
-            filtered_point_cloud_file_path=filtered_point_cloud_file_path,
-        )
-
-    def _mark_selected_candidate(
-        self,
-        candidate_evaluations: List[ShapeCandidateEvaluation],
-        selected_fit: Optional[FittedShape],
-    ) -> None:
-        """Mark the selected candidate in diagnostics entries."""
-        if selected_fit is None:
-            return
-        selected_shape_name = type(selected_fit).__name__.replace("Fit", "")
-        for candidate_evaluation in candidate_evaluations:
-            candidate_evaluation.selected = bool(
-                candidate_evaluation.status == "accepted"
-                and candidate_evaluation.shape_name == selected_shape_name
-            )
-
-    def _append_candidate_diagnostics_summary_rows(
-        self,
-        object_hypothesis: ObjectHypothesis,
-        object_export_token: str,
-        candidate_evaluations: List[ShapeCandidateEvaluation],
-    ) -> None:
-        """Append diagnostics rows for one object hypothesis."""
-        if not self._candidate_diagnostics_export_enabled:
-            return
-
-        object_name = object_hypothesis.id if object_hypothesis.id != "" else "object"
-        for candidate_evaluation in candidate_evaluations:
-            self._candidate_diagnostics_summary_rows.append(
-                {
-                    "object_name": object_name,
-                    "object_export_token": object_export_token,
-                    "shape_name": candidate_evaluation.shape_name,
-                    "status": candidate_evaluation.status,
-                    "selected": "1" if candidate_evaluation.selected else "0",
-                    "score": self._format_optional_float(candidate_evaluation.score),
-                    "inlier_ratio": self._format_optional_float(
-                        candidate_evaluation.inlier_ratio
-                    ),
-                    "root_mean_square_error": self._format_optional_float(
-                        candidate_evaluation.root_mean_square_error
-                    ),
-                    "inlier_count": self._format_optional_integer(
-                        candidate_evaluation.inlier_count
-                    ),
-                    "total_point_count": self._format_optional_integer(
-                        candidate_evaluation.total_point_count
-                    ),
-                    "rejection_details": candidate_evaluation.rejection_details,
-                    "details": candidate_evaluation.details,
-                    "filtered_point_cloud_file_path": (
-                        candidate_evaluation.filtered_point_cloud_file_path
-                    ),
-                    "inlier_point_cloud_file_path": (
-                        candidate_evaluation.inlier_point_cloud_file_path
-                    ),
-                }
-            )
-
-    def _format_optional_float(self, value: Optional[float]) -> str:
-        """Return stable text representation for optional floating point values."""
-        if value is None:
-            return ""
-        return f"{value:.6f}"
-
-    def _format_optional_integer(self, value: Optional[int]) -> str:
-        """Return stable text representation for optional integer values."""
-        if value is None:
-            return ""
-        return str(value)
-
-    def _file_name_or_placeholder(self, file_path: str) -> str:
-        """Return file name for logs or placeholder if no file path is available."""
-        if file_path == "":
-            return "-"
-        return Path(file_path).name
-
     def _map_to_object_indices(
         self,
         object_hypothesis: ObjectHypothesis,
@@ -1540,79 +1139,18 @@ class ShapeEstimatorAnnotator(BaseAnnotator):
             return self.descriptor.parameters.cylinder_minimum_inlier_ratio
         return self.descriptor.parameters.minimum_inlier_ratio
 
-    def _format_rejection_details(self, diagnostics: FitDiagnostics) -> str:
-        """Return a compact text representation of rejection reasons."""
-        if len(diagnostics.rejection_reasons) == 0:
-            return "no_diagnostic_reason_reported"
-        max_reason_count = max(
-            self.descriptor.parameters.max_logged_rejection_reasons, 1
-        )
-        return ", ".join(diagnostics.rejection_reasons[:max_reason_count])
-
     def _log_rejected_candidate(
         self,
         object_hypothesis: ObjectHypothesis,
         shape_name: str,
-        rejection_details: str,
     ) -> None:
-        """Log why one shape candidate was rejected."""
+        """Log one rejected shape candidate."""
         if not self.descriptor.parameters.log_candidate_metrics:
             return
         if not self.descriptor.parameters.log_rejection_reasons:
             return
         object_name = object_hypothesis.id if object_hypothesis.id != "" else "object"
-        self.rk_logger.info(
-            f"{self.name} rejected {shape_name} for {object_name}: {rejection_details}"
-        )
-
-    def _log_candidate_table(
-        self,
-        object_hypothesis: ObjectHypothesis,
-        candidate_evaluations: List[ShapeCandidateEvaluation],
-        selected_fit: Optional[FittedShape],
-    ) -> None:
-        """Log a compact per-object candidate table."""
-        if not self.descriptor.parameters.log_candidate_metrics:
-            return
-        if not self.descriptor.parameters.log_candidate_table:
-            return
-        if len(candidate_evaluations) == 0:
-            return
-
-        object_name = object_hypothesis.id if object_hypothesis.id != "" else "object"
-        table_lines = [
-            f"{self.name} candidate table {object_name}:",
-            (
-                "shape | status | selected | score | inlier_ratio | rmse | "
-                "rejection | filtered_cloud | inlier_cloud"
-            ),
-        ]
-        for evaluation in candidate_evaluations:
-            rejection_text = (
-                evaluation.rejection_details
-                if evaluation.rejection_details != ""
-                else "-"
-            )
-            table_lines.append(
-                f"{evaluation.shape_name} | "
-                f"{evaluation.status} | "
-                f"{'yes' if evaluation.selected else 'no'} | "
-                f"{self._format_optional_float(evaluation.score)} | "
-                f"{self._format_optional_float(evaluation.inlier_ratio)} | "
-                f"{self._format_optional_float(evaluation.root_mean_square_error)} | "
-                f"{rejection_text} | "
-                f"{self._file_name_or_placeholder(evaluation.filtered_point_cloud_file_path)} | "
-                f"{self._file_name_or_placeholder(evaluation.inlier_point_cloud_file_path)}"
-            )
-
-        if selected_fit is None:
-            table_lines.append("selected  none")
-        else:
-            selected_shape_name = type(selected_fit).__name__.replace("Fit", "")
-            table_lines.append(
-                f"selected  {selected_shape_name} ({self._fit_summary(selected_fit)})"
-            )
-        self.rk_logger.info("\n".join(table_lines))
+        self.rk_logger.info(f"{self.name} rejected {shape_name} for {object_name}")
 
     def _log_candidate_metrics(
         self, object_hypothesis: ObjectHypothesis, fit_result: FittedShape

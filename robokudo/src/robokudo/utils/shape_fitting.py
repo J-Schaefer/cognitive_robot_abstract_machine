@@ -7,12 +7,15 @@ The implementation is intended for segmented object-level point sets.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import open3d as o3d
 from scipy.optimize import least_squares
-from typing_extensions import Optional, List, Union, Tuple, Dict
+from typing_extensions import Optional, List, Union, Tuple
+
+MAX_ACCEPTABLE_RADIUS_GROWTH_WITHOUT_STRONG_INLIER_GAIN = 1.35
+MIN_INLIER_GAIN_TO_ACCEPT_LARGER_RADIUS = 0.03
 
 
 @dataclass
@@ -57,15 +60,26 @@ class CuboidFit:
 FittedShape = Union[SphereFit, CylinderFit, CuboidFit]
 
 
-@dataclass
-class FitDiagnostics:
-    """Collect diagnostics for one shape fitting attempt."""
+@dataclass(frozen=True)
+class CylinderFitConstraints:
+    """Numerical constraints used during cylinder fitting and validation."""
 
-    rejection_reasons: List[str] = field(default_factory=list)
+    distance_threshold: float
+    robust_loss: str
+    max_radius: float
+    max_height: float
+    max_radius_to_bbox_diagonal_ratio: float
+    max_radius_to_cross_section_extent_ratio: float
+    max_axis_center_distance_to_bbox_diagonal_ratio: float
 
-    def reject(self, reason: str) -> None:
-        """Register one rejection reason."""
-        self.rejection_reasons.append(reason)
+
+@dataclass(frozen=True)
+class CylinderInitializationSettings:
+    """Search settings controlling cylinder multi-start initialization."""
+
+    max_initializations: int
+    consensus_trials: int
+    inlier_polishing_iterations: int
 
 
 def sphere_residuals(parameters: np.ndarray, points: np.ndarray) -> np.ndarray:
@@ -98,30 +112,23 @@ def fit_sphere(
     max_radius_to_observed_extent_ratio: float = np.inf,
     max_center_distance_to_bbox_diagonal_ratio: float = np.inf,
     min_inlier_ratio: float = 0.0,
-    diagnostics: Optional[FitDiagnostics] = None,
 ) -> Optional[SphereFit]:
     """Fit a sphere model and return model quality and inliers."""
     if len(points) < 4:
-        _reject(diagnostics, "insufficient_points_for_sphere")
         return None
     if max_radius <= 0.0:
-        _reject(diagnostics, "invalid_max_radius")
         return None
     if max_radius_to_observed_extent_ratio <= 0.0:
-        _reject(diagnostics, "invalid_max_radius_to_observed_extent_ratio")
         return None
     if min_inlier_ratio < 0.0:
-        _reject(diagnostics, "invalid_minimum_inlier_ratio")
         return None
 
     initial_center = points.mean(axis=0)
     initial_radius = float(np.median(np.linalg.norm(points - initial_center, axis=1)))
     if initial_radius <= 0.0:
-        _reject(diagnostics, "degenerate_initial_radius")
         return None
     if np.isfinite(max_radius):
         if max_radius <= 1e-6:
-            _reject(diagnostics, "max_radius_too_small")
             return None
         initial_radius = min(initial_radius, max_radius * 0.999999)
 
@@ -154,24 +161,20 @@ def fit_sphere(
     absolute_residuals = np.abs(sphere_residuals(optimization_result.x, points))
     inlier_indices = np.where(absolute_residuals <= distance_threshold)[0]
     if len(inlier_indices) < 4:
-        _reject(diagnostics, "insufficient_inliers")
         return None
 
     radius = float(optimization_result.x[3])
     if radius > max_radius:
-        _reject(diagnostics, "radius_above_limit")
         return None
 
     observed_max_extent = _point_cloud_max_extent(points[inlier_indices])
     if observed_max_extent > 1e-9:
         if radius / observed_max_extent > max_radius_to_observed_extent_ratio:
-            _reject(diagnostics, "radius_to_observed_extent_ratio_above_limit")
             return None
 
     bbox_diagonal = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0)))
     if bbox_diagonal > 1e-9:
         if radius / bbox_diagonal > max_radius_to_bbox_diagonal_ratio:
-            _reject(diagnostics, "radius_to_bbox_diagonal_ratio_above_limit")
             return None
 
         point_centroid = points.mean(axis=0)
@@ -179,7 +182,6 @@ def fit_sphere(
             np.linalg.norm(optimization_result.x[:3] - point_centroid)
         )
         if center_distance / bbox_diagonal > max_center_distance_to_bbox_diagonal_ratio:
-            _reject(diagnostics, "center_distance_to_bbox_diagonal_ratio_above_limit")
             return None
 
     root_mean_square_error = float(
@@ -187,7 +189,6 @@ def fit_sphere(
     )
     inlier_ratio = float(len(inlier_indices) / len(points))
     if inlier_ratio < min_inlier_ratio:
-        _reject(diagnostics, "inlier_ratio_below_limit")
         return None
     score = compute_fit_score(
         inlier_ratio=inlier_ratio,
@@ -219,75 +220,83 @@ def fit_cylinder(
     max_initializations: int = 8,
     consensus_trials: int = 24,
     inlier_polishing_iterations: int = 0,
-    diagnostics: Optional[FitDiagnostics] = None,
 ) -> Optional[CylinderFit]:
     """Fit a cylinder model and return model quality and inliers."""
+    cylinder_fit_constraints = CylinderFitConstraints(
+        distance_threshold=distance_threshold,
+        robust_loss=robust_loss,
+        max_radius=max_radius,
+        max_height=max_height,
+        max_radius_to_bbox_diagonal_ratio=max_radius_to_bbox_diagonal_ratio,
+        max_radius_to_cross_section_extent_ratio=(
+            max_radius_to_cross_section_extent_ratio
+        ),
+        max_axis_center_distance_to_bbox_diagonal_ratio=(
+            max_axis_center_distance_to_bbox_diagonal_ratio
+        ),
+    )
+    cylinder_initialization_settings = CylinderInitializationSettings(
+        max_initializations=max_initializations,
+        consensus_trials=consensus_trials,
+        inlier_polishing_iterations=inlier_polishing_iterations,
+    )
     if len(points) < 8:
-        _reject(diagnostics, "insufficient_points_for_cylinder")
         return None
-    if max_radius <= 0.0:
-        _reject(diagnostics, "invalid_max_radius")
+    if cylinder_fit_constraints.max_radius <= 0.0:
         return None
-    if max_height <= 0.0:
-        _reject(diagnostics, "invalid_max_height")
+    if cylinder_fit_constraints.max_height <= 0.0:
         return None
-    if max_radius_to_cross_section_extent_ratio <= 0.0:
-        _reject(diagnostics, "invalid_max_radius_to_cross_section_extent_ratio")
+    if cylinder_fit_constraints.max_radius_to_cross_section_extent_ratio <= 0.0:
         return None
     if min_inlier_ratio < 0.0:
-        _reject(diagnostics, "invalid_minimum_inlier_ratio")
         return None
-    if max_initializations <= 0:
-        _reject(diagnostics, "invalid_max_initializations")
+    if cylinder_initialization_settings.max_initializations <= 0:
         return None
-    if consensus_trials < 0:
-        _reject(diagnostics, "invalid_consensus_trials")
+    if cylinder_initialization_settings.consensus_trials < 0:
         return None
-    if inlier_polishing_iterations < 0:
-        _reject(diagnostics, "invalid_inlier_polishing_iterations")
+    if cylinder_initialization_settings.inlier_polishing_iterations < 0:
         return None
-    if np.isfinite(max_radius) and max_radius <= 1e-6:
-        _reject(diagnostics, "max_radius_too_small")
+    if (
+        np.isfinite(cylinder_fit_constraints.max_radius)
+        and cylinder_fit_constraints.max_radius <= 1e-6
+    ):
         return None
 
     initial_parameter_sets = _generate_cylinder_initial_parameter_sets(
         points=points,
-        distance_threshold=distance_threshold,
-        max_radius=max_radius,
-        max_initializations=max_initializations,
-        consensus_trials=consensus_trials,
+        constraints=cylinder_fit_constraints,
+        initialization_settings=cylinder_initialization_settings,
     )
     if len(initial_parameter_sets) == 0:
-        _reject(diagnostics, "degenerate_initial_radius")
         return None
 
     lower_bounds = np.asarray(
         [-np.inf, -np.inf, -np.inf, -np.inf, -np.inf, -np.inf, 1e-6], dtype=np.float64
     )
     upper_bounds = np.asarray(
-        [np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, max_radius], dtype=np.float64
+        [
+            np.inf,
+            np.inf,
+            np.inf,
+            np.inf,
+            np.inf,
+            np.inf,
+            cylinder_fit_constraints.max_radius,
+        ],
+        dtype=np.float64,
     )
 
     best_fit: Optional[CylinderFit] = None
-    rejection_reasons: List[str] = []
     for initial_parameters in initial_parameter_sets:
-        candidate_fit, rejection_reason = _fit_cylinder_from_initialization(
+        candidate_fit = _fit_cylinder_from_initialization(
             points=points,
             initial_parameters=initial_parameters,
             lower_bounds=lower_bounds,
             upper_bounds=upper_bounds,
-            distance_threshold=distance_threshold,
-            robust_loss=robust_loss,
-            max_radius=max_radius,
-            max_height=max_height,
-            max_radius_to_bbox_diagonal_ratio=max_radius_to_bbox_diagonal_ratio,
-            max_radius_to_cross_section_extent_ratio=max_radius_to_cross_section_extent_ratio,
-            max_axis_center_distance_to_bbox_diagonal_ratio=max_axis_center_distance_to_bbox_diagonal_ratio,
-            inlier_polishing_iterations=inlier_polishing_iterations,
+            constraints=cylinder_fit_constraints,
+            initialization_settings=cylinder_initialization_settings,
         )
         if candidate_fit is None:
-            if rejection_reason is not None:
-                rejection_reasons.append(rejection_reason)
             continue
 
         if best_fit is None or _is_better_cylinder_fit(
@@ -296,12 +305,9 @@ def fit_cylinder(
             best_fit = candidate_fit
 
     if best_fit is None:
-        rejection_reason = _most_common_rejection_reason(rejection_reasons)
-        _reject(diagnostics, rejection_reason)
         return None
 
     if best_fit.inlier_ratio < min_inlier_ratio:
-        _reject(diagnostics, "inlier_ratio_below_limit")
         return None
     return best_fit
 
@@ -311,30 +317,24 @@ def _fit_cylinder_from_initialization(
     initial_parameters: np.ndarray,
     lower_bounds: np.ndarray,
     upper_bounds: np.ndarray,
-    distance_threshold: float,
-    robust_loss: str,
-    max_radius: float,
-    max_height: float,
-    max_radius_to_bbox_diagonal_ratio: float,
-    max_radius_to_cross_section_extent_ratio: float,
-    max_axis_center_distance_to_bbox_diagonal_ratio: float,
-    inlier_polishing_iterations: int,
-) -> Tuple[Optional[CylinderFit], Optional[str]]:
+    constraints: CylinderFitConstraints,
+    initialization_settings: CylinderInitializationSettings,
+) -> Optional[CylinderFit]:
     """Run one cylinder optimization from one initialization and validate the result."""
     optimization_result = least_squares(
         cylinder_residuals,
         x0=initial_parameters,
         bounds=(lower_bounds, upper_bounds),
         args=(points,),
-        loss=robust_loss,
-        f_scale=distance_threshold,
+        loss=constraints.robust_loss,
+        f_scale=constraints.distance_threshold,
         max_nfev=500,
     )
     optimized_parameters = np.asarray(optimization_result.x, dtype=np.float64)
 
-    for _ in range(inlier_polishing_iterations):
+    for _ in range(initialization_settings.inlier_polishing_iterations):
         residuals = np.abs(cylinder_residuals(optimized_parameters, points))
-        inlier_indices = np.where(residuals <= distance_threshold)[0]
+        inlier_indices = np.where(residuals <= constraints.distance_threshold)[0]
         if len(inlier_indices) < 8:
             break
 
@@ -344,7 +344,7 @@ def _fit_cylinder_from_initialization(
             bounds=(lower_bounds, upper_bounds),
             args=(points[inlier_indices],),
             loss="linear",
-            f_scale=distance_threshold,
+            f_scale=constraints.distance_threshold,
             max_nfev=250,
         )
         optimized_parameters = np.asarray(polishing_result.x, dtype=np.float64)
@@ -352,30 +352,20 @@ def _fit_cylinder_from_initialization(
     return _build_cylinder_fit_from_parameters(
         parameters=optimized_parameters,
         points=points,
-        distance_threshold=distance_threshold,
-        max_radius=max_radius,
-        max_height=max_height,
-        max_radius_to_bbox_diagonal_ratio=max_radius_to_bbox_diagonal_ratio,
-        max_radius_to_cross_section_extent_ratio=max_radius_to_cross_section_extent_ratio,
-        max_axis_center_distance_to_bbox_diagonal_ratio=max_axis_center_distance_to_bbox_diagonal_ratio,
+        constraints=constraints,
     )
 
 
 def _build_cylinder_fit_from_parameters(
     parameters: np.ndarray,
     points: np.ndarray,
-    distance_threshold: float,
-    max_radius: float,
-    max_height: float,
-    max_radius_to_bbox_diagonal_ratio: float,
-    max_radius_to_cross_section_extent_ratio: float,
-    max_axis_center_distance_to_bbox_diagonal_ratio: float,
-) -> Tuple[Optional[CylinderFit], Optional[str]]:
+    constraints: CylinderFitConstraints,
+) -> Optional[CylinderFit]:
     """Validate one optimized cylinder parameter vector and construct a fit object."""
     absolute_residuals = np.abs(cylinder_residuals(parameters, points))
-    inlier_indices = np.where(absolute_residuals <= distance_threshold)[0]
+    inlier_indices = np.where(absolute_residuals <= constraints.distance_threshold)[0]
     if len(inlier_indices) < 8:
-        return None, "insufficient_inliers"
+        return None
 
     axis_direction = _normalize_vector(parameters[3:6])
     axis_point = np.asarray(parameters[:3], dtype=np.float64)
@@ -387,22 +377,22 @@ def _build_cylinder_fit_from_parameters(
         0.5 * (maximum_axis_coordinate + minimum_axis_coordinate)
     )
     radius = float(parameters[6])
-    if radius > max_radius:
-        return None, "radius_above_limit"
-    if height > max_height:
-        return None, "height_above_limit"
+    if radius > constraints.max_radius:
+        return None
+    if height > constraints.max_height:
+        return None
 
     bbox_diagonal = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0)))
     if bbox_diagonal > 1e-9:
-        if radius / bbox_diagonal > max_radius_to_bbox_diagonal_ratio:
-            return None, "radius_to_bbox_diagonal_ratio_above_limit"
+        if radius / bbox_diagonal > constraints.max_radius_to_bbox_diagonal_ratio:
+            return None
         point_centroid = points.mean(axis=0)
         center_distance = float(np.linalg.norm(axis_center - point_centroid))
         if (
             center_distance / bbox_diagonal
-            > max_axis_center_distance_to_bbox_diagonal_ratio
+            > constraints.max_axis_center_distance_to_bbox_diagonal_ratio
         ):
-            return None, "axis_center_distance_to_bbox_diagonal_ratio_above_limit"
+            return None
 
     cross_section_max_extent = _cross_section_max_extent(
         points=points[inlier_indices],
@@ -410,8 +400,11 @@ def _build_cylinder_fit_from_parameters(
         axis_direction=axis_direction,
     )
     if cross_section_max_extent > 1e-9:
-        if radius / cross_section_max_extent > max_radius_to_cross_section_extent_ratio:
-            return None, "radius_to_cross_section_extent_ratio_above_limit"
+        if (
+            radius / cross_section_max_extent
+            > constraints.max_radius_to_cross_section_extent_ratio
+        ):
+            return None
 
     root_mean_square_error = float(
         np.sqrt(np.mean(np.square(absolute_residuals[inlier_indices])))
@@ -420,31 +413,26 @@ def _build_cylinder_fit_from_parameters(
     score = compute_fit_score(
         inlier_ratio=inlier_ratio,
         root_mean_square_error=root_mean_square_error,
-        distance_threshold=distance_threshold,
+        distance_threshold=constraints.distance_threshold,
         complexity_penalty=0.02,
     )
 
-    return (
-        CylinderFit(
-            axis_center=axis_center.astype(np.float64),
-            axis_direction=axis_direction.astype(np.float64),
-            radius=radius,
-            height=float(height),
-            inlier_indices=inlier_indices.astype(np.int64),
-            inlier_ratio=inlier_ratio,
-            root_mean_square_error=root_mean_square_error,
-            score=score,
-        ),
-        None,
+    return CylinderFit(
+        axis_center=axis_center.astype(np.float64),
+        axis_direction=axis_direction.astype(np.float64),
+        radius=radius,
+        height=float(height),
+        inlier_indices=inlier_indices.astype(np.int64),
+        inlier_ratio=inlier_ratio,
+        root_mean_square_error=root_mean_square_error,
+        score=score,
     )
 
 
 def _generate_cylinder_initial_parameter_sets(
     points: np.ndarray,
-    distance_threshold: float,
-    max_radius: float,
-    max_initializations: int,
-    consensus_trials: int,
+    constraints: CylinderFitConstraints,
+    initialization_settings: CylinderInitializationSettings,
 ) -> List[np.ndarray]:
     """Generate distinct initialization vectors for cylinder multi-start optimization."""
     centroid = points.mean(axis=0)
@@ -453,21 +441,22 @@ def _generate_cylinder_initial_parameter_sets(
     axis_candidates: List[np.ndarray] = []
     for principal_axis in _principal_axes(points):
         _append_axis_if_distinct(axis_candidates, principal_axis)
-    _append_axis_if_distinct(axis_candidates, np.asarray([1.0, 0.0, 0.0]))
-    _append_axis_if_distinct(axis_candidates, np.asarray([0.0, 1.0, 0.0]))
-    _append_axis_if_distinct(axis_candidates, np.asarray([0.0, 0.0, 1.0]))
 
     consensus_axis_candidates = _consensus_axis_candidates(
         points=points,
         axis_point=centroid,
-        distance_threshold=distance_threshold,
-        max_radius=max_radius,
-        trial_count=consensus_trials,
+        distance_threshold=constraints.distance_threshold,
+        max_radius=constraints.max_radius,
+        trial_count=initialization_settings.consensus_trials,
     )
     for consensus_axis, _, _ in consensus_axis_candidates:
         _append_axis_if_distinct(axis_candidates, consensus_axis)
 
-    initial_parameter_sets: List[np.ndarray] = []
+    _append_axis_if_distinct(axis_candidates, np.asarray([1.0, 0.0, 0.0]))
+    _append_axis_if_distinct(axis_candidates, np.asarray([0.0, 1.0, 0.0]))
+    _append_axis_if_distinct(axis_candidates, np.asarray([0.0, 0.0, 1.0]))
+
+    ranked_initial_parameter_sets: List[Tuple[float, float, np.ndarray]] = []
     axis_points = [centroid, median_point]
     for axis_direction in axis_candidates:
         for axis_point in axis_points:
@@ -475,27 +464,48 @@ def _generate_cylinder_initial_parameter_sets(
                 points=points,
                 axis_point=axis_point,
                 axis_direction=axis_direction,
-                max_radius=max_radius,
+                max_radius=constraints.max_radius,
             )
             if initial_radius is None:
                 continue
-            initial_parameter_sets.append(
-                np.asarray(
-                    [
-                        axis_point[0],
-                        axis_point[1],
-                        axis_point[2],
-                        axis_direction[0],
-                        axis_direction[1],
-                        axis_direction[2],
-                        initial_radius,
-                    ],
-                    dtype=np.float64,
-                )
+
+            inlier_ratio, inlier_error = _provisional_cylinder_axis_quality(
+                points=points,
+                axis_point=axis_point,
+                axis_direction=axis_direction,
+                radius=initial_radius,
+                distance_threshold=constraints.distance_threshold,
             )
-            if len(initial_parameter_sets) >= max_initializations:
-                return initial_parameter_sets
-    return initial_parameter_sets
+            if inlier_ratio <= 0.0:
+                continue
+            initial_parameters = np.asarray(
+                [
+                    axis_point[0],
+                    axis_point[1],
+                    axis_point[2],
+                    axis_direction[0],
+                    axis_direction[1],
+                    axis_direction[2],
+                    initial_radius,
+                ],
+                dtype=np.float64,
+            )
+            ranked_initial_parameter_sets.append(
+                (inlier_ratio, inlier_error, initial_parameters)
+            )
+
+    ranked_initial_parameter_sets.sort(
+        key=lambda initialization_entry: (
+            -initialization_entry[0],
+            initialization_entry[1],
+        )
+    )
+    return [
+        initial_parameters
+        for _, _, initial_parameters in ranked_initial_parameter_sets[
+            : initialization_settings.max_initializations
+        ]
+    ]
 
 
 def _consensus_axis_candidates(
@@ -533,24 +543,44 @@ def _consensus_axis_candidates(
         if initial_radius is None:
             continue
 
-        residuals = np.abs(
-            np.linalg.norm(
-                (points - axis_point)
-                - np.outer((points - axis_point) @ axis_direction, axis_direction),
-                axis=1,
-            )
-            - initial_radius
+        inlier_ratio, inlier_rmse = _provisional_cylinder_axis_quality(
+            points=points,
+            axis_point=axis_point,
+            axis_direction=axis_direction,
+            radius=initial_radius,
+            distance_threshold=distance_threshold,
         )
-        inlier_indices = np.where(residuals <= distance_threshold)[0]
-        if len(inlier_indices) < 8:
+        if inlier_ratio <= 0.0:
             continue
 
-        inlier_ratio = float(len(inlier_indices) / len(points))
-        inlier_rmse = float(np.sqrt(np.mean(np.square(residuals[inlier_indices]))))
         provisional_candidates.append((axis_direction, inlier_ratio, inlier_rmse))
 
     provisional_candidates.sort(key=lambda candidate: (-candidate[1], candidate[2]))
     return provisional_candidates
+
+
+def _provisional_cylinder_axis_quality(
+    points: np.ndarray,
+    axis_point: np.ndarray,
+    axis_direction: np.ndarray,
+    radius: float,
+    distance_threshold: float,
+) -> Tuple[float, float]:
+    """Return provisional inlier ratio and error for one axis and radius hypothesis."""
+    axis = _normalize_vector(axis_direction)
+    point_offsets = points - axis_point
+    projected_offsets = np.outer(point_offsets @ axis, axis)
+    radial_offsets = point_offsets - projected_offsets
+    radial_distances = np.linalg.norm(radial_offsets, axis=1)
+    residuals = np.abs(radial_distances - radius)
+    inlier_indices = np.where(residuals <= distance_threshold)[0]
+    if len(inlier_indices) < 8:
+        return 0.0, np.inf
+    inlier_ratio = float(len(inlier_indices) / len(points))
+    inlier_root_mean_square_error = float(
+        np.sqrt(np.mean(np.square(residuals[inlier_indices])))
+    )
+    return inlier_ratio, inlier_root_mean_square_error
 
 
 def _initial_cylinder_radius(
@@ -612,8 +642,12 @@ def _is_better_cylinder_fit(
     inlier_ratio_delta = candidate_fit.inlier_ratio - best_fit.inlier_ratio
     if inlier_ratio_delta > 1e-4:
         if (
-            candidate_fit.radius > (best_fit.radius * 1.35)
-            and inlier_ratio_delta < 0.03
+            candidate_fit.radius
+            > (
+                best_fit.radius
+                * MAX_ACCEPTABLE_RADIUS_GROWTH_WITHOUT_STRONG_INLIER_GAIN
+            )
+            and inlier_ratio_delta < MIN_INLIER_GAIN_TO_ACCEPT_LARGER_RADIUS
         ):
             return False
         return True
@@ -628,37 +662,18 @@ def _is_better_cylinder_fit(
     return candidate_fit.score > best_fit.score
 
 
-def _most_common_rejection_reason(rejection_reasons: List[str]) -> str:
-    """Return the most frequent rejection reason collected over initialization attempts."""
-    if len(rejection_reasons) == 0:
-        return "no_valid_cylinder_candidate"
-    rejection_reason_histogram: Dict[str, int] = {}
-    for rejection_reason in rejection_reasons:
-        rejection_reason_histogram[rejection_reason] = (
-            rejection_reason_histogram.get(rejection_reason, 0) + 1
-        )
-    return max(
-        rejection_reason_histogram.items(),
-        key=lambda histogram_entry: histogram_entry[1],
-    )[0]
-
-
 def fit_cuboid(
     points: np.ndarray,
     distance_threshold: float,
     max_extent: float = np.inf,
     min_inlier_ratio: float = 0.0,
-    diagnostics: Optional[FitDiagnostics] = None,
 ) -> Optional[CuboidFit]:
     """Fit a cuboid model and return model quality and inliers."""
     if len(points) < 8:
-        _reject(diagnostics, "insufficient_points_for_cuboid")
         return None
     if max_extent <= 0.0:
-        _reject(diagnostics, "invalid_max_extent")
         return None
     if min_inlier_ratio < 0.0:
-        _reject(diagnostics, "invalid_minimum_inlier_ratio")
         return None
 
     point_cloud = o3d.geometry.PointCloud()
@@ -669,7 +684,6 @@ def fit_cuboid(
     rotation_matrix = np.asarray(oriented_bounding_box.R, dtype=np.float64)
     extents = np.asarray(oriented_bounding_box.extent, dtype=np.float64)
     if np.any(extents > max_extent):
-        _reject(diagnostics, "extent_above_limit")
         return None
 
     surface_distances = point_to_oriented_box_surface_distance(
@@ -681,7 +695,6 @@ def fit_cuboid(
 
     inlier_indices = np.where(surface_distances <= distance_threshold)[0]
     if len(inlier_indices) < 8:
-        _reject(diagnostics, "insufficient_inliers")
         return None
 
     root_mean_square_error = float(
@@ -689,7 +702,6 @@ def fit_cuboid(
     )
     inlier_ratio = float(len(inlier_indices) / len(points))
     if inlier_ratio < min_inlier_ratio:
-        _reject(diagnostics, "inlier_ratio_below_limit")
         return None
     score = compute_fit_score(
         inlier_ratio=inlier_ratio,
@@ -803,13 +815,6 @@ def compute_fit_score(
     return inlier_ratio - 0.35 * normalized_error - complexity_penalty
 
 
-def _principal_axis(points: np.ndarray) -> np.ndarray:
-    principal_axes = _principal_axes(points)
-    if len(principal_axes) == 0:
-        return np.asarray([0.0, 0.0, 1.0], dtype=np.float64)
-    return principal_axes[0]
-
-
 def _principal_axes(points: np.ndarray) -> List[np.ndarray]:
     centered_points = points - points.mean(axis=0)
     covariance_matrix = np.cov(centered_points.T)
@@ -906,10 +911,3 @@ def _is_box_like_extent_profile(
         cross_section_asymmetry >= cross_section_asymmetry_threshold
     )
     return bool(is_cube_like or has_rectangular_cross_section)
-
-
-def _reject(diagnostics: Optional[FitDiagnostics], reason: str) -> None:
-    """Record one rejection reason if diagnostics collection is enabled."""
-    if diagnostics is None:
-        return
-    diagnostics.reject(reason)
