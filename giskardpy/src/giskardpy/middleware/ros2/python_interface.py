@@ -7,22 +7,20 @@ from time import sleep
 from typing import Dict, Optional, List
 
 import rclpy
-from giskard_msgs.action import Move, JsonAction
+from giskard_msgs.action import JsonAction
 from giskard_msgs.action._json_action import JsonAction_Result
-from giskard_msgs.msg import ExecutionState
-from rclpy import Context, Parameter, Future
-from rclpy.action.client import ClientGoalHandle
-from rclpy.executors import MultiThreadedExecutor
-from rclpy.node import Node
-
+from giskardpy.middleware.ros2 import rospy
+from giskardpy.middleware.ros2.exceptions import ExecutionException
+from giskardpy.middleware.ros2.ros2_interface import MyActionClient
 from giskardpy.motion_statechart.motion_statechart import (
     MotionStatechart,
     LifeCycleState,
     ObservationState,
 )
-from giskardpy.middleware.ros2.exceptions import ExecutionException
-from giskardpy.middleware.ros2 import rospy
-from giskardpy.middleware.ros2.ros2_interface import MyActionClient
+from rclpy import Context, Parameter, Future
+from rclpy.action.client import ClientGoalHandle
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.node import Node
 from semantic_digital_twin.adapters.ros.world_fetcher import fetch_world_from_service
 from semantic_digital_twin.adapters.ros.world_synchronizer import (
     ModelSynchronizer,
@@ -42,25 +40,26 @@ class GiskardWrapper:
 
     node_handle: Node
     giskard_node_name: str = "giskard"
-    last_feedback: Move.Feedback = None
     _goal_handle: Optional[ClientGoalHandle] = None
     _goal_result: Optional[JsonAction_Result] = None
     _result_future: Optional[Future] = None
-    last_execution_state: ExecutionState = None
     world: World = None
     _client: MyActionClient = None
     _motion_statechart: MotionStatechart = field(init=False)
 
     def __post_init__(self):
-        self.node_handle.get_logger().info("syncing world")
-        self.world = fetch_world_from_service(self.node_handle, timeout_seconds=300)
-        self.node_handle.get_logger().info("world synced")
-        self.model_synchronizer = ModelSynchronizer(
-            _world=self.world, node=self.node_handle, synchronous=True
-        )
-        self.state_synchronizer = StateSynchronizer(
-            _world=self.world, node=self.node_handle
-        )
+        if self.world is None:
+            self.node_handle.get_logger().info(
+                "No world provided, fetching from service"
+            )
+            self.world = fetch_world_from_service(self.node_handle, timeout_seconds=300)
+            self.node_handle.get_logger().info("world synced")
+            self.model_synchronizer = ModelSynchronizer(
+                _world=self.world, node=self.node_handle, synchronous=True
+            )
+            self.state_synchronizer = StateSynchronizer(
+                _world=self.world, node=self.node_handle
+            )
         giskard_topic = f"{self.giskard_node_name}/command"
         self._client = MyActionClient(self.node_handle, JsonAction, giskard_topic)
         sleep(0.3)
