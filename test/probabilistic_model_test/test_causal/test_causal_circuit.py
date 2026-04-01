@@ -42,12 +42,12 @@ def _build_independent_circuit() -> tuple:
     root = ProductUnit(probabilistic_circuit=circuit)
 
     sum_x = SumUnit(probabilistic_circuit=circuit)
-    sum_x.add_subcircuit(leaf(UniformDistribution(x, closed(0, 1).simple_sets[0]), circuit), math.log(0.6))
-    sum_x.add_subcircuit(leaf(UniformDistribution(x, closed(1, 2).simple_sets[0]), circuit), math.log(0.4))
+    sum_x.add_subcircuit(leaf(UniformDistribution(variable=x, interval=closed(0, 1).simple_sets[0]), circuit), math.log(0.6))
+    sum_x.add_subcircuit(leaf(UniformDistribution(variable=x, interval=closed(1, 2).simple_sets[0]), circuit), math.log(0.4))
 
     sum_y = SumUnit(probabilistic_circuit=circuit)
-    sum_y.add_subcircuit(leaf(UniformDistribution(y, closed(0, 1).simple_sets[0]), circuit), math.log(0.5))
-    sum_y.add_subcircuit(leaf(UniformDistribution(y, closed(1, 2).simple_sets[0]), circuit), math.log(0.5))
+    sum_y.add_subcircuit(leaf(UniformDistribution(variable=y, interval=closed(0, 1).simple_sets[0]), circuit), math.log(0.5))
+    sum_y.add_subcircuit(leaf(UniformDistribution(variable=y, interval=closed(1, 2).simple_sets[0]), circuit), math.log(0.5))
 
     root.add_subcircuit(sum_x)
     root.add_subcircuit(sum_y)
@@ -70,17 +70,21 @@ def _build_three_variable_circuit() -> tuple:
     circuit = ProbabilisticCircuit()
     root = ProductUnit(probabilistic_circuit=circuit)
 
-    for variable, low_weight in [(x, 0.7), (y, 0.4), (z, 0.8)]:
-        sum_unit = SumUnit(probabilistic_circuit=circuit)
-        sum_unit.add_subcircuit(
-            leaf(UniformDistribution(variable, closed(0, 1).simple_sets[0]), circuit),
-            math.log(low_weight),
-        )
-        sum_unit.add_subcircuit(
-            leaf(UniformDistribution(variable, closed(1, 2).simple_sets[0]), circuit),
-            math.log(1 - low_weight),
-        )
-        root.add_subcircuit(sum_unit)
+    sum_x = SumUnit(probabilistic_circuit=circuit)
+    sum_x.add_subcircuit(leaf(UniformDistribution(variable=x, interval=closed(0, 1).simple_sets[0]), circuit), math.log(0.7))
+    sum_x.add_subcircuit(leaf(UniformDistribution(variable=x, interval=closed(1, 2).simple_sets[0]), circuit), math.log(0.3))
+
+    sum_y = SumUnit(probabilistic_circuit=circuit)
+    sum_y.add_subcircuit(leaf(UniformDistribution(variable=y, interval=closed(0, 1).simple_sets[0]), circuit), math.log(0.4))
+    sum_y.add_subcircuit(leaf(UniformDistribution(variable=y, interval=closed(1, 2).simple_sets[0]), circuit), math.log(0.6))
+
+    sum_z = SumUnit(probabilistic_circuit=circuit)
+    sum_z.add_subcircuit(leaf(UniformDistribution(variable=z, interval=closed(0, 1).simple_sets[0]), circuit), math.log(0.8))
+    sum_z.add_subcircuit(leaf(UniformDistribution(variable=z, interval=closed(1, 2).simple_sets[0]), circuit), math.log(0.2))
+
+    root.add_subcircuit(sum_x)
+    root.add_subcircuit(sum_y)
+    root.add_subcircuit(sum_z)
 
     return circuit, x, y, z
 
@@ -103,9 +107,9 @@ def _build_correlated_circuit() -> tuple:
 
     for x_range, y_range in [((0, 1), (0, 0.4)), ((1, 2), (9.6, 10))]:
         component = ProductUnit(probabilistic_circuit=circuit)
-        component.add_subcircuit(leaf(UniformDistribution(x, closed(*x_range).simple_sets[0]), circuit))
-        component.add_subcircuit(leaf(UniformDistribution(w, closed(0, 1).simple_sets[0]), circuit))
-        component.add_subcircuit(leaf(UniformDistribution(y, closed(*y_range).simple_sets[0]), circuit))
+        component.add_subcircuit(leaf(UniformDistribution(variable=x, interval=closed(*x_range).simple_sets[0]), circuit))
+        component.add_subcircuit(leaf(UniformDistribution(variable=w, interval=closed(0, 1).simple_sets[0]), circuit))
+        component.add_subcircuit(leaf(UniformDistribution(variable=y, interval=closed(*y_range).simple_sets[0]), circuit))
         root.add_subcircuit(component, math.log(0.5))
 
     return circuit, x, w, y
@@ -129,9 +133,9 @@ def _build_confounded_circuit() -> tuple:
 
     for x_range, y_range, z_range in [((0, 1), (0, 1), (0, 1)), ((1, 2), (1, 2), (1, 2))]:
         component = ProductUnit(probabilistic_circuit=circuit)
-        component.add_subcircuit(leaf(UniformDistribution(x, closed(*x_range).simple_sets[0]), circuit))
-        component.add_subcircuit(leaf(UniformDistribution(y, closed(*y_range).simple_sets[0]), circuit))
-        component.add_subcircuit(leaf(UniformDistribution(z, closed(*z_range).simple_sets[0]), circuit))
+        component.add_subcircuit(leaf(UniformDistribution(variable=x, interval=closed(*x_range).simple_sets[0]), circuit))
+        component.add_subcircuit(leaf(UniformDistribution(variable=y, interval=closed(*y_range).simple_sets[0]), circuit))
+        component.add_subcircuit(leaf(UniformDistribution(variable=z, interval=closed(*z_range).simple_sets[0]), circuit))
         root.add_subcircuit(component, math.log(0.5))
 
     return circuit, x, y, z
@@ -148,12 +152,12 @@ def _build_unnormalized_circuit() -> tuple:
     root = ProductUnit(probabilistic_circuit=circuit)
 
     sum_x = SumUnit(probabilistic_circuit=circuit)
-    sum_x.add_subcircuit(leaf(UniformDistribution(x, closed(0, 1).simple_sets[0]), circuit), math.log(0.8))
-    sum_x.add_subcircuit(leaf(UniformDistribution(x, closed(1, 2).simple_sets[0]), circuit), math.log(0.8))
+    sum_x.add_subcircuit(leaf(UniformDistribution(variable=x, interval=closed(0, 1).simple_sets[0]), circuit), math.log(0.8))
+    sum_x.add_subcircuit(leaf(UniformDistribution(variable=x, interval=closed(1, 2).simple_sets[0]), circuit), math.log(0.8))
 
     sum_y = SumUnit(probabilistic_circuit=circuit)
-    sum_y.add_subcircuit(leaf(UniformDistribution(y, closed(0, 1).simple_sets[0]), circuit), math.log(0.5))
-    sum_y.add_subcircuit(leaf(UniformDistribution(y, closed(1, 2).simple_sets[0]), circuit), math.log(0.5))
+    sum_y.add_subcircuit(leaf(UniformDistribution(variable=y, interval=closed(0, 1).simple_sets[0]), circuit), math.log(0.5))
+    sum_y.add_subcircuit(leaf(UniformDistribution(variable=y, interval=closed(1, 2).simple_sets[0]), circuit), math.log(0.5))
 
     root.add_subcircuit(sum_x)
     root.add_subcircuit(sum_y)
@@ -169,7 +173,7 @@ def _marginal_probability(
 ) -> float:
     """Return P(variable ∈ [lower, upper]) from circuit."""
     event = (
-        SimpleEvent({variable: closed(lower, upper)})
+        SimpleEvent.from_data({variable: closed(lower, upper)})
         .as_composite_set()
         .fill_missing_variables_pure(circuit.variables)
     )
@@ -185,8 +189,8 @@ class MarginalDeterminismTreeNodeLeafTestCase(unittest.TestCase):
     def test_node_with_children_is_not_leaf(self):
         x, y = Continuous("x"), Continuous("y")
         parent = MarginalDeterminismTreeNode(variables={x, y}, query_set={x})
-        MarginalDeterminismTreeNode(variables={x}, query_set={x}, _parent_node=parent)
-        MarginalDeterminismTreeNode(variables={y}, query_set={y}, _parent_node=parent)
+        MarginalDeterminismTreeNode(variables={x}, query_set={x}, parent=parent)
+        MarginalDeterminismTreeNode(variables={y}, query_set={y}, parent=parent)
         self.assertFalse(parent.is_leaf)
 
     def test_node_with_empty_query_set_is_leaf(self):
@@ -199,8 +203,8 @@ class MarginalDeterminismTreeNodeFindVariableTestCase(unittest.TestCase):
     def setUp(self):
         self.x, self.y = Continuous("x"), Continuous("y")
         self.root = MarginalDeterminismTreeNode(variables={self.x, self.y}, query_set={self.x})
-        MarginalDeterminismTreeNode(variables={self.x}, query_set={self.x}, _parent_node=self.root)
-        MarginalDeterminismTreeNode(variables={self.y}, query_set={self.y}, _parent_node=self.root)
+        MarginalDeterminismTreeNode(variables={self.x}, query_set={self.x}, parent=self.root)
+        MarginalDeterminismTreeNode(variables={self.y}, query_set={self.y}, parent=self.root)
 
     def test_finds_variable_in_root_query_set(self):
         found = self.root.find_node_for_variable(self.x)
@@ -232,8 +236,8 @@ class MarginalDeterminismTreeNodeAllQuerySetsTestCase(unittest.TestCase):
     def test_three_node_tree_returns_three_query_sets(self):
         x, y = Continuous("x"), Continuous("y")
         root = MarginalDeterminismTreeNode(variables={x, y}, query_set={x})
-        MarginalDeterminismTreeNode(variables={x}, query_set={x}, _parent_node=root)
-        MarginalDeterminismTreeNode(variables={y}, query_set={y}, _parent_node=root)
+        MarginalDeterminismTreeNode(variables={x}, query_set={x}, parent=root)
+        MarginalDeterminismTreeNode(variables={y}, query_set={y}, parent=root)
         self.assertEqual(len(root.all_query_sets()), 3)
 
     def test_empty_query_set_not_included(self):
@@ -243,8 +247,8 @@ class MarginalDeterminismTreeNodeAllQuerySetsTestCase(unittest.TestCase):
     def test_query_sets_returned_in_preorder(self):
         x, y, z = Continuous("x"), Continuous("y"), Continuous("z")
         root = MarginalDeterminismTreeNode(variables={x, y, z}, query_set={x})
-        MarginalDeterminismTreeNode(variables={y}, query_set={y}, _parent_node=root)
-        MarginalDeterminismTreeNode(variables={z}, query_set={z}, _parent_node=root)
+        MarginalDeterminismTreeNode(variables={y}, query_set={y}, parent=root)
+        MarginalDeterminismTreeNode(variables={z}, query_set={z}, parent=root)
         self.assertIn(x, root.all_query_sets()[0])
 
 

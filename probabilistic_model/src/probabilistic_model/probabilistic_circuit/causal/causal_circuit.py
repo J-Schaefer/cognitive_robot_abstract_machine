@@ -3,12 +3,12 @@ from __future__ import annotations
 import copy
 import itertools
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, InitVar
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from tabulate import tabulate
+
 from anytree import NodeMixin, PreOrderIter, findall
 from scipy.special import logsumexp
-
 from random_events.interval import closed
 from random_events.product_algebra import SimpleEvent
 from random_events.variable import Variable
@@ -19,6 +19,7 @@ from probabilistic_model.probabilistic_circuit.rx.probabilistic_circuit import (
     SumUnit,
     leaf,
 )
+
 from probabilistic_model.probabilistic_circuit.causal.utils import (
     attach_marginal_circuit,
     sum_unit_is_normalized,
@@ -45,25 +46,54 @@ class MarginalDeterminismTreeNode(NodeMixin):
     :param variables: All Variables in this node's subtree.
     :param query_set: Variables for which SumUnits at this level must be
         support-deterministic. Defaults to an empty set.
-    :param _parent_node: Parent node in the tree. None for the root.
+    :param parent: Parent node in the tree. None for the root.
     """
 
-    variables: Set[Variable]
+    variables: InitVar[Set[Variable]]
     """All Variables in this node's subtree."""
 
-    query_set: Set[Variable] = field(default=None)
+    query_set: InitVar[Optional[Set[Variable]]] = None
     """Variables for which SumUnits at this level must be support-deterministic.
     Defaults to an empty set."""
 
-    _parent_node: Optional[MarginalDeterminismTreeNode] = field(default=None, repr=False)
-    """NodeMixin manages the parent property as a descriptor, declaring it as a
-    dataclass field would shadow that descriptor and break tree wiring."""
+    parent: InitVar[Optional[MarginalDeterminismTreeNode]] = None
+    """Parent node in the tree. None for the root."""
 
-    def __post_init__(self) -> None:
+    _variables: Set[Variable] = field(init=False, repr=False)
+    _query_set: Set[Variable] = field(init=False, repr=False)
+
+    def __post_init__(
+        self,
+        variables: Set[Variable],
+        query_set: Optional[Set[Variable]],
+        parent: Optional[MarginalDeterminismTreeNode],
+    ) -> None:
+        cls = type(self)
+        if "parent" in cls.__dict__ and not isinstance(cls.__dict__["parent"], property):
+            delattr(cls, "parent")
+
         super().__init__()
-        if self.query_set is None:
-            self.query_set = set()
-        self.parent = self._parent_node
+        self._variables = variables
+        self._query_set = query_set if query_set is not None else set()
+        self.parent = parent
+
+    @property
+    def variables(self) -> Set[Variable]:
+        """All Variables in this node's subtree."""
+        return self._variables
+
+    @variables.setter
+    def variables(self, value: Set[Variable]) -> None:
+        self._variables = value
+
+    @property
+    def query_set(self) -> Set[Variable]:
+        """Variables for which SumUnits at this level must be support-deterministic."""
+        return self._query_set
+
+    @query_set.setter
+    def query_set(self, value: Set[Variable]) -> None:
+        self._query_set = value
 
     def find_node_for_variable(
         self, variable: Variable
@@ -132,9 +162,9 @@ class MarginalDeterminismTreeNode(NodeMixin):
         :returns: The root node of the constructed subtree.
         """
         if len(ordered) == 0:
-            return cls(variables=set(), query_set=set(), _parent_node=parent)
+            return cls(variables=set(), query_set=set(), parent=parent)
         if len(ordered) == 1:
-            return cls(variables={ordered[0]}, query_set={ordered[0]}, _parent_node=parent)
+            return cls(variables={ordered[0]}, query_set={ordered[0]}, parent=parent)
 
         primary = ordered[0]
         remaining = ordered[1:]
@@ -142,7 +172,7 @@ class MarginalDeterminismTreeNode(NodeMixin):
         left_vars = [primary] + remaining[:split]
         right_vars = remaining[split:]
 
-        node = cls(variables=set(ordered), query_set={primary}, _parent_node=parent)
+        node = cls(variables=set(ordered), query_set={primary}, parent=parent)
         cls._build_subtree(left_vars, parent=node)
         if right_vars:
             cls._build_subtree(right_vars, parent=node)
@@ -840,7 +870,7 @@ class CausalCircuit:
         regions: List[Tuple[Any, float]] = []
         variable_support = circuit.support.marginal([variable])
         for simple_region in variable_support.simple_sets:
-            region_event = SimpleEvent(
+            region_event = SimpleEvent.from_data(
                 {variable: simple_region[variable]}
             ).as_composite_set()
             probability = circuit.probability(
@@ -863,7 +893,7 @@ class CausalCircuit:
         regions: List[Tuple[Any, float]] = []
         joint_support = self.probabilistic_circuit.support.marginal(variables)
         for simple_region in joint_support.simple_sets:
-            region_event = SimpleEvent(
+            region_event = SimpleEvent.from_data(
                 {variable: simple_region[variable] for variable in variables}
             ).as_composite_set()
             probability = self.probabilistic_circuit.probability(
@@ -889,7 +919,7 @@ class CausalCircuit:
         :param query_resolution: Half-width of the query interval.
         :returns: Probability mass within the query interval.
         """
-        event = SimpleEvent(
+        event = SimpleEvent.from_data(
             {cause_variable: closed(value - query_resolution, value + query_resolution)}
         ).as_composite_set()
         return float(
