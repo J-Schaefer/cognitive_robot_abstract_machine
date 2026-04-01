@@ -185,8 +185,8 @@ class MarginalDeterminismTreeNodeLeafTestCase(unittest.TestCase):
     def test_node_with_children_is_not_leaf(self):
         x, y = Continuous("x"), Continuous("y")
         parent = MarginalDeterminismTreeNode(variables={x, y}, query_set={x})
-        MarginalDeterminismTreeNode(variables={x}, query_set={x}, parent=parent)
-        MarginalDeterminismTreeNode(variables={y}, query_set={y}, parent=parent)
+        MarginalDeterminismTreeNode(variables={x}, query_set={x}, _parent_node=parent)
+        MarginalDeterminismTreeNode(variables={y}, query_set={y}, _parent_node=parent)
         self.assertFalse(parent.is_leaf)
 
     def test_node_with_empty_query_set_is_leaf(self):
@@ -199,8 +199,8 @@ class MarginalDeterminismTreeNodeFindVariableTestCase(unittest.TestCase):
     def setUp(self):
         self.x, self.y = Continuous("x"), Continuous("y")
         self.root = MarginalDeterminismTreeNode(variables={self.x, self.y}, query_set={self.x})
-        MarginalDeterminismTreeNode(variables={self.x}, query_set={self.x}, parent=self.root)
-        MarginalDeterminismTreeNode(variables={self.y}, query_set={self.y}, parent=self.root)
+        MarginalDeterminismTreeNode(variables={self.x}, query_set={self.x}, _parent_node=self.root)
+        MarginalDeterminismTreeNode(variables={self.y}, query_set={self.y}, _parent_node=self.root)
 
     def test_finds_variable_in_root_query_set(self):
         found = self.root.find_node_for_variable(self.x)
@@ -232,8 +232,8 @@ class MarginalDeterminismTreeNodeAllQuerySetsTestCase(unittest.TestCase):
     def test_three_node_tree_returns_three_query_sets(self):
         x, y = Continuous("x"), Continuous("y")
         root = MarginalDeterminismTreeNode(variables={x, y}, query_set={x})
-        MarginalDeterminismTreeNode(variables={x}, query_set={x}, parent=root)
-        MarginalDeterminismTreeNode(variables={y}, query_set={y}, parent=root)
+        MarginalDeterminismTreeNode(variables={x}, query_set={x}, _parent_node=root)
+        MarginalDeterminismTreeNode(variables={y}, query_set={y}, _parent_node=root)
         self.assertEqual(len(root.all_query_sets()), 3)
 
     def test_empty_query_set_not_included(self):
@@ -243,8 +243,8 @@ class MarginalDeterminismTreeNodeAllQuerySetsTestCase(unittest.TestCase):
     def test_query_sets_returned_in_preorder(self):
         x, y, z = Continuous("x"), Continuous("y"), Continuous("z")
         root = MarginalDeterminismTreeNode(variables={x, y, z}, query_set={x})
-        MarginalDeterminismTreeNode(variables={y}, query_set={y}, parent=root)
-        MarginalDeterminismTreeNode(variables={z}, query_set={z}, parent=root)
+        MarginalDeterminismTreeNode(variables={y}, query_set={y}, _parent_node=root)
+        MarginalDeterminismTreeNode(variables={z}, query_set={z}, _parent_node=root)
         self.assertIn(x, root.all_query_sets()[0])
 
 

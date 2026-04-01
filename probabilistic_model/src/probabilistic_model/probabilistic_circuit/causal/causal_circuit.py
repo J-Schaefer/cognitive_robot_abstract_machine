@@ -1,13 +1,3 @@
-"""
-causal_circuit
-==============
-Provides CausalCircuit, an extension of ProbabilisticCircuit with exact,
-tractable causal inference using the marginal determinism framework (md-vtree).
-
-Also provides MarginalDeterminismTreeNode for constructing the causal graph
-structure, and dataclasses for verification and query results.
-"""
-
 from __future__ import annotations
 
 import copy
@@ -15,10 +5,10 @@ import itertools
 import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
-
-import numpy as np
+from tabulate import tabulate
 from anytree import NodeMixin, PreOrderIter, findall
 from scipy.special import logsumexp
+
 from random_events.interval import closed
 from random_events.product_algebra import SimpleEvent
 from random_events.variable import Variable
@@ -29,10 +19,7 @@ from probabilistic_model.probabilistic_circuit.rx.probabilistic_circuit import (
     SumUnit,
     leaf,
 )
-
-from tabulate import tabulate
-
-from .utils import (
+from probabilistic_model.probabilistic_circuit.causal.utils import (
     attach_marginal_circuit,
     sum_unit_is_normalized,
 )
@@ -58,7 +45,7 @@ class MarginalDeterminismTreeNode(NodeMixin):
     :param variables: All Variables in this node's subtree.
     :param query_set: Variables for which SumUnits at this level must be
         support-deterministic. Defaults to an empty set.
-    :param parent: Parent node in the tree. None for the root.
+    :param _parent_node: Parent node in the tree. None for the root.
     """
 
     variables: Set[Variable]
@@ -68,17 +55,11 @@ class MarginalDeterminismTreeNode(NodeMixin):
     """Variables for which SumUnits at this level must be support-deterministic.
     Defaults to an empty set."""
 
-    parent: Optional[MarginalDeterminismTreeNode] = field(default=None, init=False)
-    """Parent node in the tree. None for the root. Set via _parent_node."""
-
     _parent_node: Optional[MarginalDeterminismTreeNode] = field(default=None, repr=False)
-    """Init-only carrier for the parent value. Consumed by __post_init__."""
+    """NodeMixin manages the parent property as a descriptor, declaring it as a
+    dataclass field would shadow that descriptor and break tree wiring."""
 
     def __post_init__(self) -> None:
-        # NodeMixin.__init__ must run before self.parent is assigned.
-        # parent is excluded from the dataclass __init__ (init=False) so that
-        # NodeMixin.__setattr__ only fires here, after super().__init__() has
-        # prepared NodeMixin's internal node registry.
         super().__init__()
         if self.query_set is None:
             self.query_set = set()
@@ -492,8 +473,7 @@ class CausalCircuit:
         :param query_variable: The query Variable to check marginal disjointness on.
         :returns: A violation if overlapping children are detected, else None.
         """
-        # Skip support events that do not cover query_variable — calling
-        # marginal() on an event that lacks the variable raises KeyError.
+
         if not all(query_variable in event.variables for event in child_support_events):
             return None
         child_marginals = [
