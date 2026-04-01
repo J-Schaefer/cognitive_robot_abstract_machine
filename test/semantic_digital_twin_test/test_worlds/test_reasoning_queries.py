@@ -29,10 +29,12 @@ def test_query_semantic_annotations_on_surfaces(kitchen_environment_fixture):
     carrot = kitchen_environment_fixture.get_semantic_annotation_by_name("carrot")
     orange = kitchen_environment_fixture.get_semantic_annotation_by_name("orange")
     lettuce = kitchen_environment_fixture.get_semantic_annotation_by_name("lettuce")
+    banana1 = kitchen_environment_fixture.get_semantic_annotation_by_name("banana1")
 
     assert query_semantic_annotations_on_surfaces([table1, table2, table3], kitchen_environment_fixture) == [
         apple,
         orange,
+        banana1,
         carrot,
         lettuce
     ]
@@ -58,15 +60,15 @@ def test_get_next_object_using_planar_distance(kitchen_environment_fixture):
     lettuce = kitchen_environment_fixture.get_semantic_annotation_by_name("lettuce")
     banana1 = kitchen_environment_fixture.get_semantic_annotation_by_name("banana1")
 
-    # assert get_next_object_using_planar_distance(toya, table1, Vector3.Z).tolist() == [orange, apple]
-    # assert get_next_object_using_planar_distance(toya, table2, Vector3.Z).tolist() == [
-    #     carrot,
-    #     lettuce,
-    # ]
-    #assert get_next_object_using_planar_distance(apple.bodies[0], table1, Vector3.Z).tolist() == [apple, banana1, orange]
-    print(get_next_object_using_planar_distance(apple.bodies[0], table1, Vector3.X()).tolist())# == [apple, orange, banana1]
-    #print(get_next_object_using_planar_distance(apple.bodies[0], table1, Vector3.Y).tolist())
-    # assert get_next_object_using_planar_distance(toya, table3, Vector3.Z).tolist() == []
+    assert get_next_object_using_planar_distance(toya, table1, Vector3.Z()).tolist() == [orange, banana1, apple]
+    assert get_next_object_using_planar_distance(toya, table2, Vector3.Z()).tolist() == [
+        carrot,
+        lettuce,
+    ]
+    assert get_next_object_using_planar_distance(apple.bodies[0], table1, Vector3.Z()).tolist() == [apple, banana1, orange]
+    assert get_next_object_using_planar_distance(apple.bodies[0], table1, Vector3.Y()).tolist() == [apple, orange, banana1]
+
+    assert get_next_object_using_planar_distance(toya, table3, Vector3.Z()).tolist() == []
 
 
 def test_query_surface_of_most_similar_obj(kitchen_environment_fixture):

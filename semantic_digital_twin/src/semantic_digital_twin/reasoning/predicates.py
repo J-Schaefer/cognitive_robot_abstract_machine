@@ -205,28 +205,19 @@ def compute_euclidean_distance_2d(body1: Body, body2: Body, ignore_dimension: Ve
     body1_position = body1.global_pose.to_position()
     body2_position = body2.global_pose.to_position()
 
-    if ignore_dimension == Vector3.X():
+    if np.allclose(ignore_dimension, Vector3.X()):
         body1_position.x = 0.0
         body2_position.x = 0.0
-    if ignore_dimension == Vector3.Y():
+    if np.allclose(ignore_dimension, Vector3.Y()):
         body1_position.y = 0.0
         body2_position.y = 0.0
-    if ignore_dimension == Vector3.Z():
+    if np.allclose(ignore_dimension, Vector3.Z()):
         body1_position.z = 0.0
         body2_position.z = 0.0
 
-    # match ignore_dimension:
-    #     case Vector3.Z():
-    #         body1_position.z = 0.0
-    #         body2_position.z = 0.0
 
-    print(body1.name)
-    print(Point3.euclidean_distance(body1_position, body2_position))
-
-    return Point3.euclidean_distance(
-        body1_position, body2_position
-        # body1.global_pose.to_position().to_list(),#[:2],
-        # body2.global_pose.to_position().to_list()#[:2],
+    return body1_position.euclidean_distance(
+        body2_position
     )
 
 
