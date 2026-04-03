@@ -85,3 +85,6 @@ class FeatureComparatorFactory:
         :param weight: The weight to assign the annotation type.
         :return: A feature comparator instance for the given annotation type or None if the type is not supported.
         """
+        if rk_type not in cls.annotator_comparators:
+            return None
+        return FeatureComparatorFactory.annotator_comparators[rk_type](weight)
