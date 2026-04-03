@@ -140,28 +140,37 @@ class COACDMeshDecomposer(MeshDecomposer):
 
     threshold: float = 0.05
     """
-    Concavity threshold for terminating the decomposition (0.01 - 1)
+    Determines how much the decomposed parts can deviate from the original shape. 
+    A lower value leads to more pieces and higher precision, while a higher value allows for a 
+    "looser," simpler approximation.
     """
 
     max_convex_hull: Optional[int] = None
     """
-    Maximum number of convex hulls in the result. 
+    Limits the total number of convex pieces generated. 
+    If set to None, the algorithm will keep creating pieces until the threshold is met.
     Works only when merge is enabled (may introduce convex hull with a concavity larger than the threshold)
     """
 
     preprocess_mode: PreprocessingMode = PreprocessingMode.AUTO
     """
-    Manifold preprocessing mode.
+    Determines if the mesh is cleaned before processing.
     """
 
     preprocess_resolution: int = 50
     """
-    Resolution for manifold preprocess (20~100)
+    The grid size used during the initial cleanup phase. 
+    Low values are fast but might "melt" away small features of 
+    your model before the main decomposition even starts.
+    Range: 20 - 100
     """
 
     resolution: int = 2000
     """
-    Sampling resolution for Hausdorff distance calculation (1 000 - 10 000)
+    Defines the sampling density of the input mesh. 
+    Think of it like the "DPI" of a printer; a higher resolution captures 
+    finer details of the surface but increases the time it takes to calculate the decomposition.
+    Range: 1 000 - 10 000
     """
 
     search_nodes: int = 20
@@ -181,27 +190,39 @@ class COACDMeshDecomposer(MeshDecomposer):
 
     pca: bool = False
     """
-    Enable PCA pre-processing
+    Enable PCA pre-processing.
+    Stands for Principal Component Analysis. 
+    If enabled, it uses the orientation of the object’s volume to align the decomposition cuts. 
+    It’s great for long, thin objects but can sometimes ignore local symmetry.
     """
 
     merge: bool = True
     """
     Enable merge postprocessing.
+    After splitting the mesh, 
+    the algorithm checks if any adjacent pieces are "convex enough" to be joined back together. 
+    This helps keep the final count of pieces low without sacrificing much accuracy.
     """
 
     max_convex_hull_vertices: Optional[int] = None
     """
     Maximum vertex value for each convex hull, only when decimate is enabled.
+    Limits how many "corners" (vertices) each individual convex piece can have. 
+    This is vital for physics engines (like Bullet or PhysX) which often have a hard limit (e.g., 32 or 64 vertices)
+    for real-time performance.
     """
 
     extrude_margin: Optional[float] = None
     """
-    Extrude margin, only when extrude is enabled
+    Extrude margin, only when extrude is enabled.
+    Adds a small "padding" or thickness to the generated pieces. 
+    Useful if you're experiencing "tunneling" 
+    in physics simulations where objects pass through each other.
     """
 
     approximation_mode: ApproximationMode = ApproximationMode.BOX
     """
-    Approximation mode to use.
+    Defines the shape of the primitives used during the search phase.
     """
 
     seed: int = field(default_factory=lambda: np.random.randint(2**32))

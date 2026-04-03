@@ -9,6 +9,7 @@ from semantic_digital_twin.adapters.sage_10k_dataset.schema import Sage10kScene
 from semantic_digital_twin.pipeline.mesh_decomposer import (
     COACDMeshDecomposer,
     VHACDMeshDecomposer,
+    PreprocessingMode,
 )
 from semantic_digital_twin.pipeline.pipeline import Pipeline
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
@@ -69,7 +70,9 @@ def test_different_decomposition_methods(
         room.doors = []
 
     world = scene.create_world()
-    decomposer = COACDMeshDecomposer(threshold=0.01)
+    decomposer = COACDMeshDecomposer(
+        threshold=0.05, preprocess_mode=PreprocessingMode.ON
+    )
     pipeline = Pipeline([decomposer])
     world = pipeline.apply(world)
 
