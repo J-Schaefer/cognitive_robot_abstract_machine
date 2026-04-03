@@ -14,7 +14,9 @@ from typing_extensions import Callable, List, Protocol, Dict, Any, Optional, Set
 import robokudo.cas
 from random_events.utils import recursive_subclasses
 from robokudo.defs import PACKAGE_NAME
-from robokudo.types.annotation import BoundingBox3DAnnotation
+from robokudo.types.annotation import (
+    BoundingBox3DAnnotation,
+)
 from robokudo.types.cv import TSDFAnnotation
 from robokudo.utils.annotator_helper import get_cam_to_world_transform_matrix
 from robokudo.utils.comparators import (

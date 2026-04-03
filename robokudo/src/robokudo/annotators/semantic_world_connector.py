@@ -1,5 +1,5 @@
-from robokudo.types.cv import TSDFAnnotation
 from timeit import default_timer
+
 import numpy as np
 from py_trees.common import Status
 from typing_extensions import Optional, Dict, Any
@@ -14,6 +14,7 @@ from robokudo.types.annotation import (
     SemanticColor,
     ColorHistogram,
 )
+from robokudo.types.cv import TSDFAnnotation
 from robokudo.types.scene import ObjectHypothesis
 
 
