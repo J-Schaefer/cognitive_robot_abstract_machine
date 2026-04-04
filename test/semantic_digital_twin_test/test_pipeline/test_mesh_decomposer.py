@@ -3,10 +3,8 @@ import os
 import pytest
 
 from semantic_digital_twin.adapters.mesh import STLParser
-from semantic_digital_twin.pipeline.mesh_decomposer import (
-    COACDMeshDecomposer,
-    VHACDMeshDecomposer,
-)
+from semantic_digital_twin.pipeline.mesh_decomposition.vhacd import VHACDMeshDecomposer
+from semantic_digital_twin.pipeline.mesh_decomposition.coacd import COACDMeshDecomposer
 from semantic_digital_twin.pipeline.pipeline import Pipeline
 
 

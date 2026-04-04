@@ -2,16 +2,10 @@
 
 from __future__ import annotations
 from sqlalchemy import (
-    Column,
     ForeignKey,
     Integer,
     String,
-    Float,
-    Boolean,
-    DateTime,
-    Enum,
     JSON,
-    Table,
 )
 from sqlalchemy.orm import relationship, Mapped, mapped_column, DeclarativeBase
 
@@ -121,7 +115,7 @@ import semantic_digital_twin.exceptions
 import semantic_digital_twin.mixin
 import semantic_digital_twin.orm.exceptions
 import semantic_digital_twin.orm.model
-import semantic_digital_twin.pipeline.mesh_decomposer
+import semantic_digital_twin.pipeline.mesh_decomposition.base
 import semantic_digital_twin.pipeline.pipeline
 import semantic_digital_twin.reasoning.predicates
 import semantic_digital_twin.reasoning.reasoner
@@ -166,7 +160,6 @@ import semantic_digital_twin.world_description.world_state_trajectory_plotter
 import sqlalchemy.sql.sqltypes
 import trimesh.base
 import typing
-import typing_extensions
 import uuid
 
 
@@ -10139,7 +10132,9 @@ class CenterLocalGeometryAndPreserveWorldPoseDAO(
 
 class MeshDecomposerDAO(
     StepDAO,
-    DataAccessObject[semantic_digital_twin.pipeline.mesh_decomposer.MeshDecomposer],
+    DataAccessObject[
+        semantic_digital_twin.pipeline.mesh_decomposition.mesh_decomposer.MeshDecomposer
+    ],
 ):
 
     __tablename__ = "MeshDecomposerDAO"
@@ -10157,7 +10152,7 @@ class MeshDecomposerDAO(
 class COACDMeshDecomposerDAO(
     MeshDecomposerDAO,
     DataAccessObject[
-        semantic_digital_twin.pipeline.mesh_decomposer.COACDMeshDecomposer
+        semantic_digital_twin.pipeline.mesh_decomposition.mesh_decomposer.COACDMeshDecomposer
     ],
 ):
 
@@ -10191,14 +10186,14 @@ class COACDMeshDecomposerDAO(
     seed: Mapped[builtins.int] = mapped_column(use_existing_column=True)
 
     preprocess_mode: Mapped[
-        semantic_digital_twin.pipeline.mesh_decomposer.PreprocessingMode
+        semantic_digital_twin.pipeline.mesh_decomposition.mesh_decomposer.PreprocessingMode
     ] = mapped_column(
         krrood.ormatic.custom_types.PolymorphicEnumType,
         nullable=False,
         use_existing_column=True,
     )
     approximation_mode: Mapped[
-        semantic_digital_twin.pipeline.mesh_decomposer.ApproximationMode
+        semantic_digital_twin.pipeline.mesh_decomposition.mesh_decomposer.ApproximationMode
     ] = mapped_column(
         krrood.ormatic.custom_types.PolymorphicEnumType,
         nullable=False,

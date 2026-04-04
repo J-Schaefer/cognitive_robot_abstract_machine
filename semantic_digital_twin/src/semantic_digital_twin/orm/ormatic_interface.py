@@ -2,16 +2,10 @@
 
 from __future__ import annotations
 from sqlalchemy import (
-    Column,
     ForeignKey,
     Integer,
     String,
-    Float,
-    Boolean,
-    DateTime,
-    Enum,
     JSON,
-    Table,
 )
 from sqlalchemy.orm import relationship, Mapped, mapped_column, DeclarativeBase
 
@@ -36,7 +30,7 @@ import semantic_digital_twin.mixin
 import semantic_digital_twin.orm.exceptions
 import semantic_digital_twin.orm.model
 import semantic_digital_twin.pipeline.gltf_loader
-import semantic_digital_twin.pipeline.mesh_decomposer
+import semantic_digital_twin.pipeline.mesh_decomposition.base
 import semantic_digital_twin.pipeline.pipeline
 import semantic_digital_twin.reasoning.predicates
 import semantic_digital_twin.reasoning.reasoner
@@ -81,7 +75,6 @@ import semantic_digital_twin.world_description.world_state_trajectory_plotter
 import sqlalchemy.sql.sqltypes
 import trimesh.base
 import typing
-import typing_extensions
 import uuid
 
 
@@ -90,6 +83,7 @@ from krrood.ormatic.data_access_objects.dao import (
     AssociationDataAccessObject,
 )
 from krrood.ormatic.custom_types import TypeType
+from semantic_digital_twin.pipeline.mesh_decomposition import coacd, vhacd
 
 
 class Base(DeclarativeBase):
@@ -3958,7 +3952,9 @@ class GLTFLoaderDAO(
 
 class MeshDecomposerDAO(
     StepDAO,
-    DataAccessObject[semantic_digital_twin.pipeline.mesh_decomposer.MeshDecomposer],
+    DataAccessObject[
+        semantic_digital_twin.pipeline.mesh_decomposition.mesh_decomposer.MeshDecomposer
+    ],
 ):
 
     __tablename__ = "MeshDecomposerDAO"
@@ -3975,9 +3971,7 @@ class MeshDecomposerDAO(
 
 class COACDMeshDecomposerDAO(
     MeshDecomposerDAO,
-    DataAccessObject[
-        semantic_digital_twin.pipeline.mesh_decomposer.COACDMeshDecomposer
-    ],
+    DataAccessObject[coacd.COACDMeshDecomposer],
 ):
 
     __tablename__ = "COACDMeshDecomposerDAO"
@@ -4009,16 +4003,12 @@ class COACDMeshDecomposerDAO(
     )
     seed: Mapped[builtins.int] = mapped_column(use_existing_column=True)
 
-    preprocess_mode: Mapped[
-        semantic_digital_twin.pipeline.mesh_decomposer.PreprocessingMode
-    ] = mapped_column(
+    preprocess_mode: Mapped[coacd.PreprocessingMode] = mapped_column(
         krrood.ormatic.custom_types.PolymorphicEnumType,
         nullable=False,
         use_existing_column=True,
     )
-    approximation_mode: Mapped[
-        semantic_digital_twin.pipeline.mesh_decomposer.ApproximationMode
-    ] = mapped_column(
+    approximation_mode: Mapped[coacd.ApproximationMode] = mapped_column(
         krrood.ormatic.custom_types.PolymorphicEnumType,
         nullable=False,
         use_existing_column=True,
@@ -4553,9 +4543,7 @@ class ReferenceFrameMismatchErrorDAO(
 
 class VHACDMeshDecomposerDAO(
     MeshDecomposerDAO,
-    DataAccessObject[
-        semantic_digital_twin.pipeline.mesh_decomposer.VHACDMeshDecomposer
-    ],
+    DataAccessObject[vhacd.VHACDMeshDecomposer],
 ):
 
     __tablename__ = "VHACDMeshDecomposerDAO"
@@ -4580,12 +4568,10 @@ class VHACDMeshDecomposerDAO(
     min_edge_length: Mapped[builtins.int] = mapped_column(use_existing_column=True)
     find_best_plane: Mapped[builtins.bool] = mapped_column(use_existing_column=True)
 
-    fill_mode: Mapped[semantic_digital_twin.pipeline.mesh_decomposer.FillMode] = (
-        mapped_column(
-            krrood.ormatic.custom_types.PolymorphicEnumType,
-            nullable=False,
-            use_existing_column=True,
-        )
+    fill_mode: Mapped[vhacd.FillMode] = mapped_column(
+        krrood.ormatic.custom_types.PolymorphicEnumType,
+        nullable=False,
+        use_existing_column=True,
     )
 
     __mapper_args__ = {

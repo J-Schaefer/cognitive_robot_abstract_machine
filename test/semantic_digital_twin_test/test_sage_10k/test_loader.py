@@ -6,16 +6,12 @@ from semantic_digital_twin.adapters.ros.visualization.viz_marker import (
 )
 from semantic_digital_twin.adapters.sage_10k_dataset.loader import Sage10kDatasetLoader
 from semantic_digital_twin.adapters.sage_10k_dataset.schema import Sage10kScene
-from semantic_digital_twin.pipeline.mesh_decomposer import (
-    COACDMeshDecomposer,
-    VHACDMeshDecomposer,
+from semantic_digital_twin.pipeline.mesh_decomposition.coacd import (
     PreprocessingMode,
+    COACDMeshDecomposer,
 )
 from semantic_digital_twin.pipeline.pipeline import Pipeline
-from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world import World
-from semantic_digital_twin.world_description.geometry import Mesh
-from semantic_digital_twin.world_description.shape_collection import ShapeCollection
 
 
 def verify_scene(world: World, scene: Sage10kScene):
