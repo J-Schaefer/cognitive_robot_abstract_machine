@@ -52,18 +52,11 @@ def test_vhacd(jeroen_cup_world_fixture):
     assert len(cup.collision.shapes) > old_collision_length
 
 
-def test_box_decomposer(jeroen_cup_world_fixture, rclpy_node):
+def test_box_decomposer(jeroen_cup_world_fixture):
     [cup] = jeroen_cup_world_fixture.bodies
     old_collision_length = len(cup.collision.shapes)
 
-    pipeline = Pipeline([BoxDecomposer()])
+    pipeline = Pipeline([BoxDecomposer(voxel_size=0.01)])
     pipeline.apply(jeroen_cup_world_fixture)
 
     assert len(cup.collision.shapes) > old_collision_length
-
-    pub = VizMarkerPublisher(
-        _world=jeroen_cup_world_fixture,
-        node=rclpy_node,
-        shape_source=ShapeSource.COLLISION_ONLY,
-    )
-    pub.with_tf_publisher()

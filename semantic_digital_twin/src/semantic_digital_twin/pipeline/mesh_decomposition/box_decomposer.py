@@ -1,21 +1,3 @@
-#!/usr/bin/env python3
-"""
-Decompose a mesh into:
-1) planar board-like boxes detected from voxel slabs
-2) leftover boxes from greedy voxel merging
-
-Then export:
-- JSON list of boxes, each with position and size
-- MJCF file with MuJoCo box geoms
-
-This refined version fixes a common issue where planar boards become too thick:
-- when multiple slab thicknesses fit the same board, it prefers the THINNEST one
-  instead of the largest-volume one.
-
-Usage:
-    python decompose_ply_to_mjcf.py input.ply --pitch 0.02 --output-dir out
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -347,16 +329,29 @@ class BoxDecomposer(MeshDecomposer):
     """
     Decompose a mesh into boxes using voxelization.
     This is very efficient and works well for blocky furniture.
+    This works poorly for non-blocky furniture.
+
+    A board in this context is something like a board (the supporting surfaces that hold books) in a bookshelf.
+
+    The algorithm works by first voxelizing the mesh and removing thin voxel cracks.
+    Next, it detects planar boards and then for each axis (X, Y, Z):
+
+        Extract thin slabs (1–N voxels thick)
+
+        Deduplicate boards
+
+        Remove overlapping duplicates, preferring thinner boards.
+
+        Merge leftovers
+
+
+    The results are that large planar structures (shelves, walls) become clean single boxes,
+    while smaller details are handled separately.
     """
 
     voxel_size: float = 0.02
     """
     Voxel size in mesh units.
-    """
-
-    fill: bool = True
-    """
-    Rather to call call trimesh voxel fill or not
     """
 
     fill_thin_holes: bool = True
@@ -366,16 +361,20 @@ class BoxDecomposer(MeshDecomposer):
 
     max_board_thickness: int = 2
     """
-    Max board thickness in voxels.
+    Maximum board thickness in voxels.
+    If a board is bigger than this in the Z direction, it will be clipped to this thickness.
     """
 
     min_span_voxel: int = 3
     """
-    Min board span in the other two axes.
+    Threshold for keeping boards.
+    If a board has less than this voxels in the XY plane, it is removed.
+    You can control the bumpiness in the XY plane using this parameter.
     """
 
     min_fill_ratio: float = 0.75
     """
+    TODO
     """
 
     overlap_threshold: float = 0.8
@@ -385,10 +384,7 @@ class BoxDecomposer(MeshDecomposer):
 
     def apply_to_mesh(self, mesh: Mesh) -> List[Box]:
         trimesh_mesh = mesh.mesh
-        voxelized = trimesh_mesh.voxelized(pitch=self.voxel_size)
-
-        if self.fill:
-            voxelized = voxelized.fill()
+        voxelized = trimesh_mesh.voxelized(pitch=self.voxel_size).fill()
 
         occupancy = voxelized.matrix.astype(bool)
         origin = np.asarray(voxelized.translation, dtype=float)
