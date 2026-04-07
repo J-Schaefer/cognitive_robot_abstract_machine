@@ -61,14 +61,10 @@ class MarginalDeterminismTreeNode(NodeMixin):
     the tree. Named parent_node so it does not shadow NodeMixin's parent descriptor."""
 
     def __post_init__(self) -> None:
+        NodeMixin.__init__(self)
         if self.query_set is None:
             self.query_set = set()
         self.parent = self.parent_node
-
-    def __new__(cls, *args, **kwargs):
-        instance = super().__new__(cls)
-        NodeMixin.__init__(instance)
-        return instance
 
     def find_node_for_variable(
         self, variable: Variable
@@ -156,7 +152,18 @@ class MarginalDeterminismTreeNode(NodeMixin):
 
 
 @dataclass
-class MissingQueryVariableViolation:
+class SupportDeterminismViolation:
+    """
+    Base class for all violations produced by verify_support_determinism().
+
+    Subclass to implement a specific check violation. Each subclass carries
+    the structured data relevant to its check and overrides __str__ to produce
+    a readable description.
+    """
+
+
+@dataclass
+class MissingQueryVariableViolation(SupportDeterminismViolation):
     """
     Violation raised when a Variable declared in a query_set is absent from the circuit.
 
@@ -179,7 +186,7 @@ class MissingQueryVariableViolation:
 
 
 @dataclass
-class UnnormalizedSumUnitViolation:
+class UnnormalizedSumUnitViolation(SupportDeterminismViolation):
     """
     Violation raised when a SumUnit's log-weights do not sum to log(1).
 
@@ -202,7 +209,7 @@ class UnnormalizedSumUnitViolation:
 
 
 @dataclass
-class OverlappingChildSupportsViolation:
+class OverlappingChildSupportsViolation(SupportDeterminismViolation):
     """
     Violation raised when a SumUnit's children have overlapping marginal support
     on a declared query Variable.
@@ -226,16 +233,8 @@ class OverlappingChildSupportsViolation:
         )
 
 
-SupportDeterminismViolation = Union[
-    MissingQueryVariableViolation,
-    UnnormalizedSumUnitViolation,
-    OverlappingChildSupportsViolation,
-]
-"""Type alias for any violation produced by verify_support_determinism()."""
-
-
 @dataclass
-class SupportDeterminismVerificationResult:
+class SupportDeterminismVerificationResult(Exception):
     """
     Result of verifying support determinism of a circuit against its
     Marginal Determinism Variable Tree.
@@ -508,7 +507,7 @@ class CausalCircuit:
         return None
 
     def _check_support_disjointness(
-        self, all_query_variables: Set[Variable]
+            self, all_query_variables: Set[Variable]
     ) -> List[OverlappingChildSupportsViolation]:
         """
         Check that for each declared query Variable, no SumUnit that splits on
@@ -522,15 +521,15 @@ class CausalCircuit:
         :returns: List of violations, empty if all split nodes are support-disjoint.
         """
         violations: List[OverlappingChildSupportsViolation] = []
-        root_support_event = self.probabilistic_circuit.support
+        self.probabilistic_circuit.support
 
         for layer in self.probabilistic_circuit.layers:
             for node in layer:
-                if not isinstance(node, SumUnit) or len(node.subcircuits) < 2:
+                if not isinstance(node, SumUnit) or len(node.subcircuits) < 2 or len(node.variables) == 1:
                     continue
 
                 child_support_events = [
-                    getattr(child, "result_of_current_query", None)
+                    child.result_of_current_query
                     for child in node.subcircuits
                 ]
                 if any(event is None for event in child_support_events):
@@ -543,7 +542,6 @@ class CausalCircuit:
                     if violation is not None:
                         violations.append(violation)
 
-        del root_support_event
         return violations
 
     def verify_support_determinism(self) -> SupportDeterminismVerificationResult:
@@ -659,9 +657,6 @@ class CausalCircuit:
             return False
 
         effect_marginal_circuit = truncated_circuit.marginal([effect_variable])
-        if effect_marginal_circuit is None:
-            return False
-
         cause_region_circuit, _ = copy.deepcopy(
             cause_marginal_circuit
         ).log_truncated_in_place(
@@ -677,10 +672,10 @@ class CausalCircuit:
         return True
 
     def _compute_interventional_circuit_without_adjustment(
-        self,
-        cause_variable: Variable,
-        effect_variable: Variable,
-        query_resolution: float,
+            self,
+            cause_variable: Variable,
+            effect_variable: Variable,
+            query_resolution: float,
     ) -> ProbabilisticCircuit:
         """
         Compute P(cause, effect | do(cause)) with an empty adjustment set.
@@ -701,11 +696,6 @@ class CausalCircuit:
         :returns: Joint interventional circuit over (cause, effect).
         """
         cause_marginal_circuit = copy.deepcopy(self.probabilistic_circuit).marginal([cause_variable])
-        if cause_marginal_circuit is None:
-            raise ValueError(
-                f"Could not compute cause marginal for '{cause_variable.name}'."
-            )
-
         output_circuit = ProbabilisticCircuit()
         root_sum_unit = SumUnit(probabilistic_circuit=output_circuit)
         regions_added = sum(
@@ -792,11 +782,11 @@ class CausalCircuit:
         return regions_added
 
     def _compute_interventional_circuit_with_adjustment(
-        self,
-        cause_variable: Variable,
-        effect_variable: Variable,
-        adjustment_variables: List[Variable],
-        query_resolution: float,
+            self,
+            cause_variable: Variable,
+            effect_variable: Variable,
+            adjustment_variables: List[Variable],
+            query_resolution: float,
     ) -> ProbabilisticCircuit:
         """
         Compute P(cause, effect | do(cause)) with a non-empty adjustment set Z.
@@ -811,11 +801,6 @@ class CausalCircuit:
         :returns: Joint interventional circuit over (cause, effect).
         """
         cause_marginal_circuit = copy.deepcopy(self.probabilistic_circuit).marginal([cause_variable])
-        if cause_marginal_circuit is None:
-            raise ValueError(
-                f"Could not compute cause marginal for '{cause_variable.name}'."
-            )
-
         output_circuit = ProbabilisticCircuit()
         root_sum_unit = SumUnit(probabilistic_circuit=output_circuit)
         regions_added = sum(
