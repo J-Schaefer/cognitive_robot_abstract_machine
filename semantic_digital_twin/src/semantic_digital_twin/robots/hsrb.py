@@ -195,7 +195,7 @@ class HSRB(AbstractRobot, HasArms, HasNeck):
             "collision_configs",
             "hsrb.srdf",
         )
-        self._world.collision_manager.ignore_collision_rules.append(
+        self._world.collision_manager.add_ignore_collision_rule(
             SelfCollisionMatrixRule.from_collision_srdf(srdf_path, self._world)
         )
         self._world.collision_manager.add_default_rule(

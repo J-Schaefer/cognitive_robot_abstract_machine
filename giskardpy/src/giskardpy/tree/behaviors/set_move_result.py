@@ -27,10 +27,10 @@ class SetMoveResult(GiskardBehavior):
         match e:
             case ExecutionCanceledException():
                 GiskardBlackboard().move_action_server.set_canceled()
-            case ExecutionAbortedException():
-                GiskardBlackboard().move_action_server.set_aborted()
             case None:
                 GiskardBlackboard().move_action_server.set_succeeded()
+            case _:
+                GiskardBlackboard().move_action_server.set_aborted()
 
         result = {
             "life_cycle_state": GiskardBlackboard().motion_statechart.life_cycle_state.to_json(),

@@ -2,12 +2,12 @@ import json
 
 import numpy as np
 import pytest
-
 from giskardpy.executor import Executor, SimulationPacer
 from giskardpy.motion_statechart.context import MotionStatechartContext
 from giskardpy.motion_statechart.data_types import (
     DefaultWeights,
 )
+from giskardpy.motion_statechart.exceptions import CollisionViolatedError
 from giskardpy.motion_statechart.goals.collision_avoidance import (
     ExternalCollisionAvoidance,
     SelfCollisionAvoidance,
@@ -35,7 +35,6 @@ from giskardpy.motion_statechart.tasks.cartesian_tasks import (
     CartesianPose,
 )
 from giskardpy.motion_statechart.tasks.joint_tasks import JointState
-from giskardpy.qp.exceptions import HardConstraintsViolatedException
 from giskardpy.qp.qp_controller_config import QPControllerConfig
 from semantic_digital_twin.adapters.ros.visualization.viz_marker import (
     VizMarkerPublisher,
@@ -801,5 +800,6 @@ def test_hard_constraints_violated(cylinder_bot_world: World, rclpy_node):
     )
     kin_sim.compile(motion_statechart=msc_copy)
 
-    with pytest.raises(HardConstraintsViolatedException):
+    with pytest.raises(CollisionViolatedError) as exc_info:
         kin_sim.tick_until_end()
+    assert len(exc_info.value.violated_collisions) == 2

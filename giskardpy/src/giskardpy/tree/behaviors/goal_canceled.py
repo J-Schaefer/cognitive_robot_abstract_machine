@@ -21,7 +21,6 @@ class GoalCanceled(GiskardBehavior):
             and self.get_blackboard_exception() is None
             or not self.action_server.is_client_alive()
         ):
-            GiskardBlackboard().move_action_server.set_canceled()
             self.action_server.loginfo("canceled")
             raise_to_blackboard(
                 ExecutionCanceledException(
