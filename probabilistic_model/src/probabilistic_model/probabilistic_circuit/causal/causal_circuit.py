@@ -160,7 +160,9 @@ class SupportDeterminismViolation(DataclassException):
 
     Inherits from DataclassException so each violation is also a raiseable
     exception. Subclasses set self.message in __post_init__ before calling
-    super().__post_init__().
+    super().__post_init__(). String representation is handled by
+    DataclassException via Exception.__str__, which returns self.message
+    through the args tuple set in __post_init__.
     """
 
 
@@ -187,9 +189,6 @@ class MissingQueryVariableViolation(SupportDeterminismViolation):
         )
         super().__post_init__()
 
-    def __str__(self) -> str:
-        return self.message
-
 
 @dataclass
 class UnnormalizedSumUnitViolation(SupportDeterminismViolation):
@@ -213,9 +212,6 @@ class UnnormalizedSumUnitViolation(SupportDeterminismViolation):
             f"Unnormalized circuits produce incorrect backdoor probabilities."
         )
         super().__post_init__()
-
-    def __str__(self) -> str:
-        return self.message
 
 
 @dataclass
@@ -242,9 +238,6 @@ class OverlappingChildSupportsViolation(SupportDeterminismViolation):
             f"support-deterministic for this Variable."
         )
         super().__post_init__()
-
-    def __str__(self) -> str:
-        return self.message
 
 
 @dataclass
