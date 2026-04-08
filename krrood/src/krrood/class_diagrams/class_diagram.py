@@ -5,9 +5,11 @@ import logging
 from abc import ABC
 from copy import copy
 from dataclasses import dataclass, make_dataclass, is_dataclass
-from dataclasses import field, InitVar
+from dataclasses import field as dataclass_field, InitVar
 from functools import cached_property, lru_cache
-from typing import get_args, get_origin, _GenericAlias, Any
+from typing import _GenericAlias
+
+from typing_extensions import get_args, get_origin, Any
 
 import rustworkx as rx
 
@@ -36,7 +38,7 @@ from krrood.class_diagrams.attribute_introspector import (
     AttributeIntrospector,
     DataclassOnlyIntrospector,
 )
-from krrood.class_diagrams.utils import Role, get_generic_type_param
+from krrood.class_diagrams.utils import Role, get_generic_type_param, resolve_type
 from krrood.class_diagrams.wrapped_field import WrappedField
 
 from krrood.class_diagrams.exceptions import ClassIsUnMappedInClassDiagram
@@ -133,12 +135,12 @@ class ParseError(TypeError):
 class WrappedClass:
     """A node wrapper around a Python class used in the class diagram graph."""
 
-    index: Optional[int] = field(init=False, default=None)
+    index: Optional[int] = dataclass_field(init=False, default=None)
     clazz: Type
-    _class_diagram: Optional[ClassDiagram] = field(
+    _class_diagram: Optional[ClassDiagram] = dataclass_field(
         init=False, hash=False, default=None, repr=False
     )
-    _wrapped_field_name_map_: Dict[str, WrappedField] = field(
+    _wrapped_field_name_map_: Dict[str, WrappedField] = dataclass_field(
         init=False, hash=False, default_factory=dict, repr=False
     )
 
@@ -222,14 +224,14 @@ class ClassDiagram:
 
     classes: InitVar[List[Type]]
 
-    introspector: AttributeIntrospector = field(
+    introspector: AttributeIntrospector = dataclass_field(
         default_factory=DataclassOnlyIntrospector, init=True, repr=False
     )
 
-    _dependency_graph: rx.PyDiGraph[WrappedClass, ClassRelation] = field(
+    _dependency_graph: rx.PyDiGraph[WrappedClass, ClassRelation] = dataclass_field(
         default_factory=rx.PyDiGraph, init=False
     )
-    _cls_wrapped_cls_map: Dict[Type, WrappedClass] = field(
+    _cls_wrapped_cls_map: Dict[Type, WrappedClass] = dataclass_field(
         default_factory=dict, init=False, repr=False
     )
 
@@ -602,8 +604,11 @@ class ClassDiagram:
         for clazz in self.wrapped_classes:
             for wrapped_field in clazz.fields:
                 target_type = wrapped_field.type_endpoint
-
                 try:
+                    if isinstance(target_type, TypeVar):
+                        target_type = target_type.__bound__
+                    if target_type is None:
+                        continue
                     wrapped_target_class = self.get_wrapped_class(target_type)
                 except ClassIsUnMappedInClassDiagram:
                     continue
@@ -767,11 +772,20 @@ class ClassDiagram:
             if not is_dataclass(get_origin(next_type)):
                 continue
 
+            origin = get_origin(next_type)
+            if origin:
+                if not next_type.__parameters__ or all(
+                        isinstance(p, TypeVar) and p.__bound__ is not None for p in next_type.__parameters__):
+                    bindings = [p.__bound__ for p in next_type.__parameters__]
+                    if bindings:
+                        next_type = next_type[*bindings]
+                else:
+                    continue
+
             node = WrappedSpecializedGeneric(next_type)
             self.add_node(node)
 
             # Add explicit inheritance from the origin class
-            origin = get_origin(next_type)
             if origin:
                 try:
                     source_node = self.get_wrapped_class(origin)
@@ -786,70 +800,6 @@ class ClassDiagram:
                         self.get_wrapped_class(wrapped_field.type_endpoint)
                     except ClassIsUnMappedInClassDiagram:
                         to_process.add(wrapped_field.type_endpoint)
-
-
-def resolve_type(
-    type_to_resolve: Any,
-    substitution: Dict[TypeVar, Any],
-    name_substitution: Dict[str, Any],
-) -> Any:
-    """
-    Resolve type variables and forward references in a type.
-
-    :param type_to_resolve: The type to resolve.
-    :param substitution: Mapping of TypeVar to concrete types.
-    :param name_substitution: Mapping of TypeVar names to concrete types.
-    :return: The resolved type.
-    """
-    # Resolve string forward refs and TypeVar names
-    if isinstance(type_to_resolve, str):
-        if type_to_resolve in name_substitution:
-            return name_substitution[type_to_resolve]
-        return type_to_resolve
-
-    if isinstance(type_to_resolve, TypeVar):
-        return substitution.get(type_to_resolve, type_to_resolve)
-
-    # Get arguments and recursively resolve them
-    args = get_args(type_to_resolve)
-    if not args:
-        return type_to_resolve
-
-    resolved_args = tuple(
-        resolve_type(arg, substitution, name_substitution) for arg in args
-    )
-
-    # If the type itself can be indexed (like List[T] or Optional[T])
-    params = getattr(type_to_resolve, "__parameters__", None)
-    if hasattr(type_to_resolve, "__getitem__") and params:
-        if len(params) < len(resolved_args):
-            # Filter out NoneType if it's an Optional/Union and we have more args than parameters
-            new_args = tuple(arg for arg in resolved_args if arg is not type(None))
-            if len(new_args) == len(params):
-                if len(params) == 1:
-                    return type_to_resolve[new_args[0]]
-                return type_to_resolve[new_args]
-
-        if len(params) == 1 and len(resolved_args) == 1:
-            return type_to_resolve[resolved_args[0]]
-        return type_to_resolve[resolved_args]
-
-    # Fallback: re-construct from origin (e.g. for Union/Optional or built-in generics)
-    origin = get_origin(type_to_resolve)
-    if origin is not None:
-        # Special case for Union which might be represented as typing.Union
-        # and needs to be indexed.
-        if origin is Union:
-            return origin[resolved_args]
-        try:
-            return origin[resolved_args]
-        except TypeError:
-            # Some origins might not be indexable directly or might need single arg
-            if len(resolved_args) == 1:
-                return origin[resolved_args[0]]
-            raise
-
-    return type_to_resolve
 
 
 @lru_cache
@@ -874,8 +824,6 @@ def make_specialized_dataclass(alias: _GenericAlias) -> Type:
     args = get_args(alias)
     params: Tuple[TypeVar, ...] = template_class.__parameters__
     substitution = dict(zip(params, args))
-    # Also map by TypeVar name to handle postponed annotations ('T')
-    name_substitution = {p.__name__: a for p, a in substitution.items()}
 
     # Preserve dataclass parameters
     params_obj = template_class.__dataclass_params__
@@ -892,7 +840,7 @@ def make_specialized_dataclass(alias: _GenericAlias) -> Type:
     for f in dataclasses.fields(template_class):
         # Use the resolved hint if available, else fallback to the raw field type
         raw_type = resolved_hints.get(f.name, f.type)
-        new_type = resolve_type(raw_type, substitution, name_substitution)
+        type_resolution = resolve_type(raw_type, substitution)
         # Copy defaults and flags
         kwargs = dict(
             default=f.default,
@@ -909,7 +857,9 @@ def make_specialized_dataclass(alias: _GenericAlias) -> Type:
             kwargs.pop("default")
         if kwargs["default_factory"] is dataclasses.MISSING:
             kwargs.pop("default_factory")
-        new_fields.append((f.name, new_type, field(**kwargs)))
+        new_fields.append(
+            (f.name, type_resolution.resolved_type, dataclass_field(**kwargs))
+        )
 
     # Name and namespace
     arg_names = [getattr(a, "__name__", repr(a)) for a in args]
