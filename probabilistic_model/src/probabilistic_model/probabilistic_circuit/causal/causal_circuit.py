@@ -6,7 +6,6 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-import numpy as np
 from anytree import NodeMixin, PreOrderIter, findall
 from scipy.special import logsumexp
 from random_events.interval import closed
@@ -23,12 +22,12 @@ from probabilistic_model.probabilistic_circuit.rx.probabilistic_circuit import (
 
 from tabulate import tabulate
 
-from .helpers import (
+from probabilistic_model.probabilistic_circuit.causal.helpers import (
     attach_marginal_circuit,
     sum_unit_is_normalized,
 )
 
-from .exceptions import (
+from probabilistic_model.probabilistic_circuit.causal.exceptions import (
     SupportDeterminismViolation,
     MissingQueryVariableViolation,
     UnnormalizedSumUnitViolation,
