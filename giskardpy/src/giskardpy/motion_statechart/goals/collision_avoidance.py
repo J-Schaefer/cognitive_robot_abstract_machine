@@ -203,8 +203,18 @@ class _ExternalCollisionAvoidanceTask(_ExternalCollisionAvoidanceNode):
 
 @dataclass(eq=False, repr=False)
 class _CancelBecauseExternalCollisionViolated(CancelMotion):
+    """
+    Cancels the motion by raising an exception detailing which external collision tasks were violated.
+    """
+
     tasks: list[_ExternalCollisionAvoidanceTask] = field(kw_only=True)
+    """
+    The list of external collision avoidance tasks to check for collisions.
+    """
     exception: Exception = field(init=False, default=Exception)
+    """
+    Set to init=False, because this class creates its own exception.
+    """
 
     def build(self, context: MotionStatechartContext) -> NodeArtifacts:
         if len(self.tasks) == 1:
@@ -548,8 +558,18 @@ class _SelfCollisionAvoidanceTask(_SelfCollisionAvoidanceNode):
 
 @dataclass(eq=False, repr=False)
 class _CancelBecauseSelfCollisionViolated(CancelMotion):
+    """
+    Cancels the motion by raising an exception detailing which self collision tasks were violated.
+    """
+
     tasks: list[_SelfCollisionAvoidanceTask] = field(kw_only=True)
+    """
+    The list of self collision avoidance tasks to check for collisions.
+    """
     exception: Exception = field(init=False, default=Exception)
+    """
+    Set to init=False, because this class creates its own exception.
+    """
 
     def build(self, context: MotionStatechartContext) -> NodeArtifacts:
         if len(self.tasks) == 1:
