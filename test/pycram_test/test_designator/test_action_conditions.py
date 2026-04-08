@@ -6,10 +6,10 @@ from krrood.entity_query_language.factories import (
 )
 from pycram.datastructures.enums import Arms, ApproachDirection, VerticalAlignment
 from pycram.datastructures.grasp import GraspDescription
-from pycram.failures import ConditionNotSatisfied
-from pycram.language import SequentialPlan
+from pycram.exceptions import ConditionNotSatisfied, MotionDidNotFinish
 from pycram.motion_executor import simulated_robot
-from pycram.robot_plans import PickUpAction
+from pycram.plans.factories import sequential
+from pycram.robot_plans.actions.core.pick_up import PickUpAction
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.world_entity import Body
 
@@ -56,13 +56,13 @@ def test_pick_up_pre_conditions(mutable_model_world):
         ),
     )
 
-    plan = SequentialPlan(context, pick_action)
+    plan = sequential([pick_action], context)
 
     with pytest.raises(ConditionNotSatisfied):
         pick_action.evaluate_pre_condition()
 
     pre_condition = pick_action.pre_condition(
-        pick_action.bound_variables, context, pick_action.action_parameter
+        pick_action.bound_variables, context, pick_action.designator_parameter
     )
 
     false_statements = get_false_statements(pre_condition)
@@ -78,7 +78,7 @@ def test_pick_up_pre_conditions(mutable_model_world):
     )
 
     pre_condition = pick_action.pre_condition(
-        pick_action.bound_variables, context, pick_action.action_parameter
+        pick_action.bound_variables, context, pick_action.designator_parameter
     )
 
     assert evaluate_condition(pre_condition) == True
@@ -106,7 +106,7 @@ def test_pick_up_post_condition(mutable_model_world):
         1.8, 2, 0
     )
 
-    plan = SequentialPlan(context, pick_action)
+    plan = sequential([pick_action], context)
 
     assert pick_action.evaluate_pre_condition()
 
@@ -139,13 +139,13 @@ def test_context_evaluate_condition(mutable_model_world):
         1.0, 2, 0
     )
 
-    plan = SequentialPlan(context, pick_action)
+    plan = sequential([pick_action], context)
     with pytest.raises(ConditionNotSatisfied):
         with simulated_robot:
             plan.perform()
 
     context.evaluate_conditions = False
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(MotionDidNotFinish):
         with simulated_robot:
             plan.perform()

@@ -20,15 +20,15 @@ from semantic_digital_twin.collision_checking.collision_rules import (
     AvoidExternalCollisions,
     AllowSelfCollisions,
 )
+from semantic_digital_twin.reasoning.predicates import is_place_occupied
 from semantic_digital_twin.robots.abstract_robot import (
     AbstractRobot,
     ParallelGripper,
     Manipulator,
 )
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
-from semantic_digital_twin.world_description.world_entity import Body
-from semantic_digital_twin.reasoning.predicates import is_place_occupied
 from semantic_digital_twin.world_description.geometry import BoundingBox
+from semantic_digital_twin.world_description.world_entity import Body
 
 
 @symbolic_function
@@ -138,8 +138,9 @@ def bodies_in_gripper(gripper: ParallelGripper, sample_size: int = 100) -> List[
     finger_mesh = gripper.finger.tip.collision.combined_mesh.copy()
 
     # Transform copies of the meshes into the world frame
-    thumb_mesh.apply_transform(gripper.thumb.tip.global_pose.to_np())
-    finger_mesh.apply_transform(gripper.finger.tip.global_pose.to_np())
+    # body_mesh.apply_transform(body.global_transform.to_np())
+    thumb_mesh.apply_transform(gripper.thumb.tip.global_transform.to_np())
+    finger_mesh.apply_transform(gripper.finger.tip.global_transform.to_np())
 
     # get random points from thumb mesh
     finger_points = trimesh.sample.sample_surface(finger_mesh, sample_size)[0]

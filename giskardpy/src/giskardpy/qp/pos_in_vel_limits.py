@@ -1,14 +1,18 @@
 from copy import copy
-from typing import List
 
 import numpy as np
-from typing_extensions import Tuple
+from typing_extensions import Tuple, List
 
 import giskardpy.utils.math as gm
 import krrood.symbolic_math.symbolic_math as sm
 
 from giskardpy.utils.decorators import memoize
-from krrood.symbolic_math.symbolic_math import FloatVariable, Scalar, Vector
+from krrood.symbolic_math.symbolic_math import (
+    FloatVariable,
+    Scalar,
+    Vector,
+    substitution_cache,
+)
 from semantic_digital_twin.spatial_types.derivatives import DerivativeMap
 
 
@@ -44,6 +48,7 @@ def r_gauss(integral: Scalar) -> Scalar:
     return sm.sqrt(2 * integral + (1 / 4)) - 1 / 2
 
 
+@substitution_cache
 def acc_cap(current_vel: Scalar, jerk_limit: Scalar, dt: Scalar) -> Scalar:
     acc_integral = sm.abs(current_vel) / dt
     jerk_step = jerk_limit * dt
@@ -52,6 +57,7 @@ def acc_cap(current_vel: Scalar, jerk_limit: Scalar, dt: Scalar) -> Scalar:
     return sm.abs(n * jerk_limit * dt + x)
 
 
+@substitution_cache
 def compute_next_vel_and_acc(
     current_vel: Scalar,
     current_acc: Scalar,
@@ -91,6 +97,7 @@ def compute_next_vel_and_acc(
     return next_vel, next_acc
 
 
+@substitution_cache
 def compute_slowdown_asap_vel_profile(
     current_vel: Scalar,
     current_acc: Scalar,
@@ -114,7 +121,7 @@ def compute_slowdown_asap_vel_profile(
             jerk_limit,
             dt,
             ph - i - 1,
-            sm.logic_and(skip_first, i == 0),
+            sm.logic_and(skip_first, sm.Scalar(i == 0)),
         )
         vel_profile.append(next_vel)
         acc_profile.append(next_acc)

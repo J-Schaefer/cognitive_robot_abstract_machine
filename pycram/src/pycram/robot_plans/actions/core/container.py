@@ -16,13 +16,11 @@ from pycram.datastructures.enums import (
     VerticalAlignment,
 )
 from pycram.datastructures.grasp import GraspDescription
-from pycram.datastructures.partial_designator import PartialDesignator
-from pycram.datastructures.pose import PoseStamped
-from pycram.language import SequentialPlan
+from pycram.plans.factories import sequential
 from pycram.pose_validator import reachability_validator
 from pycram.querying.predicates import GripperIsFree
 from pycram.robot_plans.actions.base import ActionDescription, DescriptionType
-from pycram.robot_plans.actions.core.pick_up import GraspingActionDescription
+from pycram.robot_plans.actions.core.pick_up import GraspingAction
 from pycram.robot_plans.motions.container import OpeningMotion, ClosingMotion
 from pycram.robot_plans.motions.gripper import MoveGripperMotion
 from pycram.view_manager import ViewManager
@@ -52,7 +50,7 @@ class OpenAction(ActionDescription):
     """
 
     def execute(self) -> None:
-        arm = ViewManager.get_arm_view(self.arm, self.robot_view)
+        arm = ViewManager.get_arm_view(self.arm, self.robot)
         manipulator = arm.manipulator
 
         grasp_description = GraspDescription(
@@ -61,15 +59,16 @@ class OpenAction(ActionDescription):
             manipulator,
         )
 
-        SequentialPlan(
-            self.context,
-            GraspingActionDescription(
-                self.object_designator, self.arm, grasp_description
-            ),
-            OpeningMotion(self.object_designator, self.arm),
-            MoveGripperMotion(
-                GripperState.OPEN, self.arm, allow_gripper_collision=True
-            ),
+        self.add_subplan(
+            sequential(
+                [
+                    GraspingAction(self.object_designator, self.arm, grasp_description),
+                    OpeningMotion(self.object_designator, self.arm),
+                    MoveGripperMotion(
+                        GripperState.OPEN, self.arm, allow_gripper_collision=True
+                    ),
+                ]
+            )
         ).perform()
 
     @staticmethod
@@ -85,7 +84,7 @@ class OpenAction(ActionDescription):
         return and_(
             GripperIsFree(manipulator),
             reachability_validator(
-                PoseStamped.from_spatial_type(kwargs["object_designator"].global_pose),
+                kwargs["object_designator"].global_pose,
                 manipulator.tool_frame,
                 context.robot.from_world(test_world),
                 test_world,
@@ -115,22 +114,6 @@ class OpenAction(ActionDescription):
             )
         ) and bool(parent_connection.position > 0.3)
 
-    @classmethod
-    def description(
-        cls,
-        object_designator_description: DescriptionType[Body],
-        arm: DescriptionType[Arms] = None,
-        grasping_prepose_distance: DescriptionType[
-            float
-        ] = ActionConfig.grasping_prepose_distance,
-    ) -> PartialDesignator[OpenAction]:
-        return PartialDesignator[OpenAction](
-            OpenAction,
-            object_designator=object_designator_description,
-            arm=arm,
-            grasping_prepose_distance=grasping_prepose_distance,
-        )
-
 
 @dataclass
 class CloseAction(ActionDescription):
@@ -152,7 +135,7 @@ class CloseAction(ActionDescription):
     """
 
     def execute(self) -> None:
-        arm = ViewManager.get_arm_view(self.arm, self.robot_view)
+        arm = ViewManager.get_arm_view(self.arm, self.robot)
         manipulator = arm.manipulator
 
         grasp_description = GraspDescription(
@@ -161,15 +144,16 @@ class CloseAction(ActionDescription):
             manipulator,
         )
 
-        SequentialPlan(
-            self.context,
-            GraspingActionDescription(
-                self.object_designator, self.arm, grasp_description
-            ),
-            ClosingMotion(self.object_designator, self.arm),
-            MoveGripperMotion(
-                GripperState.OPEN, self.arm, allow_gripper_collision=True
-            ),
+        self.add_subplan(
+            sequential(
+                [
+                    GraspingAction(self.object_designator, self.arm, grasp_description),
+                    ClosingMotion(self.object_designator, self.arm),
+                    MoveGripperMotion(
+                        GripperState.OPEN, self.arm, allow_gripper_collision=True
+                    ),
+                ]
+            )
         ).perform()
 
     @staticmethod
@@ -184,23 +168,3 @@ class CloseAction(ActionDescription):
         ].get_first_parent_connection_of_type(ActiveConnection1DOF)
 
         return bool(close_connection.position < 0.1)
-
-    @classmethod
-    def description(
-        cls,
-        object_designator_description: DescriptionType[Body],
-        arm: DescriptionType[Arms] = None,
-        grasping_prepose_distance: DescriptionType[
-            float
-        ] = ActionConfig.grasping_prepose_distance,
-    ) -> PartialDesignator[CloseAction]:
-        return PartialDesignator[CloseAction](
-            CloseAction,
-            object_designator=object_designator_description,
-            arm=arm,
-            grasping_prepose_distance=grasping_prepose_distance,
-        )
-
-
-OpenActionDescription = OpenAction.description
-CloseActionDescription = CloseAction.description

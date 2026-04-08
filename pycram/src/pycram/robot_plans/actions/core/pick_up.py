@@ -4,36 +4,32 @@ import logging
 from copy import deepcopy
 from dataclasses import dataclass
 
-import numpy as np
 from typing_extensions import Any, Dict
 
 from krrood.entity_query_language.core.base_expressions import SymbolicExpression
 from krrood.entity_query_language.factories import and_, or_, not_, variable_from
 from pycram.datastructures.dataclasses import Context
-from pycram.pose_validator import (
-    reachability_validator,
-    pose_sequence_reachability_validator,
-)
-from pycram.querying.predicates import GripperIsFree
-from semantic_digital_twin.datastructures.definitions import GripperState
-from semantic_digital_twin.reasoning.predicates import allclose
-from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
-from semantic_digital_twin.world_description.world_entity import Body
-from pycram.robot_plans.motions.gripper import MoveGripperMotion, MoveTCPMotion
-from pycram.config.action_conf import ActionConfig
 from pycram.datastructures.enums import (
     Arms,
     MovementType,
 )
 from pycram.datastructures.grasp import GraspDescription
-from pycram.datastructures.partial_designator import PartialDesignator
-from pycram.datastructures.pose import PoseStamped
-from pycram.failures import ObjectNotGraspedError
-from pycram.failures import ObjectNotInGraspingArea
-from pycram.language import SequentialPlan
+from pycram.plans.factories import sequential, execute_single
+from pycram.pose_validator import (
+    pose_sequence_reachability_validator,
+)
+from pycram.querying.predicates import GripperIsFree
+from pycram.robot_plans.actions.base import ActionDescription
+from pycram.robot_plans.motions.gripper import (
+    MoveGripperMotion,
+    MoveToolCenterPointMotion,
+)
 from pycram.view_manager import ViewManager
-from pycram.robot_plans.actions.base import ActionDescription, DescriptionType
-from pycram.utils import translate_pose_along_local_axis
+from semantic_digital_twin.datastructures.definitions import GripperState
+from semantic_digital_twin.reasoning.predicates import allclose
+from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
+from semantic_digital_twin.spatial_types.spatial_types import Pose
+from semantic_digital_twin.world_description.world_entity import Body
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +40,7 @@ class ReachAction(ActionDescription):
     Let the robot reach a specific pose.
     """
 
-    target_pose: PoseStamped
+    target_pose: Pose
     """
     Pose that should be reached.
     """
@@ -71,16 +67,20 @@ class ReachAction(ActionDescription):
         target_pre_pose, target_pose, _ = self.grasp_description._pose_sequence(
             self.target_pose, self.object_designator, reverse=self.reverse_reach_order
         )
-
-        SequentialPlan(
-            self.context,
-            MoveTCPMotion(target_pre_pose, self.arm, allow_gripper_collision=False),
-            MoveTCPMotion(
-                target_pose,
-                self.arm,
-                allow_gripper_collision=False,
-                movement_type=MovementType.CARTESIAN,
-            ),
+        self.add_subplan(
+            sequential(
+                children=[
+                    MoveToolCenterPointMotion(
+                        target_pre_pose, self.arm, allow_gripper_collision=False
+                    ),
+                    MoveToolCenterPointMotion(
+                        target_pose,
+                        self.arm,
+                        allow_gripper_collision=False,
+                        movement_type=MovementType.CARTESIAN,
+                    ),
+                ]
+            )
         ).perform()
 
     @staticmethod
@@ -127,24 +127,6 @@ class ReachAction(ActionDescription):
             ),
         )
 
-    @classmethod
-    def description(
-        cls,
-        target_pose: DescriptionType[PoseStamped],
-        arm: DescriptionType[Arms] = None,
-        grasp_description: DescriptionType[GraspDescription] = None,
-        object_designator: DescriptionType[Body] = None,
-        reverse_reach_order: DescriptionType[bool] = False,
-    ) -> PartialDesignator[ReachAction]:
-        return PartialDesignator[ReachAction](
-            ReachAction,
-            target_pose=target_pose,
-            arm=arm,
-            grasp_description=grasp_description,
-            object_designator=object_designator,
-            reverse_reach_order=reverse_reach_order,
-        )
-
 
 @dataclass
 class PickUpAction(ActionDescription):
@@ -167,26 +149,22 @@ class PickUpAction(ActionDescription):
     The GraspDescription that should be used for picking up the object
     """
 
-    _pre_perform_callbacks = []
-    """
-    List to save the callbacks which should be called before performing the action.
-    """
-
     def execute(self) -> None:
-        SequentialPlan(
-            self.context,
-            MoveGripperMotion(motion=GripperState.OPEN, gripper=self.arm),
-            ReachActionDescription(
-                target_pose=PoseStamped.from_spatial_type(
-                    self.object_designator.global_pose
-                ),
-                object_designator=self.object_designator,
-                arm=self.arm,
-                grasp_description=self.grasp_description,
-            ),
-            MoveGripperMotion(motion=GripperState.CLOSE, gripper=self.arm),
+        self.add_subplan(
+            sequential(
+                children=[
+                    MoveGripperMotion(motion=GripperState.OPEN, gripper=self.arm),
+                    ReachAction(
+                        target_pose=self.object_designator.global_pose,
+                        object_designator=self.object_designator,
+                        arm=self.arm,
+                        grasp_description=self.grasp_description,
+                    ),
+                    MoveGripperMotion(motion=GripperState.CLOSE, gripper=self.arm),
+                ]
+            )
         ).perform()
-        end_effector = ViewManager.get_end_effector_view(self.arm, self.robot_view)
+        end_effector = ViewManager.get_end_effector_view(self.arm, self.robot)
 
         # Attach the object to the end effector
         with self.world.modify_world():
@@ -197,14 +175,15 @@ class PickUpAction(ActionDescription):
         _, _, lift_to_pose = self.grasp_description.grasp_pose_sequence(
             self.object_designator
         )
-        SequentialPlan(
-            self.context,
-            MoveTCPMotion(
-                lift_to_pose,
-                self.arm,
-                allow_gripper_collision=True,
-                movement_type=MovementType.TRANSLATION,
-            ),
+        self.add_subplan(
+            execute_single(
+                MoveToolCenterPointMotion(
+                    lift_to_pose,
+                    self.arm,
+                    allow_gripper_collision=True,
+                    movement_type=MovementType.TRANSLATION,
+                )
+            )
         ).perform()
 
     @staticmethod
@@ -243,20 +222,6 @@ class PickUpAction(ActionDescription):
             is_body_in_gripper(kwargs["object_designator"], manipulator) > 0.9,
         )
 
-    @classmethod
-    def description(
-        cls,
-        object_designator: DescriptionType[Body],
-        arm: DescriptionType[Arms] = None,
-        grasp_description: DescriptionType[GraspDescription] = None,
-    ) -> PartialDesignator[PickUpAction]:
-        return PartialDesignator[PickUpAction](
-            PickUpAction,
-            object_designator=object_designator,
-            arm=arm,
-            grasp_description=grasp_description,
-        )
-
 
 @dataclass
 class GraspingAction(ActionDescription):
@@ -282,31 +247,17 @@ class GraspingAction(ActionDescription):
             self.object_designator
         )
 
-        SequentialPlan(
-            self.context,
-            MoveTCPMotion(pre_pose, self.arm),
-            MoveGripperMotion(GripperState.OPEN, self.arm),
-            MoveTCPMotion(grasp_pose, self.arm, allow_gripper_collision=True),
-            MoveGripperMotion(
-                GripperState.CLOSE, self.arm, allow_gripper_collision=True
-            ),
+        self.add_subplan(
+            sequential(
+                [
+                    MoveToolCenterPointMotion(pre_pose, self.arm),
+                    MoveGripperMotion(GripperState.OPEN, self.arm),
+                    MoveToolCenterPointMotion(
+                        grasp_pose, self.arm, allow_gripper_collision=True
+                    ),
+                    MoveGripperMotion(
+                        GripperState.CLOSE, self.arm, allow_gripper_collision=True
+                    ),
+                ]
+            )
         ).perform()
-
-    @classmethod
-    def description(
-        cls,
-        object_designator: DescriptionType[Body],
-        arm: DescriptionType[Arms] = None,
-        grasp_description: DescriptionType[GraspDescription] = None,
-    ) -> PartialDesignator[GraspingAction]:
-        return PartialDesignator[GraspingAction](
-            GraspingAction,
-            object_designator=object_designator,
-            arm=arm,
-            grasp_description=grasp_description,
-        )
-
-
-ReachActionDescription = ReachAction.description
-PickUpActionDescription = PickUpAction.description
-GraspingActionDescription = GraspingAction.description

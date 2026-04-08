@@ -3,25 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 
-import numpy as np
-from typing_extensions import Union, Optional, Type, Any, Iterable, Dict
+from typing_extensions import Optional, Any, Dict
 
 from krrood.entity_query_language.core.base_expressions import SymbolicExpression
-from krrood.entity_query_language.factories import and_, variable_from
+from krrood.entity_query_language.factories import variable_from, and_
+from pycram.config.action_conf import ActionConfig
+from pycram.datastructures.dataclasses import Context
+from pycram.plans.factories import execute_single
+from pycram.robot_plans.actions.base import ActionDescription
+from pycram.robot_plans.motions.navigation import MoveMotion
+from pycram.robot_plans.motions.robot_body import LookingMotion
 from semantic_digital_twin.reasoning.predicates import allclose
 from semantic_digital_twin.reasoning.robot_predicates import is_pose_free_for_robot
 from semantic_digital_twin.robots.abstract_robot import Camera
-from pycram.robot_plans.actions.base import ActionDescription, DescriptionType
-from pycram.robot_plans.motions.robot_body import LookingMotion
-from pycram.robot_plans.motions.navigation import MoveMotion
-from pycram.config.action_conf import ActionConfig
-from ....datastructures.dataclasses import Context
-from pycram.datastructures.partial_designator import PartialDesignator
-from pycram.datastructures.pose import PoseStamped
-from pycram.failures import LookAtGoalNotReached
-from pycram.failures import NavigationGoalNotReachedError
-from pycram.language import SequentialPlan
-from pycram.validation.error_checkers import PoseErrorChecker
+from semantic_digital_twin.spatial_types.spatial_types import Pose
 
 
 @dataclass
@@ -30,7 +25,7 @@ class NavigateAction(ActionDescription):
     Navigates the Robot to a position.
     """
 
-    target_location: PoseStamped
+    target_location: Pose
     """
     Location to which the robot should be navigated
     """
@@ -41,8 +36,8 @@ class NavigateAction(ActionDescription):
     """
 
     def execute(self) -> None:
-        return SequentialPlan(
-            self.context, MoveMotion(self.target_location, self.keep_joint_states)
+        self.add_subplan(
+            execute_single(MoveMotion(self.target_location, self.keep_joint_states))
         ).perform()
 
     @staticmethod
@@ -54,9 +49,7 @@ class NavigateAction(ActionDescription):
         """
         drive_variable = variable_from(context.robot.drive is not None)
         return and_(
-            is_pose_free_for_robot(
-                context.robot, variables["target_location"].to_spatial_type()
-            ),
+            is_pose_free_for_robot(context.robot, variables["target_location"]),
             drive_variable,
         )
 
@@ -69,22 +62,8 @@ class NavigateAction(ActionDescription):
         """
         return allclose(
             context.robot.root.global_pose,
-            kwargs["target_location"].to_spatial_type(),
+            kwargs["target_location"],
             atol=0.03,
-        )
-
-    @classmethod
-    def description(
-        cls,
-        target_location: DescriptionType[PoseStamped],
-        keep_joint_states: DescriptionType[
-            bool
-        ] = ActionConfig.navigate_keep_joint_states,
-    ) -> PartialDesignator[NavigateAction]:
-        return PartialDesignator[NavigateAction](
-            NavigateAction,
-            target_location=target_location,
-            keep_joint_states=keep_joint_states,
         )
 
 
@@ -94,7 +73,7 @@ class LookAtAction(ActionDescription):
     Lets the robot look at a position.
     """
 
-    target: PoseStamped
+    target: Pose
     """
     Position at which the robot should look, given as 6D pose
     """
@@ -105,21 +84,7 @@ class LookAtAction(ActionDescription):
     """
 
     def execute(self) -> None:
-        camera = self.camera or self.robot_view.get_default_camera()
-        SequentialPlan(
-            self.context, LookingMotion(target=self.target, camera=camera)
+        camera = self.camera or self.robot.get_default_camera()
+        self.add_subplan(
+            execute_single(LookingMotion(target=self.target, camera=camera))
         ).perform()
-
-    @classmethod
-    def description(
-        cls,
-        target: DescriptionType[PoseStamped],
-        camera: DescriptionType[Camera] = None,
-    ) -> PartialDesignator[LookAtAction]:
-        return PartialDesignator[LookAtAction](
-            LookAtAction, target=target, camera=camera
-        )
-
-
-NavigateActionDescription = NavigateAction.description
-LookAtActionDescription = LookAtAction.description

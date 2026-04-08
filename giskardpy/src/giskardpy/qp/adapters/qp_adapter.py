@@ -11,10 +11,6 @@ from typing import Tuple, List, Dict, TYPE_CHECKING, DefaultDict, Type
 import numpy as np
 
 import krrood.symbolic_math.symbolic_math as sm
-from giskardpy.qp.constraint import (
-    DerivativeInequalityConstraint,
-    DerivativeEqualityConstraint,
-)
 from giskardpy.qp.constraint_collection import ConstraintCollection
 from giskardpy.qp.exceptions import (
     InfeasibleException,
@@ -344,7 +340,7 @@ class ProblemDataPart(ABC):
             goal_profile = sm.Vector.zeros(ph)
             pos_vel_profile_ub = sm.Vector.ones(ph) * vel_limit
             pos_vel_profile_lb = -pos_vel_profile_ub
-            skip_first = 0
+            skip_first = sm.Scalar(0)
 
         acc_profile = sm.Vector.ones(pos_vel_profile_ub.shape[0]) * acc_limit
         jerk_profile = sm.Vector.ones(pos_vel_profile_ub.shape[0]) * jerk_limit

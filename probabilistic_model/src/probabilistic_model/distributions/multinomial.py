@@ -1,10 +1,17 @@
 import itertools
+from dataclasses import dataclass, field
 
 import numpy as np
+import numpy.typing as npt
+
+from probabilistic_model.exceptions import ShapeMismatchError
+from random_events.product_algebra import SimpleEvent, Event
+from random_events.variable import Symbolic, Variable
 from typing_extensions import Self, Any, Iterable, List, Optional, Tuple, Dict
 
 from probabilistic_model.probabilistic_circuit.rx.probabilistic_circuit import (
     SymbolicDistribution,
+    UnivariateDiscreteLeaf,
     ProductUnit,
     SumUnit,
     ProbabilisticCircuit,
@@ -17,52 +24,43 @@ from random_events.utils import SubclassJSONSerializer
 from random_events.variable import Symbolic, Variable
 
 
-class MultinomialDistribution(ProbabilisticModel, SubclassJSONSerializer):
+@dataclass
+class MultinomialDistribution(ProbabilisticModel):
     """
     A multinomial distribution over symbolic random variables.
     """
 
-    _variables: Tuple[Symbolic, ...]
+    distribution_variables: Tuple[Symbolic, ...]
     """
     The variables of the distribution.
     """
 
-    probabilities: np.ndarray
+    probabilities: Optional[npt.NDArray] = field(default=None)
     """
     The probability mass function. The dimensions correspond to the variables in the same order.
     The first dimension indexes over the first variable and so on. If no probabilities are provided in the constructor,
     the probabilities are initialized with ones.
     """
 
-    def __init__(
-        self, variables: Iterable[Symbolic], probabilities: Optional[np.ndarray] = None
-    ):
-        super().__init__()
-        self._variables = tuple(variables)
-
+    def __post_init__(self):
         shape = tuple(len(variable.domain.simple_sets) for variable in self.variables)
 
-        if probabilities is None:
-            probabilities = np.ones(shape)
-            probabilities /= probabilities.sum()
+        if self.probabilities is None:
+            self.probabilities = np.ones(shape)
+            self.probabilities /= self.probabilities.sum()
 
-        if shape != probabilities.shape:
-            raise ValueError(
-                "The number of variables must match the number of dimensions in the probability array."
-                "Variables: {}".format(self.variables),
-                "Dimensions: {}".format(probabilities.shape),
-            )
-        self.probabilities = probabilities
+        if shape != self.probabilities.shape:
+            raise ShapeMismatchError(self.variables, self.probabilities.shape)
 
     @property
     def variables(self) -> Tuple[Symbolic, ...]:
-        return self._variables
+        return tuple(self.distribution_variables)
 
     @property
     def support(self) -> Event:
         raise NotImplementedError
 
-    def sample(self, amount: int) -> np.array:
+    def sample(self, amount: int) -> npt.NDArray:
         return None
 
     def marginal(self, variables: Iterable[Symbolic]) -> Self:
@@ -95,7 +93,7 @@ class MultinomialDistribution(ProbabilisticModel, SubclassJSONSerializer):
         mode = None
         for index_of_maximum in indices_of_maximum:
 
-            current_mode = SimpleEvent(
+            current_mode = SimpleEvent.from_data(
                 {
                     variable: hash_map_variable_values[variable][value]
                     for variable, value in zip(self.variables, index_of_maximum)
@@ -111,7 +109,7 @@ class MultinomialDistribution(ProbabilisticModel, SubclassJSONSerializer):
     def log_conditional(
         self, point: Dict[Variable, Any]
     ) -> Tuple[Optional[Self], float]:
-        event = SimpleEvent(point)
+        event = SimpleEvent.from_data(point)
         event.fill_missing_variables(self.variables)
         return self.log_truncated(event.as_composite_set())
 
@@ -182,7 +180,7 @@ class MultinomialDistribution(ProbabilisticModel, SubclassJSONSerializer):
         indices = self.indices_from_simple_event(event)
         return self.probabilities[np.ix_(*indices)].sum()
 
-    def log_likelihood(self, events: np.array) -> np.array:
+    def log_likelihood(self, events: npt.NDArray) -> npt.NDArray:
         return np.log(self.probabilities[tuple(events.T)])
 
     def log_truncated(self, event: Event) -> Tuple[Optional[Self], float]:
@@ -217,7 +215,7 @@ class MultinomialDistribution(ProbabilisticModel, SubclassJSONSerializer):
             for variable in self.variables
         )
 
-    def probabilities_from_simple_event(self, event: SimpleEvent) -> np.ndarray:
+    def probabilities_from_simple_event(self, event: SimpleEvent) -> npt.NDArray:
         """
         Calculate the probabilities array for a simple event.
 
@@ -267,7 +265,9 @@ class MultinomialDistribution(ProbabilisticModel, SubclassJSONSerializer):
                 weights[hash(value)] = 1.0
 
                 # create a distribution for the current variable
-                distribution = SymbolicDistribution(variable, weights)
+                distribution = SymbolicDistribution(
+                    variable=variable, probabilities=weights
+                )
 
                 # mount the distribution to the product unit
                 product_unit.add_subcircuit(leaf(distribution, pc))
@@ -290,7 +290,7 @@ class MultinomialDistribution(ProbabilisticModel, SubclassJSONSerializer):
             variable.encode(value) for variable, value in zip(self.variables, event)
         ]
 
-    def fit(self, data: np.ndarray) -> Self:
+    def fit(self, data: npt.NDArray) -> Self:
         """
         Fit the distribution to the data.
 
@@ -302,16 +302,3 @@ class MultinomialDistribution(ProbabilisticModel, SubclassJSONSerializer):
         self.probabilities[tuple(uniques.astype(int).T)] = counts
         self.normalize()
         return self
-
-    def to_json(self) -> Dict[str, Any]:
-        return {
-            **SubclassJSONSerializer.to_json(self),
-            "variables": [variable.to_json() for variable in self.variables],
-            "probabilities": self.probabilities.tolist(),
-        }
-
-    @classmethod
-    def _from_json(cls, data: Dict[str, Any]) -> Self:
-        variables = [Variable.from_json(variable) for variable in data["variables"]]
-        probabilities = np.array(data["probabilities"])
-        return cls(variables, probabilities)

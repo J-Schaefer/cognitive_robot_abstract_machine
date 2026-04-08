@@ -5,16 +5,17 @@ import objgraph
 
 from pycram.datastructures.dataclasses import Context
 from pycram.datastructures.enums import Arms
-from pycram.datastructures.pose import PoseStamped
-from pycram.language import SequentialPlan
 from pycram.motion_executor import simulated_robot
-from pycram.robot_plans import (
-    NavigateActionDescription,
-    TransportActionDescription,
-    MoveTorsoActionDescription,
+from pycram.plans.factories import sequential
+from pycram.robot_plans.actions.composite.transporting import TransportAction
+from pycram.robot_plans.actions.core.navigation import NavigateAction
+from pycram.robot_plans.actions.core.robot_body import MoveTorsoAction
+from semantic_digital_twin.adapters.ros.visualization.viz_marker import (
+    VizMarkerPublisher,
 )
 from semantic_digital_twin.datastructures.definitions import TorsoState
 from semantic_digital_twin.robots.pr2 import PR2
+from semantic_digital_twin.spatial_types.spatial_types import Pose
 
 
 def test_ref_chain_after_copy(immutable_model_world):
@@ -32,11 +33,9 @@ def test_ref_chain_after_copy_with_execute(immutable_model_world):
 
     copy_context = Context(copy_world, PR2.from_world(copy_world))
 
-    plan = SequentialPlan(
+    plan = sequential(
+        [NavigateAction(Pose.from_xyz_rpy(1, -1, 0, reference_frame=copy_world.root))],
         copy_context,
-        NavigateActionDescription(
-            PoseStamped.from_list([1, -1, 0], frame=copy_world.root)
-        ),
     )
 
     with simulated_robot:
@@ -54,14 +53,12 @@ def test_ref_chain_after_copy_with_execute_complex_plan(mutable_model_world):
 
     copy_context = Context(copy_world, PR2.from_world(copy_world))
 
-    description = TransportActionDescription(
+    description = TransportAction(
         copy_world.get_body_by_name("milk.stl"),
-        [PoseStamped.from_list([3.1, 2.2, 0.95], [0.0, 0.0, 1.0, 0.0], world.root)],
-        [Arms.RIGHT],
+        Pose.from_xyz_quaternion(3.4, 2.2, 0.95, 0.0, 0.0, 1.0, 0.0, world.root),
+        Arms.RIGHT,
     )
-    plan = SequentialPlan(
-        copy_context, MoveTorsoActionDescription([TorsoState.HIGH]), description
-    )
+    plan = sequential([MoveTorsoAction(TorsoState.HIGH), description], copy_context)
     with simulated_robot:
         plan.perform()
 

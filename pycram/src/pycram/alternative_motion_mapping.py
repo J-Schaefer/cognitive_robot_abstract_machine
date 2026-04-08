@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from typing_extensions import TypeVar, ClassVar, TYPE_CHECKING, Optional, Type
 
-from krrood.ormatic.dao import HasGeneric
+from krrood.ormatic.data_access_objects.base import HasGeneric
 from .datastructures.enums import ExecutionType
 from .motion_executor import MotionExecutor
 from semantic_digital_twin.robots.abstract_robot import AbstractRobot
