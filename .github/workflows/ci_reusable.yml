@@ -52,6 +52,20 @@ jobs:
           source /opt/ros/cram-env/bin/activate
           python generate_orm.py
 
+      - name: Run CPP tests
+        if: ${{inputs.lib == 'random_events'}}
+        working-directory: random_events/src/random_events_lib
+        run: |
+          BAZEL_VERSION=7.0.0
+          curl -L -o bazel.sh \
+            https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh
+          chmod +x bazel.sh
+          ./bazel.sh --user
+          echo "$HOME/bin" >> $GITHUB_PATH
+          
+          bazel build //test:test_all
+          bazel test //test:test_all
+
       - name: Run tests
         run: |
           source /opt/ros/overlay_ws/install/setup.bash
