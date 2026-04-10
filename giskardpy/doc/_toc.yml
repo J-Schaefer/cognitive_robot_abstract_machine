@@ -8,6 +8,7 @@ parts:
   chapters:
     - file: user_guide
       sections:
+        - file: motion_statecharts
         - file: examples/basic_motion
         - file: examples/cartesian_goals
 
