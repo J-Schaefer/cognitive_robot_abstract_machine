@@ -15,7 +15,7 @@ kernelspec:
 
 This example demonstrates how to use `CartesianPose` goals to move a robot to a specific pose.
 
-```python
+```{code-cell} ipython3
 from giskardpy.executor import SimulationPacer, Executor
 from giskardpy.motion_statechart.context import MotionStatechartContext
 from giskardpy.motion_statechart.graph_node import EndMotion

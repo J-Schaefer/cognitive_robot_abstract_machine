@@ -15,7 +15,7 @@ kernelspec:
 
 This example shows how to set up a basic `MotionStatechart` that runs for a specified amount of time using a `CountSeconds` monitor.
 
-```python
+```{code-cell} ipython3
 from giskardpy.executor import SimulationPacer, Executor
 from giskardpy.motion_statechart.context import MotionStatechartContext
 from giskardpy.motion_statechart.graph_node import EndMotion
