@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 import sys
-from copy import copy
 from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache
@@ -10,7 +9,8 @@ from typing import Callable, Any, Dict, get_args, get_origin, Union
 from uuid import UUID
 
 import typing_extensions
-from typing_extensions import List, Type, Any, Dict, TypeVar, Tuple, Iterable, Iterator, Generic
+from typing_extensions import Callable, get_args, get_origin
+from typing_extensions import List, Type, Any, Dict, Tuple, Generic
 from typing_extensions import TypeVar
 from typing_extensions import List, Type, Generic, TYPE_CHECKING, Optional, Tuple
 from typing_extensions import TypeVar, get_origin, get_args
@@ -35,12 +35,12 @@ def classes_of_module(module) -> List[Type]:
 
 
 def behaves_like_a_built_in_class(
-    clazz: Type,
+        clazz: Type,
 ) -> bool:
     return (
-        is_builtin_class(clazz)
-        or clazz == UUID
-        or (inspect.isclass(clazz) and issubclass(clazz, Enum))
+            is_builtin_class(clazz)
+            or clazz == UUID
+            or (inspect.isclass(clazz) and issubclass(clazz, Enum))
     )
 
 
@@ -114,7 +114,7 @@ class TypeHintResolutionResult:
 
 
 def get_and_resolve_generic_type_hints_of_object_using_substitutions(
-    object_: Any, substitution: Dict[TypeVar, Type]
+        object_: Any, substitution: Dict[TypeVar, Type]
 ) -> Dict[str, TypeHintResolutionResult]:
     """
     Resolve generic type hints of an object using a substitution dictionary.
@@ -165,8 +165,8 @@ def get_type_hints_of_object(object_: Any) -> Dict[str, Any]:
 
 
 def resolve_type(
-    type_to_resolve: Any,
-    substitution: Dict[TypeVar, Any],
+        type_to_resolve: Any,
+        substitution: Dict[TypeVar, Any],
 ) -> TypeHintResolutionResult:
     """
     Resolve type variables in a type.
