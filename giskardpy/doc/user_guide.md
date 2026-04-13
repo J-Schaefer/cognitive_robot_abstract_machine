@@ -4,7 +4,7 @@ This guide provides an overview of how to use the Giskard Python API for robot m
 
 ## Overview
 
-Giskard uses a constraint-based approach to motion planning. Instead of specifying a precise trajectory, you define a set of constraints and goals that the robot should satisfy.
+Giskard uses a constraint-based approach to motion control. Instead of specifying a precise trajectory, you define a set of constraints and goals that the robot should satisfy.
 
 The core components of Giskard are:
 
