@@ -12,7 +12,7 @@ from trimesh import Trimesh
 from typing_extensions import Callable, List, Protocol, Dict, Any, Optional, Set
 
 import robokudo.cas
-from random_events.utils import recursive_subclasses
+from krrood.utils import recursive_subclasses
 from robokudo.defs import PACKAGE_NAME
 from robokudo.types.annotation import (
     BoundingBox3DAnnotation,
@@ -40,7 +40,6 @@ from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.connections import Connection6DoF
 from semantic_digital_twin.world_description.degree_of_freedom import DegreeOfFreedom
 from semantic_digital_twin.world_description.geometry import Shape, Color, Scale, Box
-from semantic_digital_twin.world_description.geometry import TriangleMesh
 from semantic_digital_twin.world_description.world_entity import (
     Body,
     SemanticAnnotation,
@@ -50,11 +49,11 @@ from semantic_digital_twin.world_description.world_modification import (
     AddDegreeOfFreedomModification,
     AddSemanticAnnotationModification,
     RemoveSemanticAnnotationModification,
-    RemoveBodyModification,
     RemoveConnectionModification,
     RemoveDegreeOfFreedomModification,
     AddKinematicStructureEntityModification,
-    WorldModelModification,
+    RemoveKinematicStructureEntityModification,
+    WorldModification,
 )
 
 
@@ -119,7 +118,7 @@ class TrackedObject:
         return obj_eq and body_eq and semantic_annotations_eq and conns_eq
 
 
-class AddCollisionCommand(WorldModelModification):
+class AddCollisionCommand(WorldModification):
     def __init__(self, body: Body, new_collision: Shape) -> None:
         """Instantiate a new AddCollisionCommand.
 
@@ -147,7 +146,7 @@ class AddCollisionCommand(WorldModelModification):
         self.body.collision.shapes.remove(self.new_collision)
 
 
-class UpdateCollisionCommand(WorldModelModification):
+class UpdateCollisionCommand(WorldModification):
     def __init__(self, old_collision: Shape, new_collision: Shape) -> None:
         """Instantiate a new UpdateCollisionCommand.
 
@@ -193,7 +192,7 @@ class UpdateCollisionCommand(WorldModelModification):
                 setattr(self.collision, field.name, old_value)
 
 
-class RemoveCollisionCommand(WorldModelModification):
+class RemoveCollisionCommand(WorldModification):
     def __init__(self, body: Body, old_collision: Shape) -> None:
         """Instantiate a new RemoveCollisionCommand.
 
@@ -249,7 +248,7 @@ class AddObjectDiff:
         self.tracked_object = self.adapter.object_to_tracked_object(new_object)
         """A tracked object created from the newly created object data."""
 
-        self.commands: List[WorldModelModification] = list()
+        self.commands: List[WorldModification] = list()
         """The commands to apply with this diff."""
 
         self.commands.append(
@@ -269,7 +268,7 @@ class AddObjectDiff:
 
             dofs[name] = dof
 
-            self.commands.append(AddDegreeOfFreedomModification(dof=dof))
+            self.commands.append(AddDegreeOfFreedomModification(degree_of_freedom=dof))
 
         conn = Connection6DoF(
             parent=self.adapter.root,
@@ -333,7 +332,7 @@ class UpdateObjectDiff:
         self.new_tracked_object = self.adapter.object_to_tracked_object(new_object)
         """The new object data as a tracked object for easier diff creation."""
 
-        self.commands: List[WorldModelModification] = list()
+        self.commands: List[WorldModification] = list()
         """The commands to apply with this diff."""
 
         # Assume a single simple body as collision for perceived, dynamic objects
@@ -400,10 +399,14 @@ class RemoveObjectDiff:
         self.old_object = old_object
         """The object to remove."""
 
-        self.commands: List[WorldModelModification] = list()
+        self.commands: List[WorldModification] = list()
         """The commands to be executed by this diff."""
 
-        self.commands.append(RemoveBodyModification(body_id=old_object.body.id))
+        self.commands.append(
+            RemoveKinematicStructureEntityModification(
+                kinematic_structure_id=old_object.body.id
+            )
+        )
 
         for connection in self.old_object.conns:
             self.commands.append(
