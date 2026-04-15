@@ -9,10 +9,17 @@ from typing import Set
 from xml.etree import ElementTree as ET
 
 import jinja2
+from typing_extensions import List
 
+from krrood.utils import recursive_subclasses
 from semantic_digital_twin.adapters.package_resolver import FileUriResolver
+from semantic_digital_twin.adapters.partnet_mobility_dataset.semantic_annotations import (
+    PartNetLabel,
+)
 from semantic_digital_twin.adapters.urdf import URDFParser
 from semantic_digital_twin.world import World
+
+from semantic_digital_twin.adapters.partnet_mobility_dataset.generated_semantic_annotations import *  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +39,12 @@ class PartNetMobilityDatasetLoader:
     """
     Loader for articulated assets from the PartNet-Mobility dataset (https://sapien.ucsd.edu/browse).
 
-    For this to work out of the box, the environment variable SAPIEN_ACCESS_TOKEN must be set
+    For this to work out of the box, the environment variable SAPIEN_ACCESS_TOKEN must be set,
     and you have to install sapien.
 
     The URDF files provided by sapien are missing some information. This loader also adds the missing information.
+    The semantics are also added to the world, utilizing the PartNet-Mobility dataset semantics and the subclasses of
+    PartNetLabel.
     """
 
     token: str = field(
@@ -81,7 +90,35 @@ class PartNetMobilityDatasetLoader:
                 base_directory=self.directory / str(model_id)
             ),
         ).parse()
+        self._apply_semantics_to_world(world, model_id)
         return world
+
+    def _apply_semantics_to_world(self, world: World, model_id: int):
+        """
+        Apply the semantics of a model to the world by creating semantic annotations.
+        :param world: The world to apply the semantics to.
+        :param model_id: The id of the model to apply the semantics from.
+        """
+        semantics_file = self.directory / str(model_id) / "semantics.txt"
+
+        link_labels = {}
+
+        with semantics_file.open("r") as f:
+            lines = f.readlines()
+
+        for line in lines:
+            link_name, _, label = line.strip().split(" ")
+            link_labels[link_name] = label
+
+        for link_name, label in link_labels.items():
+            body = world.get_body_by_name(link_name)
+            [part_net_semantic_annotations_class] = [
+                cls for cls in recursive_subclasses(PartNetLabel) if label in cls.labels
+            ]
+            semantic_annotation = part_net_semantic_annotations_class(root=body)
+
+            with world.modify_world():
+                world.add_semantic_annotation(semantic_annotation)
 
     def _add_missing_information_to_limit_tags(self, file_path: str):
         """
@@ -97,6 +134,11 @@ class PartNetMobilityDatasetLoader:
         tree.write(file_path)
 
     def _create_python_file_with_semantic_annotations_from_dataset(self):
+        """
+        Write all semantic annotations classes from the dataset to a Python file.
+        This requires the entire dataset to be located in the specified directory.
+        Only call this when you want to generate/update the `generated_semantic_annotations.py` file.
+        """
 
         labels = defaultdict(set)  # a dict of class names to sets of labels
 
@@ -152,6 +194,13 @@ class PartNetMobilityDatasetLoader:
         # convert to upper camel case
         label = label.title().replace("_", "")
         return label
+
+    @property
+    def available_model_ids(self) -> List[int]:
+        """
+        :return: A list of all downloaded models ids.
+        """
+        return [int(directory.name) for directory in self.directory.glob("*")]
 
 
 @dataclass

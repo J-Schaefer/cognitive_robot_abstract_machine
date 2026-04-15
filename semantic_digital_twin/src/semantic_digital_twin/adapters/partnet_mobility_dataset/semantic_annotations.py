@@ -7,7 +7,7 @@ from semantic_digital_twin.world_description.world_entity import (
 )
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetLabel(RootedSemanticAnnotation):
     """
     Represents a label in the Partnet Mobility dataset semantic annotation hierarchy.

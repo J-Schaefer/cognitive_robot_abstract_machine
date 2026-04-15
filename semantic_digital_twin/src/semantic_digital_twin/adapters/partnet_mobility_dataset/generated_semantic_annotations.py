@@ -9,536 +9,536 @@ from semantic_digital_twin.adapters.partnet_mobility_dataset.semantic_annotation
 )
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetLid(PartNetLabel):
     labels: ClassVar[Set[str]] = {"lid"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetSeat(PartNetLabel):
     labels: ClassVar[Set[str]] = {"seat"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetButton(PartNetLabel):
     labels: ClassVar[Set[str]] = {"button"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetToilet(PartNetLabel):
     labels: ClassVar[Set[str]] = {"toilet_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetSwitch(PartNetLabel):
     labels: ClassVar[Set[str]] = {"switch"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetStem(PartNetLabel):
     labels: ClassVar[Set[str]] = {"stem"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetFaucetBase(PartNetLabel):
     labels: ClassVar[Set[str]] = {"faucet_base"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetRotationDoor(PartNetLabel):
     labels: ClassVar[Set[str]] = {"rotation_door"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetDrawer(PartNetLabel):
     labels: ClassVar[Set[str]] = {"drawer"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetFurniture(PartNetLabel):
     labels: ClassVar[Set[str]] = {"furniture_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetTranslationWindow(PartNetLabel):
     labels: ClassVar[Set[str]] = {"translation_window"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetWindowFrame(PartNetLabel):
     labels: ClassVar[Set[str]] = {"window_frame"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetHandle(PartNetLabel):
     labels: ClassVar[Set[str]] = {"handle"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetKettle(PartNetLabel):
     labels: ClassVar[Set[str]] = {"kettle_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetPot(PartNetLabel):
     labels: ClassVar[Set[str]] = {"pot_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetLever(PartNetLabel):
     labels: ClassVar[Set[str]] = {"lever"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetSwitchFrame(PartNetLabel):
     labels: ClassVar[Set[str]] = {"switch_frame"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetPen(PartNetLabel):
     labels: ClassVar[Set[str]] = {"pen_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetKnob(PartNetLabel):
     labels: ClassVar[Set[str]] = {"knob"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetSafe(PartNetLabel):
     labels: ClassVar[Set[str]] = {"safe_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetDoor(PartNetLabel):
     labels: ClassVar[Set[str]] = {"door"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetDishwasher(PartNetLabel):
     labels: ClassVar[Set[str]] = {"dishwasher_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetWheel(PartNetLabel):
     labels: ClassVar[Set[str]] = {"wheel"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetMouse(PartNetLabel):
     labels: ClassVar[Set[str]] = {"mouse_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetRotationButton(PartNetLabel):
     labels: ClassVar[Set[str]] = {"rotation_button"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetPhoneBase(PartNetLabel):
     labels: ClassVar[Set[str]] = {"phone_base"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetCoffeeMachine(PartNetLabel):
     labels: ClassVar[Set[str]] = {"coffee_machine_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetRotationBar(PartNetLabel):
     labels: ClassVar[Set[str]] = {"rotation_bar"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetHead(PartNetLabel):
     labels: ClassVar[Set[str]] = {"head"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetLampBase(PartNetLabel):
     labels: ClassVar[Set[str]] = {"lamp_base"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetSteeringWheel(PartNetLabel):
     labels: ClassVar[Set[str]] = {"steering_wheel"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetCart(PartNetLabel):
     labels: ClassVar[Set[str]] = {"cart_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetOven(PartNetLabel):
     labels: ClassVar[Set[str]] = {"oven_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetSpout(PartNetLabel):
     labels: ClassVar[Set[str]] = {"spout"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetLaptopBase(PartNetLabel):
     labels: ClassVar[Set[str]] = {"laptop_base"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetScreen(PartNetLabel):
     labels: ClassVar[Set[str]] = {"screen"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetStapler(PartNetLabel):
     labels: ClassVar[Set[str]] = {"stapler_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetStaplerBase(PartNetLabel):
     labels: ClassVar[Set[str]] = {"stapler_base"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetTranslationHandle(PartNetLabel):
     labels: ClassVar[Set[str]] = {"translation_handle"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetSuitcase(PartNetLabel):
     labels: ClassVar[Set[str]] = {"suitcase_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetWashingMachine(PartNetLabel):
     labels: ClassVar[Set[str]] = {"washing_machine_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetRefrigerator(PartNetLabel):
     labels: ClassVar[Set[str]] = {"refrigerator_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetRotationBlade(PartNetLabel):
     labels: ClassVar[Set[str]] = {"rotation_blade"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetKnife(PartNetLabel):
     labels: ClassVar[Set[str]] = {"knife_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetContainer(PartNetLabel):
     labels: ClassVar[Set[str]] = {"container"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetTranslationScreen(PartNetLabel):
     labels: ClassVar[Set[str]] = {"translation_screen"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetDisplayBase(PartNetLabel):
     labels: ClassVar[Set[str]] = {"display_base"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetLeg(PartNetLabel):
     labels: ClassVar[Set[str]] = {"leg"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetLens(PartNetLabel):
     labels: ClassVar[Set[str]] = {"lens"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetCamera(PartNetLabel):
     labels: ClassVar[Set[str]] = {"camera_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetRotor(PartNetLabel):
     labels: ClassVar[Set[str]] = {"rotor"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetFanFrame(PartNetLabel):
     labels: ClassVar[Set[str]] = {"fan_frame"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetKeyboardBase(PartNetLabel):
     labels: ClassVar[Set[str]] = {"keyboard_base"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetKey(PartNetLabel):
     labels: ClassVar[Set[str]] = {"key"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetSphere(PartNetLabel):
     labels: ClassVar[Set[str]] = {"sphere"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetGlobeFrame(PartNetLabel):
     labels: ClassVar[Set[str]] = {"globe_frame"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetRemoteBase(PartNetLabel):
     labels: ClassVar[Set[str]] = {"remote_base"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetGlasses(PartNetLabel):
     labels: ClassVar[Set[str]] = {"glasses_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetTranslationBlade(PartNetLabel):
     labels: ClassVar[Set[str]] = {"translation_blade"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetToggleButton(PartNetLabel):
     labels: ClassVar[Set[str]] = {"toggle_button"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetMicrowave(PartNetLabel):
     labels: ClassVar[Set[str]] = {"microwave_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetUsb(PartNetLabel):
     labels: ClassVar[Set[str]] = {"usb_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetCaster(PartNetLabel):
     labels: ClassVar[Set[str]] = {"caster"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetChairLeg(PartNetLabel):
     labels: ClassVar[Set[str]] = {"chair_leg"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetBucket(PartNetLabel):
     labels: ClassVar[Set[str]] = {"bucket_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetDispenser(PartNetLabel):
     labels: ClassVar[Set[str]] = {"dispenser_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetRotationLid(PartNetLabel):
     labels: ClassVar[Set[str]] = {"rotation_lid"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetConnector(PartNetLabel):
     labels: ClassVar[Set[str]] = {"connector"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetLighter(PartNetLabel):
     labels: ClassVar[Set[str]] = {"lighter_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetBox(PartNetLabel):
     labels: ClassVar[Set[str]] = {"box_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetBottle(PartNetLabel):
     labels: ClassVar[Set[str]] = {"bottle_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetTrashcan(PartNetLabel):
     labels: ClassVar[Set[str]] = {"trashcan_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetPumpLid(PartNetLabel):
     labels: ClassVar[Set[str]] = {"pump_lid"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetDoorFrame(PartNetLabel):
     labels: ClassVar[Set[str]] = {"door_frame"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetPortafilter(PartNetLabel):
     labels: ClassVar[Set[str]] = {"portafilter"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetCoverLid(PartNetLabel):
     labels: ClassVar[Set[str]] = {"cover_lid"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetTranslationDoor(PartNetLabel):
     labels: ClassVar[Set[str]] = {"translation_door"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetBall(PartNetLabel):
     labels: ClassVar[Set[str]] = {"ball"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetSlider(PartNetLabel):
     labels: ClassVar[Set[str]] = {"slider"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetHand(PartNetLabel):
     labels: ClassVar[Set[str]] = {"hand"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetClock(PartNetLabel):
     labels: ClassVar[Set[str]] = {"clock_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetUsbRotation(PartNetLabel):
     labels: ClassVar[Set[str]] = {"usb_rotation"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetPrinter(PartNetLabel):
     labels: ClassVar[Set[str]] = {"printer_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetCircle(PartNetLabel):
     labels: ClassVar[Set[str]] = {"circle"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetRotationTray(PartNetLabel):
     labels: ClassVar[Set[str]] = {"rotation_tray"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetCap(PartNetLabel):
     labels: ClassVar[Set[str]] = {"cap"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetShelf(PartNetLabel):
     labels: ClassVar[Set[str]] = {"shelf"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetFootPad(PartNetLabel):
     labels: ClassVar[Set[str]] = {"foot_pad"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetRotationScreen(PartNetLabel):
     labels: ClassVar[Set[str]] = {"rotation_screen"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetFastener(PartNetLabel):
     labels: ClassVar[Set[str]] = {"fastener"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetTranslationTray(PartNetLabel):
     labels: ClassVar[Set[str]] = {"translation_tray"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetToaster(PartNetLabel):
     labels: ClassVar[Set[str]] = {"toaster_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetTranslationLid(PartNetLabel):
     labels: ClassVar[Set[str]] = {"translation_lid"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetRotationSlider(PartNetLabel):
     labels: ClassVar[Set[str]] = {"rotation_slider"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetRotationWindow(PartNetLabel):
     labels: ClassVar[Set[str]] = {"rotation_window"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetBoard(PartNetLabel):
     labels: ClassVar[Set[str]] = {"board"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetRotationHandle(PartNetLabel):
     labels: ClassVar[Set[str]] = {"rotation_handle"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetTranslationBar(PartNetLabel):
     labels: ClassVar[Set[str]] = {"translation_bar"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetNose(PartNetLabel):
     labels: ClassVar[Set[str]] = {"nose"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetRotation(PartNetLabel):
     labels: ClassVar[Set[str]] = {"rotation_body"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetTiltLeg(PartNetLabel):
     labels: ClassVar[Set[str]] = {"tilt_leg"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetPressingLid(PartNetLabel):
     labels: ClassVar[Set[str]] = {"pressing_lid"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetRotationContainer(PartNetLabel):
     labels: ClassVar[Set[str]] = {"rotation_container"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetLock(PartNetLabel):
     labels: ClassVar[Set[str]] = {"lock"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetSlot(PartNetLabel):
     labels: ClassVar[Set[str]] = {"slot"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetAlarmRing(PartNetLabel):
     labels: ClassVar[Set[str]] = {"alarm_ring"}
 
 
-@dataclass
+@dataclass(eq=False)
 class PartNetFastenerConnector(PartNetLabel):
     labels: ClassVar[Set[str]] = {"fastener_connector"}

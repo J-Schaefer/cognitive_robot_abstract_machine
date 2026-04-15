@@ -1,18 +1,31 @@
+import os
+
+import pytest
+
 from semantic_digital_twin.adapters.partnet_mobility_dataset.loader import (
     PartNetMobilityDatasetLoader,
-)
-from semantic_digital_twin.adapters.ros.visualization.viz_marker import (
-    VizMarkerPublisher,
+    SAPIEN_ACCESS_TOKEN_ENVIRONMENT_VARIABLE_NAME,
 )
 
+from semantic_digital_twin.world_description.connections import (
+    FixedConnection,
+    Connection6DoF,
+)
 
-def test_loader(rclpy_node):
 
+@pytest.mark.skipif(
+    os.getenv(SAPIEN_ACCESS_TOKEN_ENVIRONMENT_VARIABLE_NAME, None) is None,
+    reason="SAPIEN access token not set",
+)
+def test_loader():
     loader = PartNetMobilityDatasetLoader()
     world = loader.load()
-    VizMarkerPublisher(node=rclpy_node, _world=world).with_tf_publisher()
+    assert len(world.bodies) > 0
+    assert len(world.semantic_annotations) > 0
 
-
-def test_semantics_extraction():
-    loader = PartNetMobilityDatasetLoader()
-    loader._create_python_file_with_semantic_annotations_from_dataset()
+    unique_connection_types = {type(c) for c in world.connections}
+    interesting_connection_types = unique_connection_types - {
+        FixedConnection,
+        Connection6DoF,
+    }
+    assert interesting_connection_types != {}
