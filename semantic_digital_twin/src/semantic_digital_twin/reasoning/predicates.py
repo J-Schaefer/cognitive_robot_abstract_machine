@@ -203,7 +203,24 @@ def reachable(pose: HomogeneousTransformationMatrix, root: Body, tip: Body) -> b
 
 
 @symbolic_function
-def compute_euclidean_distance_with_2_dimensions(body1: Body, body2: Body, ignore_dimension: Vector3):
+def compute_euclidean_planar_distance(body1: Body, body2: Body, ignore_dimension: Vector3):
+    """
+    Computes the Euclidean distance between two bodies in 2D space, ignoring a specific dimension
+    specified by the user. The ignored dimension is set to zero before the distance calculation. This
+    function can be used to handle scenarios where computations are restricted to certain spatial
+    planes.
+
+    :param body1: The first body to compute the distance from. It uses the global pose of the body
+                      to extract the position.
+    :param body2: The second body to compute the distance to. It also utilizes the global pose of
+                      the body to extract the position.
+    :param ignore_dimension: Specifies which dimension (x, y, or z) should be ignored in the
+                                     computation. The ignored dimension is set to zero for both
+                                     positions prior to calculating the distance.
+
+    :return: The Euclidean distance between the two bodies in the 2D plane after ignoring the
+               specified dimension.
+    """
     body1_position = body1.global_pose.to_position()
     body2_position = body2.global_pose.to_position()
 

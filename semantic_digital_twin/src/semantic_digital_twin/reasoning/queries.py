@@ -8,7 +8,7 @@ from krrood.utils import inheritance_path_length, recursive_subclasses
 
 from semantic_digital_twin.reasoning.predicates import (
     is_supported_by,
-    is_supporting, compute_euclidean_distance_with_2_dimensions,
+    is_supporting, compute_euclidean_planar_distance,
 )
 from semantic_digital_twin.semantic_annotations.mixins import HasSupportingSurface, IsPerceivable, HasRootBody
 from semantic_digital_twin.spatial_types import Vector3
@@ -62,7 +62,7 @@ def get_next_object_using_planar_distance(
         [supporting_surface], main_body._world
     ))
     return entity(supported_semantic_annotations).ordered_by(
-        compute_euclidean_distance_with_2_dimensions(
+        compute_euclidean_planar_distance(
             body1=supported_semantic_annotations.bodies[0],
             body2=main_body,
             ignore_dimension=ignore_dimension,
@@ -134,7 +134,7 @@ def query_annotations_by_color(color: Color, objects: list[SemanticAnnotation]) 
     :param color: The color to filter annotations by.
     :param objects: The list of the unfiltered annotations.
 
-    :return: List[SemanticAnnotation]: A list of annotations from the world whose primary shape's
+    :return: A list of annotations from the world whose primary shape's
     visual color matches the specified color.
     """
     if len(objects) == 0:
