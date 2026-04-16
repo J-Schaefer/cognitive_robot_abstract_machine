@@ -11,7 +11,7 @@ from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Desk,
     Handle,
     ShelfLayer,
-    Hinge,
+    Hinge, Oven,
 )
 from semantic_digital_twin.world import World
 import threading
@@ -41,11 +41,10 @@ class KitchenEnvironment:
 
     def get_world(self) -> World:
         """
-        Public method to initialize and return the world with a hierarchical scene graph
-        containing walls, furniture, and room layouts.
+        Constructs and returns a new World instance, setting up its environment,
+        including walls, furniture, and rooms.
 
-        Returns:
-            World: The constructed World object representing the environment.
+        :return: A new world instance with the initialized environment.
         """
         world = World()
         root = Body(name=PrefixedName("root"))
@@ -60,9 +59,13 @@ class KitchenEnvironment:
 
     def _build_environment_walls(self, world: World):
         """
-        Creates and connects all walls of the environment to the scene graph.
-        The walls are represented as Body objects connected via FixedConnections.
-        Returns the updated World object with walls integrated.
+        Builds and configures the environment walls for a given world. This involves creating
+        various walls with predefined dimensions, transformation matrices, and connections.
+
+        :param world: An instance representing the environment world where walls are to be
+        configured and added.
+
+        :return: The modified world instance with configured walls and connections.
         """
         root = world.root
 
@@ -193,28 +196,11 @@ class KitchenEnvironment:
         """
         root = world.root
 
-
-        ovenArea = Box(scale=Scale(1.20, 0.658, 1.49))
-        shape_geometry = ShapeCollection([ovenArea])
-        ovenArea_body = Body(
-            name=PrefixedName("ovenArea_body"),
-            collision=shape_geometry,
-            visual=shape_geometry,
-        )
-
-        root_C_ovenArea = FixedConnection(
-            parent=root,
-            child=ovenArea_body,
-            parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                x=3.481, y=-2.181, z=0.745
-            ),
-        )
-
         with world.modify_world():
             cupboard_scale = Scale(0.43, 0.80, 2.02)
 
             cupboard = Cupboard.create_with_new_body_in_world(
-                name=PrefixedName("cupboard_annotation"),
+                name=PrefixedName("cupboard"),
                 world=world,
                 world_root_T_self=HomogeneousTransformationMatrix.from_xyz_rpy(
                     x=4.55, y=4.72, z=1.01
@@ -222,56 +208,34 @@ class KitchenEnvironment:
                 scale=cupboard_scale,
                 wall_thickness=0.02,
             )
+            ## ToDo: Deleate from Rody
             # Connect the cupboard to 'root', to ensure that the coordinates are relative to the room
-            cupboard_connection = cupboard.root.parent_connection
-            world.remove_connection(cupboard_connection)
-            cupboard_connection.parent = root
-            world.add_connection(cupboard_connection)
+            # cupboard_connection = cupboard.root.parent_connection
+            # world.remove_connection(cupboard_connection)
+            # cupboard_connection.parent = root
+            # world.add_connection(cupboard_connection)
 
-            # create shelflayers manually and attach them directly to the cupboard
-            shelf_scale = Scale(0.40, 0.76, 0.02)
-
-            # Shelf 1
-            shelf_1_geom = ShapeCollection([Box(scale=shelf_scale, color=Color.WHITE())])
-            shelf_1_body = Body(
-                name=PrefixedName("cupboard_shelf_1_body"),
-                collision=shelf_1_geom,
-                visual=shelf_1_geom,
-            )
-            shelf_1 = ShelfLayer(root=shelf_1_body, name=PrefixedName("cupboard_shelf_1"))
-
-            cupboard_C_shelf_1 = FixedConnection(
-                parent=cupboard.root,
-                child=shelf_1_body,
-                parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                    x=0, y=0, z=-0.5
+            # create shelflayers manually
+            shelf_1 = ShelfLayer.create_with_new_body_in_world(
+                name=PrefixedName("shelf_1"),
+                world=world,
+                world_root_T_self=HomogeneousTransformationMatrix.from_xyz_rpy(
+                    x=4.55, y=4.72, z=0.51
                 ),
+                scale=Scale(0.40, 0.76, 0.02),
             )
-            world.add_connection(cupboard_C_shelf_1)
-            world.add_semantic_annotation(shelf_1)
 
-            # Shelf 2
-            shelf_2_geom = ShapeCollection([Box(scale=shelf_scale, color=Color.WHITE())])
-            shelf_2_body = Body(
-                name=PrefixedName("cupboard_shelf_2_body"),
-                collision=shelf_2_geom,
-                visual=shelf_2_geom,
-            )
-            shelf_2 = ShelfLayer(root=shelf_2_body, name=PrefixedName("cupboard_shelf_2"))
-
-            cupboard_C_shelf_2 = FixedConnection(
-                parent=cupboard.root,
-                child=shelf_2_body,
-                parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                    x=0, y=0, z=0.5
+            shelf_2 = ShelfLayer.create_with_new_body_in_world(
+                name=PrefixedName("shelf_2"),
+                world=world,
+                world_root_T_self=HomogeneousTransformationMatrix.from_xyz_rpy(
+                    x=4.55, y=4.72, z=1.51
                 ),
+                scale=Scale(0.40, 0.76, 0.02),
             )
-            world.add_connection(cupboard_C_shelf_2)
-            world.add_semantic_annotation(shelf_2)
 
 
             # Creating doors manually and attaching them directly to the cupboard
-            # Door height 105.5 cm (1.055 m)
             door_height = 1.055
             # Position Z: Bottom of cupboard is at -cupboard_scale.z / 2.
             # Door center should be at Bottom + door_height / 2
@@ -373,13 +337,9 @@ class KitchenEnvironment:
             world.add_semantic_annotation(door_right)
 
 
-            # Creating handles manually and attaching them directly to the doors
-            handle_scale = Scale(0.04, 0.02, 0.02)
-            # Place handle at the center of the door
-            handle_z_local = 0.0
 
             # Left Handle
-            handle_left_geom = ShapeCollection([Box(scale=handle_scale, color=Color.WHITE())])
+            handle_left_geom = ShapeCollection([Box(scale=Scale(0.04, 0.02, 0.02), color=Color.WHITE())])
             handle_left_body = Body(
                 name=PrefixedName("cupboard_handle_left_body"),
                 collision=handle_left_geom,
@@ -393,14 +353,14 @@ class KitchenEnvironment:
                 parent=door_left.root,
                 child=handle_left_body,
                 parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                    x=-0.01, y=0.16, z=handle_z_local, yaw=np.pi
+                    x=-0.01, y=0.16, z=0, yaw=np.pi
                 ),
             )
             world.add_connection(door_left_C_handle)
             world.add_semantic_annotation(handle_left)
 
             # Right Handle
-            handle_right_geom = ShapeCollection([Box(scale=handle_scale, color=Color.WHITE())])
+            handle_right_geom = ShapeCollection([Box(scale=Scale(0.04, 0.02, 0.02), color=Color.WHITE())])
             handle_right_body = Body(
                 name=PrefixedName("cupboard_handle_right_body"),
                 collision=handle_right_geom,
@@ -414,13 +374,20 @@ class KitchenEnvironment:
                 parent=door_right.root,
                 child=handle_right_body,
                 parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                    x=-0.01, y=-0.16, z=handle_z_local, yaw=np.pi
+                    x=-0.01, y=-0.16, z=0, yaw=np.pi
                 ),
             )
             world.add_connection(door_right_C_handle)
             world.add_semantic_annotation(handle_right)
 
-
+            oven = Oven.create_with_new_body_in_world(
+                world=world,
+                name=PrefixedName("oven"),
+                world_root_T_self=HomogeneousTransformationMatrix.from_xyz_rpy(
+                    x=3.481, y=-2.181, z=0.745
+                ),
+                scale=Scale(1.20, 0.658, 1.49),
+            )
 
             trash_can = TrashCan.create_with_new_body_in_world(
                 world=world,
@@ -498,7 +465,7 @@ class KitchenEnvironment:
             for color in dinning_table.bodies[0].visual.shapes:
                 color.color = Color.BEIGE()
 
-            world.add_connection(root_C_ovenArea)
+            # world.add_connection(root_C_ovenArea)
         return world
 
     def _build_environment_rooms(self, world: World):

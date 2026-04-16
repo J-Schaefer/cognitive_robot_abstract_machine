@@ -396,6 +396,8 @@ class Cabinet(Furniture, HasCaseAsRootBody):
 @dataclass(eq=False)
 class Fridge(Cabinet, HasDoors, HasDrawers): ...
 
+@dataclass(eq=False)
+class Oven(HasRootBody): ...
 
 @dataclass(eq=False)
 class Dresser(Cabinet, HasDrawers, HasDoors): ...
@@ -766,16 +768,12 @@ class Fruit(Produce):
     Fruit.
     """
 
-    ...
-
 
 @dataclass(eq=False)
 class Vegetable(Produce):
     """
     Vegetable.
     """
-
-    ...
 
 
 @dataclass(eq=False)

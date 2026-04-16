@@ -1,5 +1,3 @@
-from semantic_digital_twin.reasoning.predicates import compute_euclidean_distance_2d
-
 from semantic_digital_twin.predetermined_maps.kitchen_environment import KitchenEnvironment
 from semantic_digital_twin.reasoning.queries import query_semantic_annotations_on_surfaces, \
     get_next_object_using_planar_distance, query_goal_surface_of_object, query_annotations_by_color, \

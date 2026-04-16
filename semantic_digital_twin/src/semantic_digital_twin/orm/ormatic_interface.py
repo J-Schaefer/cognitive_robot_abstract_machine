@@ -8569,6 +8569,27 @@ class LiquidCapDAO(
     }
 
 
+class OvenDAO(
+    HasRootBodyDAO,
+    DataAccessObject[
+        semantic_digital_twin.semantic_annotations.semantic_annotations.Oven
+    ],
+):
+
+    __tablename__ = "OvenDAO"
+
+    database_id: Mapped[builtins.int] = mapped_column(
+        ForeignKey(HasRootBodyDAO.database_id),
+        primary_key=True,
+        use_existing_column=True,
+    )
+
+    __mapper_args__ = {
+        "polymorphic_identity": "OvenDAO",
+        "inherit_condition": database_id == HasRootBodyDAO.database_id,
+    }
+
+
 class PenDAO(
     HasRootBodyDAO,
     DataAccessObject[

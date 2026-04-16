@@ -836,20 +836,20 @@ def kitchen_environment_fixture():
             color.color = Color.YELLOW()
 
 
-    toya = Cylinder(width=0.45, height=1.5)
-    shape_geometry = ShapeCollection([toya])
-    toya_body = Body(
+    fake_robot = Cylinder(width=0.45, height=1.5)
+    shape_geometry = ShapeCollection([fake_robot])
+    fake_robot_body = Body(
         name=PrefixedName("base_link_body"),
         collision=shape_geometry,
         visual=shape_geometry,
     )
 
-    root_C_toya = FixedConnection(
+    root_C_fake_robot = FixedConnection(
         parent=root,
-        child=toya_body,
+        child=fake_robot_body,
         parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(),
     )
-    all_elements_connections.append(root_C_toya)
+    all_elements_connections.append(root_C_fake_robot)
 
 
     with world.modify_world():

@@ -203,17 +203,17 @@ def reachable(pose: HomogeneousTransformationMatrix, root: Body, tip: Body) -> b
 
 
 @symbolic_function
-def compute_euclidean_distance_2d(body1: Body, body2: Body, ignore_dimension: Vector3):
+def compute_euclidean_distance_with_2_dimensions(body1: Body, body2: Body, ignore_dimension: Vector3):
     body1_position = body1.global_pose.to_position()
     body2_position = body2.global_pose.to_position()
 
     if np.allclose(ignore_dimension, Vector3.X()):
         body1_position.x = 0.0
         body2_position.x = 0.0
-    if np.allclose(ignore_dimension, Vector3.Y()):
+    elif np.allclose(ignore_dimension, Vector3.Y()):
         body1_position.y = 0.0
         body2_position.y = 0.0
-    if np.allclose(ignore_dimension, Vector3.Z()):
+    elif np.allclose(ignore_dimension, Vector3.Z()):
         body1_position.z = 0.0
         body2_position.z = 0.0
 

@@ -8,8 +8,7 @@ from krrood.utils import inheritance_path_length, recursive_subclasses
 
 from semantic_digital_twin.reasoning.predicates import (
     is_supported_by,
-    compute_euclidean_distance_2d,
-    is_supporting,
+    is_supporting, compute_euclidean_distance_with_2_dimensions,
 )
 from semantic_digital_twin.semantic_annotations.mixins import HasSupportingSurface, IsPerceivable, HasRootBody
 from semantic_digital_twin.spatial_types import Vector3
@@ -20,7 +19,7 @@ from semantic_digital_twin.world_description.world_entity import (
     Body,
     SemanticAnnotation,
 )
-
+from test.conftest import kitchen_environment_fixture
 
 
 def query_semantic_annotations_on_surfaces(
@@ -63,7 +62,7 @@ def get_next_object_using_planar_distance(
         [supporting_surface], main_body._world
     ))
     return entity(supported_semantic_annotations).ordered_by(
-        compute_euclidean_distance_2d(
+        compute_euclidean_distance_with_2_dimensions(
             body1=supported_semantic_annotations.bodies[0],
             body2=main_body,
             ignore_dimension=ignore_dimension,
