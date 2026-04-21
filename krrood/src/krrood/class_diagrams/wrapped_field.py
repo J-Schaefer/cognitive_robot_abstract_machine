@@ -30,6 +30,9 @@ from krrood.class_diagrams.utils import (
     get_type_hints_of_object,
 )
 from krrood.utils import module_and_class_name, is_builtin_type, memoize
+from krrood.class_diagrams.exceptions import MissingContainedTypeOfContainer
+from krrood.class_diagrams.utils import behaves_like_a_built_in_class, get_type_hints_of_object
+from krrood.utils import module_and_class_name, is_builtin_type, memoize
 
 if TYPE_CHECKING:
     from krrood.class_diagrams.class_diagram import WrappedClass
@@ -226,10 +229,10 @@ class WrappedField:
     @cached_property
     def is_role_taker(self) -> bool:
         return (
-            self.is_one_to_one_relationship
-            and not self.is_optional
-            and self.field.default == MISSING
-            and self.field.default_factory == MISSING
+                self.is_one_to_one_relationship
+                and not self.is_optional
+                and self.field.default == MISSING
+                and self.field.default_factory == MISSING
         )
 
     @cached_property
@@ -257,7 +260,7 @@ class WrappedField:
         """
         # If it's a class and it inherits from Generic but has no arguments
         if inspect.isclass(self.type_endpoint) and issubclass(
-            self.type_endpoint, Generic
+                self.type_endpoint, Generic
         ):
             return True
 

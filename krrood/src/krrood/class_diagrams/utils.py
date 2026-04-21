@@ -2,15 +2,23 @@ from __future__ import annotations
 
 import inspect
 import sys
+from copy import copy
 from dataclasses import dataclass
 from enum import Enum
+from functools import lru_cache
+from typing import Callable, Any, Dict, get_args, get_origin, Union
 from functools import lru_cache
 from uuid import UUID
 
 import typing_extensions
+from typing_extensions import List, Type, Generic, TYPE_CHECKING, Optional, Tuple
+from typing_extensions import TypeVar, get_origin, get_args
 from typing_extensions import Callable, get_args, get_origin
 from typing_extensions import List, Type, Any, Dict, Tuple, Generic
 from typing_extensions import TypeVar
+
+from krrood.class_diagrams.exceptions import CouldNotResolveType
+from krrood.utils import get_scope_from_imports
 
 from krrood.class_diagrams.exceptions import CouldNotResolveType
 from krrood.utils import get_scope_from_imports
@@ -188,6 +196,43 @@ def get_and_resolve_generic_type_hints_of_object_using_substitutions(
     return {name: resolve_type(hint, substitution) for name, hint in type_hints.items()}
 
 
+def resolve_type(
+    type_to_resolve: Any,
+    substitution: Dict[TypeVar, Any],
+) -> TypeHintResolutionResult:
+    """
+    Resolve type variables in a type.
+
+    :param type_to_resolve: The type to resolve.
+    :param substitution: Mapping of TypeVars to other types that will substitute the TypeVars.
+    :return: A TypeHintResolutionResult object containing the resolved type and a boolean indicating whether any
+    substitutions were made.
+    """
+    if isinstance(type_to_resolve, TypeVar):
+        if type_to_resolve not in substitution:
+            return TypeHintResolutionResult(type_to_resolve, False, type_to_resolve)
+        return TypeHintResolutionResult(
+            substitution[type_to_resolve], True, type_to_resolve
+        )
+
+    # If the type itself can be indexed (like List[T] or Optional[T])
+    params = getattr(type_to_resolve, "__parameters__", None)
+    if hasattr(type_to_resolve, "__getitem__") and params:
+        new_params = []
+        resolved: bool = False  # whether any substitutions were made
+        for param in params:
+            if param in substitution:
+                new_params.append(substitution[param])
+                resolved = True
+            else:
+                new_params.append(param)
+        return TypeHintResolutionResult(
+            type_to_resolve[*new_params], resolved, type_to_resolve
+        )
+
+    return TypeHintResolutionResult(type_to_resolve, False, type_to_resolve)
+
+
 @lru_cache
 def get_type_hints_of_object(
     object_: Any, namespace: Tuple[Tuple[str, Any], ...] = ()
@@ -245,40 +290,3 @@ def get_object_by_name_from_another_object_in_same_module(
             extra_information=f"Could not find {name} in {source_path}, could be a deprecated import statement or "
             f"a type defined in a module that is not imported in the source file.",
         )
-
-
-def resolve_type(
-    type_to_resolve: Any,
-    substitution: Dict[TypeVar, Any],
-) -> TypeHintResolutionResult:
-    """
-    Resolve type variables in a type.
-
-    :param type_to_resolve: The type to resolve.
-    :param substitution: Mapping of TypeVars to other types that will substitute the TypeVars.
-    :return: A TypeHintResolutionResult object containing the resolved type and a boolean indicating whether any
-    substitutions were made.
-    """
-    if isinstance(type_to_resolve, TypeVar):
-        if type_to_resolve not in substitution:
-            return TypeHintResolutionResult(type_to_resolve, False, type_to_resolve)
-        return TypeHintResolutionResult(
-            substitution[type_to_resolve], True, type_to_resolve
-        )
-
-    # If the type itself can be indexed (like List[T] or Optional[T])
-    params = getattr(type_to_resolve, "__parameters__", None)
-    if hasattr(type_to_resolve, "__getitem__") and params:
-        new_params = []
-        resolved: bool = False  # whether any substitutions were made
-        for param in params:
-            if param in substitution:
-                new_params.append(substitution[param])
-                resolved = True
-            else:
-                new_params.append(param)
-        return TypeHintResolutionResult(
-            type_to_resolve[*new_params], resolved, type_to_resolve
-        )
-
-    return TypeHintResolutionResult(type_to_resolve, False, type_to_resolve)
