@@ -775,7 +775,9 @@ class ClassDiagram:
             origin = get_origin(next_type)
             if origin:
                 if not next_type.__parameters__ or all(
-                        isinstance(p, TypeVar) and p.__bound__ is not None for p in next_type.__parameters__):
+                    isinstance(p, TypeVar) and p.__bound__ is not None
+                    for p in next_type.__parameters__
+                ):
                     bindings = [p.__bound__ for p in next_type.__parameters__]
                     if bindings:
                         next_type = next_type[*bindings]

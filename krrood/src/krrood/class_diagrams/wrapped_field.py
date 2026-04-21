@@ -25,6 +25,12 @@ from typing_extensions import (
 )
 
 from krrood.class_diagrams.exceptions import MissingContainedTypeOfContainer
+from krrood.class_diagrams.utils import (
+    behaves_like_a_built_in_class,
+    get_type_hints_of_object,
+)
+from krrood.utils import module_and_class_name, is_builtin_type, memoize
+from krrood.class_diagrams.exceptions import MissingContainedTypeOfContainer
 from krrood.class_diagrams.utils import behaves_like_a_built_in_class, get_type_hints_of_object
 from krrood.utils import module_and_class_name, is_builtin_type, memoize
 
@@ -117,8 +123,9 @@ class WrappedField:
         if origin is not None and not isinstance(clazz, type):
             clazz = origin
 
-        return get_type_hints_of_object(clazz, namespace=tuple(local_namespace.items()))[
-            self.field.name]
+        return get_type_hints_of_object(
+            clazz, namespace=tuple(local_namespace.items())
+        )[self.field.name]
 
     def _build_initial_namespace(self) -> dict:
         """
@@ -142,7 +149,9 @@ class WrappedField:
 
     @cached_property
     def is_builtin_type(self) -> bool:
-        return is_builtin_type(self.type_endpoint) or (self.type_endpoint in [datetime, NoneType])
+        return is_builtin_type(self.type_endpoint) or (
+            self.type_endpoint in [datetime, NoneType]
+        )
 
     @cached_property
     def is_container(self) -> bool:
