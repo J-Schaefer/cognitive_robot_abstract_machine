@@ -19,8 +19,6 @@ from os import PathLike
 from os.path import dirname
 from pathlib import Path
 from typing import Union, Callable, Tuple, Any
-from typing import Tuple
-from typing import Union, Any
 
 from typing_extensions import TypeVar, Type, List, Optional, Callable
 from typing_extensions import (
@@ -138,9 +136,9 @@ def inheritance_path_length(child_class: Type, parent_class: Type) -> Optional[i
     :return: The minimum path length between `child_class` and `parent_class` or None if no path exists.
     """
     if not (
-            isclass(child_class)
-            and isclass(parent_class)
-            and issubclass(child_class, parent_class)
+        isclass(child_class)
+        and isclass(parent_class)
+        and issubclass(child_class, parent_class)
     ):
         return None
 
@@ -148,7 +146,7 @@ def inheritance_path_length(child_class: Type, parent_class: Type) -> Optional[i
 
 
 def _inheritance_path_length(
-        child_class: Type, parent_class: Type, current_length: int = 0
+    child_class: Type, parent_class: Type, current_length: int = 0
 ) -> int:
     """
     Helper function for :func:`inheritance_path_length`.
@@ -190,7 +188,9 @@ def get_default_value(dataclass_type, field_name):
         elif f.default_factory is not MISSING:  # handles mutable defaults
             return f.default_factory()
         else:
-            raise NoDefaultValueFound(message=f"No default value for field '{field_name}'")
+            raise NoDefaultValueFound(
+                message=f"No default value for field '{field_name}'"
+            )
     return None
 
 
@@ -270,12 +270,12 @@ def clear_memoization_cache(instance):
 
 
 def extract_imports_from(
-        module: Optional[types.ModuleType] = None,
-        file_path: Optional[str] = None,
-        source: Optional[str] = None,
-        ast_tree: Optional[ast.AST] = None,
-        exclude_libraries: Optional[List[str]] = None,
-        convert_relative_to_absolute: bool = False,
+    module: Optional[types.ModuleType] = None,
+    file_path: Optional[str] = None,
+    source: Optional[str] = None,
+    ast_tree: Optional[ast.AST] = None,
+    exclude_libraries: Optional[List[str]] = None,
+    convert_relative_to_absolute: bool = False,
 ) -> List[str]:
     """
     Extract imports from a module or source code or a file path or an ast and returns them as a list of strings.
@@ -289,7 +289,9 @@ def extract_imports_from(
     """
     exclude_libraries = exclude_libraries or []
     if module is None and source is None and file_path is None and ast_tree is None:
-        raise NoSourceDataToParseImportsFrom(message="Either module, source, file_path or ast_tree must be provided")
+        raise NoSourceDataToParseImportsFrom(
+            message="Either module, source, file_path or ast_tree must be provided"
+        )
     if module:
         source = inspect.getsource(module)
     elif file_path:
@@ -351,7 +353,7 @@ def extract_imports_from(
 
 
 def generate_relative_import(
-        from_module: str, target_module: str, symbol: str | None = None
+    from_module: str, target_module: str, symbol: str | None = None
 ) -> str:
     """
     Generate a relative import statement using Python's own resolver.
@@ -371,7 +373,7 @@ def generate_relative_import(
     # find common prefix
     i = 0
     while (
-            i < min(len(from_parts), len(target_parts)) and from_parts[i] == target_parts[i]
+        i < min(len(from_parts), len(target_parts)) and from_parts[i] == target_parts[i]
     ):
         i += 1
 
@@ -402,9 +404,9 @@ def own_dataclass_fields(cls) -> List[Field]:
 
 
 def get_type_names_per_module_from_types(
-        type_objects: Iterable[Type],
-        excluded_names: Optional[List[str]] = None,
-        excluded_modules: Optional[List[str]] = None,
+    type_objects: Iterable[Type],
+    excluded_names: Optional[List[str]] = None,
+    excluded_modules: Optional[List[str]] = None,
 ) -> Dict[str, List[str]]:
     """
     Get a dictionary of type names grouped by module.
@@ -432,14 +434,14 @@ def get_type_names_per_module_from_types(
             if name == "NoneType":
                 module = "types"
             if (
-                    module is None
-                    or module == "builtins"
-                    or module.startswith("_")
-                    or module in sys.builtin_module_names
-                    or module in excluded_modules
-                    or "<" in module
-                    or name in excluded_names
-                    or "site-packages" in module.split(".")
+                module is None
+                or module == "builtins"
+                or module.startswith("_")
+                or module in sys.builtin_module_names
+                or module in excluded_modules
+                or "<" in module
+                or name in excluded_names
+                or "site-packages" in module.split(".")
             ):
                 continue
             if module == "typing":
@@ -463,8 +465,11 @@ def is_builtin_type(type_object: Any):
     :param type_object: A type object to check.
     :return: True if the type is a built-in type, False otherwise.
     """
-    return isinstance(type_object, type) and type_object.__module__ == "builtins" and hasattr(builtins,
-                                                                                              type_object.__name__)
+    return (
+        isinstance(type_object, type)
+        and type_object.__module__ == "builtins"
+        and hasattr(builtins, type_object.__name__)
+    )
 
 
 def get_import_path_from_path(path: str) -> Optional[str]:
@@ -556,10 +561,10 @@ def get_method_file_name(method: Callable) -> str:
 
 
 def get_relative_import(
-        target_file_path: str | PathLike[str],
-        imported_module_path: Optional[str] = None,
-        module: Optional[str] = None,
-        package_name: Optional[str] = None,
+    target_file_path: str | PathLike[str],
+    imported_module_path: Optional[str] = None,
+    module: Optional[str] = None,
+    package_name: Optional[str] = None,
 ) -> str:
     """
     Get a relative import path from the target file to the imported module.
@@ -574,7 +579,9 @@ def get_relative_import(
     if module is not None:
         imported_module_path = sys.modules[module].__file__
     if imported_module_path is None:
-        raise NoModuleSourceProvided(message="Either imported_module_path or module must be provided")
+        raise NoModuleSourceProvided(
+            message="Either imported_module_path or module must be provided"
+        )
     target_path = Path(target_file_path).resolve()
     imported_file_name = Path(imported_module_path).name
     target_file_name = Path(target_file_path).name
@@ -608,7 +615,7 @@ def get_relative_import(
 
 
 def get_path_starting_from_latest_encounter_of(
-        path: str, package_name: str, should_contain: List[str]
+    path: str, package_name: str, should_contain: List[str]
 ) -> str:
     """
     Get the path starting from the package name.
@@ -622,7 +629,9 @@ def get_path_starting_from_latest_encounter_of(
     """
     path_parts = path.split(os.path.sep)
     if package_name not in path_parts:
-        raise PackageNameNotFoundError(message=f"Could not find {package_name} in {path}")
+        raise PackageNameNotFoundError(
+            message=f"Could not find {package_name} in {path}"
+        )
     idx = path_parts.index(package_name)
     prev_idx = idx
     while all(sc in path_parts[idx:] for sc in should_contain):
@@ -635,15 +644,17 @@ def get_path_starting_from_latest_encounter_of(
         path_parts = path_parts[prev_idx:]
         return os.path.join(*path_parts)
     else:
-        raise PathMissingRequiredComponentsError(message=f"Could not find {should_contain} in {path}")
+        raise PathMissingRequiredComponentsError(
+            message=f"Could not find {should_contain} in {path}"
+        )
 
 
 def get_imports_from_types(
-        type_objects: Iterable[Type],
-        target_file_path: Optional[str] = None,
-        package_name: Optional[str] = None,
-        excluded_names: Optional[List[str]] = None,
-        excluded_modules: Optional[List[str]] = None,
+    type_objects: Iterable[Type],
+    target_file_path: Optional[str] = None,
+    package_name: Optional[str] = None,
+    excluded_names: Optional[List[str]] = None,
+    excluded_modules: Optional[List[str]] = None,
 ) -> List[str]:
     """
     Format import lines from type objects.
@@ -674,9 +685,9 @@ def get_imports_from_types(
         joined = ", ".join(sorted(set(filtered_names)))
         import_path = module
         if (
-                (target_file_path is not None)
-                and (package_name is not None)
-                and (package_name in module)
+            (target_file_path is not None)
+            and (package_name is not None)
+            and (package_name in module)
         ):
             import_path = get_relative_import(
                 target_file_path, module=module, package_name=package_name
@@ -718,8 +729,8 @@ def run_subprocess_on_file(command: List[str]):
     except subprocess.CalledProcessError as e:
         raise SubprocessExecutionError(
             message=f"command: {command} failed with code {e.returncode}\n"
-                    f"STDOUT:\n{e.stdout}\n"
-                    f"STDERR:\n{e.stderr}"
+            f"STDOUT:\n{e.stdout}\n"
+            f"STDERR:\n{e.stderr}"
         ) from e
 
 
@@ -749,10 +760,10 @@ def get_generic_type_param(cls, generic_base: Type[T]) -> Optional[List[Type[T]]
 
 
 def get_scope_from_imports(
-        file_path: Optional[str] = None,
-        tree: Optional[ast.AST] = None,
-        package_name: Optional[str] = None,
-        source: Optional[str] = None,
+    file_path: Optional[str] = None,
+    tree: Optional[ast.AST] = None,
+    package_name: Optional[str] = None,
+    source: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Create a scope dictionary from imports in a Python file or an AST tree.
@@ -764,13 +775,19 @@ def get_scope_from_imports(
     :return: A dictionary representing the scope with imported modules and their attributes.
     """
     if tree is None and file_path is None and source is None:
-        raise SourceDataNotProvided(message="Either file_path, tree, or source must be provided")
+        raise SourceDataNotProvided(
+            message="Either file_path, tree, or source must be provided"
+        )
 
     # Ensure we have source and a parsed AST
     if file_path and source is None:
         with open(file_path, "r") as f:
             source = f.read()
-    parsed_tree = tree or (ast.parse(source) if file_path is None else ast.parse(source, filename=file_path))
+    parsed_tree = tree or (
+        ast.parse(source)
+        if file_path is None
+        else ast.parse(source, filename=file_path)
+    )
 
     scope: Dict[str, Any] = {}
 
@@ -788,7 +805,9 @@ def get_scope_from_imports(
     return scope
 
 
-def _import_module_safely(module_name: str, package_name: Optional[str]) -> Optional[types.ModuleType]:
+def _import_module_safely(
+    module_name: str, package_name: Optional[str]
+) -> Optional[types.ModuleType]:
     """
     Attempt to import a module with an optional package context and return the module or None on failure.
 
@@ -806,7 +825,7 @@ def _import_module_safely(module_name: str, package_name: Optional[str]) -> Opti
         if not package_name:
             return None
         try:
-            if module_name.startswith('.') and package_name:
+            if module_name.startswith(".") and package_name:
                 full_name = resolve_name(module_name, package_name)
             else:
                 full_name = f"{package_name}.{module_name}"
@@ -819,7 +838,9 @@ def _import_module_safely(module_name: str, package_name: Optional[str]) -> Opti
         return None
 
 
-def get_module_object(module_name: str, package_name: Optional[str] = None) -> Optional[types.ModuleType]:
+def get_module_object(
+    module_name: str, package_name: Optional[str] = None
+) -> Optional[types.ModuleType]:
     """
     :param module_name: The name of the module to import.
     :param package_name: The name of the package containing the module.
@@ -827,7 +848,7 @@ def get_module_object(module_name: str, package_name: Optional[str] = None) -> O
     """
     try:
         full_name = module_name
-        if module_name.startswith('.') and package_name:
+        if module_name.startswith(".") and package_name:
             full_name = resolve_name(module_name, package_name)
 
         if full_name in sys.modules:
@@ -837,7 +858,10 @@ def get_module_object(module_name: str, package_name: Optional[str] = None) -> O
 
 
 def _resolve_relative_import(
-        file_path: Optional[str], node: ast.ImportFrom, module_name: Optional[str], package_name: Optional[str]
+    file_path: Optional[str],
+    node: ast.ImportFrom,
+    module_name: Optional[str],
+    package_name: Optional[str],
 ) -> tuple[Optional[str], Optional[str]]:
     """
     Resolve relative import context and possibly adjust module and package names based on file location.
@@ -867,7 +891,9 @@ def _resolve_relative_import(
                 ).resolve()
                 idx = str(module_rel_path).rfind(resolved_package)
                 if idx != -1:
-                    resolved_module = str(module_rel_path)[idx:].replace(os.path.sep, ".")
+                    resolved_module = str(module_rel_path)[idx:].replace(
+                        os.path.sep, "."
+                    )
             except Exception:
                 # Fall back to original module name
                 pass
@@ -875,7 +901,9 @@ def _resolve_relative_import(
     return resolved_module, resolved_package
 
 
-def _handle_import_node(node: ast.Import, scope: Dict[str, Any], package_name: Optional[str]) -> None:
+def _handle_import_node(
+    node: ast.Import, scope: Dict[str, Any], package_name: Optional[str]
+) -> None:
     """
     Process a standard import node and update the provided scope mapping.
 
@@ -894,7 +922,10 @@ def _handle_import_node(node: ast.Import, scope: Dict[str, Any], package_name: O
 
 
 def _handle_import_from_node(
-        node: ast.ImportFrom, scope: Dict[str, Any], file_path: Optional[str], package_name: Optional[str]
+    node: ast.ImportFrom,
+    scope: Dict[str, Any],
+    file_path: Optional[str],
+    package_name: Optional[str],
 ) -> Optional[str]:
     """
     Process a from-import node and update the provided scope mapping.
@@ -909,7 +940,10 @@ def _handle_import_from_node(
 
     # Resolve relative imports (may update package_name and module_name)
     resolved_module_name, resolved_package_name = _resolve_relative_import(
-        file_path=file_path, node=node, module_name=module_name, package_name=package_name
+        file_path=file_path,
+        node=node,
+        module_name=module_name,
+        package_name=package_name,
     )
 
     # Mimic original behavior: allow package_name to be overwritten for subsequent iterations
@@ -921,7 +955,9 @@ def _handle_import_from_node(
 
     if module is None and resolved_package_name and resolved_module_name:
         # Fallback already attempted in _import_module_safely; keep for parity
-        module = _import_module_safely(f"{resolved_package_name}.{resolved_module_name}", None)
+        module = _import_module_safely(
+            f"{resolved_package_name}.{resolved_module_name}", None
+        )
 
     if module is None:
         logger.warning(
