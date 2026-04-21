@@ -13,7 +13,7 @@ from types import NoneType, ModuleType
 from krrood.ripple_down_rules.datastructures.dataclasses import CaseFactoryMetaData
 
 from krrood.ripple_down_rules import logger
-from krrood.ripple_down_rules.failures import RDRLoadError
+from krrood.ripple_down_rules.exceptions import RDRLoadError
 
 try:
     from matplotlib import pyplot as plt

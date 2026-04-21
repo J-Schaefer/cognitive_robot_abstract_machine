@@ -780,7 +780,10 @@ class ClassDiagram:
                 ):
                     bindings = [p.__bound__ for p in next_type.__parameters__]
                     if bindings:
-                        next_type = next_type[*bindings]
+                        subscript_param = (
+                            bindings[0] if len(bindings) == 1 else tuple(bindings)
+                        )
+                        next_type = next_type[subscript_param]
                 else:
                     continue
 

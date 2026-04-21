@@ -25,18 +25,12 @@ from typing_extensions import (
 )
 
 from krrood.class_diagrams.exceptions import MissingContainedTypeOfContainer
-from krrood.class_diagrams.utils import (
-    behaves_like_a_built_in_class,
-    get_type_hints_of_object,
-)
-from krrood.utils import module_and_class_name, is_builtin_type, memoize
-from krrood.class_diagrams.exceptions import MissingContainedTypeOfContainer
 from krrood.class_diagrams.utils import behaves_like_a_built_in_class, get_type_hints_of_object
-from krrood.utils import module_and_class_name, is_builtin_type, memoize
+from krrood.utils import module_and_class_name, is_builtin_type
 
 if TYPE_CHECKING:
     from krrood.class_diagrams.class_diagram import WrappedClass
-    from krrood.ontomatic.property_descriptor import PropertyDescriptor
+    from krrood.ontomatic.property_descriptor.property_descriptor import PropertyDescriptor
 
 
 @dataclass
@@ -150,7 +144,7 @@ class WrappedField:
     @cached_property
     def is_builtin_type(self) -> bool:
         return is_builtin_type(self.type_endpoint) or (
-            self.type_endpoint in [datetime, NoneType]
+                self.type_endpoint in [datetime, NoneType]
         )
 
     @cached_property
