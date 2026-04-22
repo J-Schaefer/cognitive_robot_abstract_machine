@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 from typing_extensions import Type, Optional
 
 from krrood.exceptions import DataclassException

@@ -4,14 +4,13 @@ import dataclasses
 import logging
 from abc import ABC
 from copy import copy
-from dataclasses import dataclass, make_dataclass, is_dataclass
+from dataclasses import dataclass, is_dataclass
 from dataclasses import field as dataclass_field, InitVar
-from functools import cached_property, lru_cache
+from functools import cached_property
 from typing import _GenericAlias
 
-from typing_extensions import get_args, get_origin, Any
-
 import rustworkx as rx
+from typing_extensions import get_args, get_origin
 
 from krrood.utils import module_and_class_name, memoize
 
@@ -222,23 +221,36 @@ class WrappedSpecializedGeneric(WrappedClass):
 class ClassDiagram:
     """A graph of classes and their relations discovered via attribute introspection."""
 
-    classes: InitVar[List[Type]]
+    classes: List[Type]
+    """
+    A list of classes to be represented in the diagram.
+    """
 
     introspector: AttributeIntrospector = dataclass_field(
         default_factory=DataclassOnlyIntrospector, init=True, repr=False
     )
+    """
+    The attribute introspector used to discover class attributes.
+    """
 
     _dependency_graph: rx.PyDiGraph[WrappedClass, ClassRelation] = dataclass_field(
         default_factory=rx.PyDiGraph, init=False
     )
+    """
+    A directed graph representing class relationships.
+    """
+
     _cls_wrapped_cls_map: Dict[Type, WrappedClass] = dataclass_field(
         default_factory=dict, init=False, repr=False
     )
+    """
+    A mapping of class types to their corresponding wrapped class instances.
+    """
 
-    def __post_init__(self, classes: List[Type]):
+    def __post_init__(self):
         """Initialize the diagram with the provided classes and build relations."""
         self._dependency_graph = rx.PyDiGraph()
-        for clazz in classes:
+        for clazz in self.classes:
             self.add_node(WrappedClass(clazz=clazz))
         self._create_nodes_for_specialized_generic_type_hints()
         self._create_all_relations()

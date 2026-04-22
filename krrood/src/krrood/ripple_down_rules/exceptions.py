@@ -26,7 +26,9 @@ class RDRLoadError(DataclassException):
     """
 
     def __post_init__(self):
-        self.message = f"Could not load the rdr model {self.model_name} from {self.model_path}"
+        self.message = (
+            f"Could not load the rdr model {self.model_name} from {self.model_path}"
+        )
         super().__post_init__()
 
 
@@ -37,10 +39,15 @@ class NoSavePathFoundForExpertAnswers(InputError):
     """
 
     expert: Expert
+    """
+    The expert for which no save path is found.
+    """
 
     def __post_init__(self):
-        self.message = f"No save path found for expert {self.expert}, either provide a path or set the " \
-                       f"answers_save_path attribute."
+        self.message = (
+            f"No save path found for expert {self.expert}, either provide a path or set the "
+            f"answers_save_path attribute."
+        )
         super().__post_init__()
 
 
@@ -49,9 +56,15 @@ class NoLoadPathFoundForExpertAnswers(InputError):
     """
     Exception raised when no load path is found for expert answers.
     """
+
     expert: Expert
+    """
+    The expert for which no load path is found.
+    """
 
     def __post_init__(self):
-        self.message = f"No load path found for expert {self.expert}, either provide a path or set the " \
-                       f"answers_save_path attribute."
+        self.message = (
+            f"No load path found for expert {self.expert}, either provide a path or set the "
+            f"answers_save_path attribute."
+        )
         super().__post_init__()

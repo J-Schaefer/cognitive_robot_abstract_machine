@@ -1,11 +1,7 @@
-import gc
-import linecache
 import os
 import threading
 import time
-import tracemalloc
 from copy import deepcopy
-from functools import _lru_cache_wrapper
 
 import numpy as np
 import objgraph

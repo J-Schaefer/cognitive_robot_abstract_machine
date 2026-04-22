@@ -223,10 +223,10 @@ class WrappedField:
     @cached_property
     def is_role_taker(self) -> bool:
         return (
-                self.is_one_to_one_relationship
-                and not self.is_optional
-                and self.field.default == MISSING
-                and self.field.default_factory == MISSING
+            self.is_one_to_one_relationship
+            and not self.is_optional
+            and self.field.default == MISSING
+            and self.field.default_factory == MISSING
         )
 
     @cached_property
@@ -254,7 +254,7 @@ class WrappedField:
         """
         # If it's a class and it inherits from Generic but has no arguments
         if inspect.isclass(self.type_endpoint) and issubclass(
-                self.type_endpoint, Generic
+            self.type_endpoint, Generic
         ):
             return True
 
