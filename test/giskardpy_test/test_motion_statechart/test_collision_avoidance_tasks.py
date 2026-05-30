@@ -810,11 +810,20 @@ def test_hard_constraints_violated(cylinder_bot_world: World, rclpy_node):
     assert len(exc_info.value.violated_collisions) == 2
 
 
-def test_collision_for_robot_with_static_base(tracy_world):
-    world = deepcopy(tracy_world)
-    robot = Tracy.from_world(world)
+@pytest.mark.parametrize(
+    "fix_name, tool_frame_id",
+    [
+        ("tracy_world", "r_gripper_tool_frame"),
+        ("daisy_world", "right_gripper_tool_frame"),
+    ],
+)
+def test_collision_for_robot_with_static_base(
+    fix_name, tool_frame_id, request, rclpy_node
+):
+    world = request.getfixturevalue(fix_name)
+    robot = world.get_semantic_annotations_by_type(AbstractRobot)[0]
 
-    tool_frame = world.get_body_by_name("r_gripper_tool_frame")
+    tool_frame = world.get_body_by_name(tool_frame_id)
     with world.modify_world():
         obstacle = Body(
             name=PrefixedName("obstacle"),
