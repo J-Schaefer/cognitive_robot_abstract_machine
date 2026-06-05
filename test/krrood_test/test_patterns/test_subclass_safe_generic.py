@@ -1,5 +1,16 @@
 import sys
-from dataclasses import fields
+import pytest
+from dataclasses import fields, dataclass
+from typing import (
+    Union,
+    TypeVar,
+    Generic,
+    List,
+    Optional,
+    Callable,
+    Annotated,
+    Dict,
+)
 
 from typing_extensions import (
     get_type_hints,
@@ -8,8 +19,11 @@ from typing_extensions import (
 )
 
 from krrood.entity_query_language.factories import variable_from
-from krrood.patterns.subclass_safe_generic import SubClassSafeGeneric
-from krrood.utils import get_generic_type_param
+from krrood.patterns.subclass_safe_generic import (
+    SubClassSafeGeneric,
+    AbstractSubClassSafeGeneric,
+)
+from krrood.utils import get_generic_type_params
 from ..dataset.classes_with_generic import (
     FirstGeneric,
     SubClassGenericThatUpdatesGenericTypeToBuiltInType,
@@ -20,6 +34,10 @@ from ..dataset.classes_with_generic import (
     SubClassGenericThatRecreatesAFieldWithAnotherVar,
     SubClassGenericThatRecreatesAFieldWithNonBuiltInType,
     TwoGenericContainerBoundToBuiltIns,
+    CombinedClass,
+    ComplexCombinedThreeGenericSubClassSafe,
+    ExampleClass,
+    ComplexCombinedThreeGenericSubClassSafeWithThirdTypes,
 )
 
 
@@ -69,7 +87,7 @@ def assert_field_kwargs_are_preserved_when_resolving_generic_type(cls, kw_only=F
     assert get_origin(evaluated_type) is list
     assert (
         get_args(evaluated_type)[0]
-        is get_generic_type_param(cls, SubClassSafeGeneric)[0]
+        is get_generic_type_params(cls, SubClassSafeGeneric)[0]
     )
 
 
@@ -103,7 +121,7 @@ def test_resolve_two_generic_types_subclass_with_built_in_types():
 
 def _assert_generic_type_is_resolved(cls):
     resolved_hints = get_type_hints(cls, include_extras=True)
-    generic_type = get_generic_type_param(cls, SubClassSafeGeneric)[0]
+    generic_type = get_generic_type_params(cls, SubClassSafeGeneric)[0]
     assert (
         resolved_hints[variable_from(cls).attribute_using_generic._attribute_name_]
         is generic_type
@@ -115,3 +133,224 @@ def _assert_generic_type_is_resolved(cls):
         get_origin(nested_generic_type) is list
         and get_args(nested_generic_type)[0] is generic_type
     )
+
+
+def test_combined_class_with_generic_subclass_safe_generic_inheritance_second_doesnt_die_from_missing_type_and_is_still_updated():
+    cls = CombinedClass
+    resolved_hints = get_type_hints(cls, include_extras=True)
+    field_name = "generic_list"
+    assert resolved_hints[field_name] == list[str]
+
+    field_ = next(f for f in fields(cls) if f.name == field_name)
+    assert field_.type == list[str]
+
+
+def test_ComplexCombinedThreeGenericSubClassSafe():
+    cls = ComplexCombinedThreeGenericSubClassSafe
+    resolved_hints = get_type_hints(cls, include_extras=True)
+    assert resolved_hints["combined_three_generic_first_argument"] == ExampleClass
+    assert resolved_hints["combined_three_generic_second_argument"] == CombinedClass
+    assert (
+        resolved_hints["one_generic_first_argument"]
+        == Union[ExampleClass, CombinedClass]
+    )
+
+
+def test_ComplexCombinedThreeGenericSubClassSafeWithThirdTypes():
+    cls = ComplexCombinedThreeGenericSubClassSafeWithThirdTypes
+    resolved_hints = get_type_hints(cls, include_extras=True)
+    assert resolved_hints["combined_three_generic_first_argument"] == ExampleClass
+    assert resolved_hints["combined_three_generic_second_argument"] == CombinedClass
+    assert resolved_hints["one_generic_first_argument"] == int
+
+
+T = TypeVar("T")
+T2 = TypeVar("T2")
+U = TypeVar("U")
+V = TypeVar("V")
+
+
+def test_multiple_generic_parameters_specialization():
+    """
+    Test that when a base has multiple generic parameters and some are specialized
+    with concrete types while others stay generic, all are correctly handled.
+    The current implementation using u_roots[0] and zip(unique_bases, specialized_types)
+    is expected to fail here because it only maps the first parameter of the first base.
+    """
+
+    @dataclass
+    class MultiBase(Generic[T, T2], AbstractSubClassSafeGeneric):
+        attr1: T
+        attr2: T2
+
+    @dataclass
+    class Intermediate(Generic[U], MultiBase[U, int]):
+        pass
+
+    @dataclass
+    class Final(Intermediate[str]):
+        pass
+
+    field_dict = {f.name: f for f in fields(Final)}
+    assert field_dict["attr1"].type == str
+    assert field_dict["attr2"].type == int
+
+
+def test_deep_inheritance_substitution():
+    """
+    Test that substitutions are correctly propagated through deep inheritance.
+    """
+
+    @dataclass
+    class Base(Generic[T], AbstractSubClassSafeGeneric):
+        attr: T
+
+    @dataclass
+    class Intermediate(Generic[U], Base[U]):
+        pass
+
+    @dataclass
+    class Final(Intermediate[int]):
+        pass
+
+    field_dict = {f.name: f for f in fields(Final)}
+    assert field_dict["attr"].type == int
+
+
+def test_transitive_resolution_complex():
+    """
+    Test that transitive resolution works for complex types like List[T].
+    If T -> U and U -> int, then List[T] should become List[int].
+    """
+
+    @dataclass
+    class Base(Generic[T], AbstractSubClassSafeGeneric):
+        attr: List[T]
+
+    @dataclass
+    class Intermediate(Generic[U], Base[U]):
+        pass
+
+    @dataclass
+    class Final(Intermediate[int]):
+        pass
+
+    field_dict = {f.name: f for f in fields(Final)}
+    assert field_dict["attr"].type == List[int]
+
+
+W = TypeVar("W")
+
+
+def test_multiple_generic_bases_map_failure():
+    """
+    Test that multiple generic bases are correctly reconstructed in the substitution map.
+    The current zip-based implementation is expected to fail.
+    """
+    from krrood.utils import ensure_hashable
+
+    @dataclass
+    class Base1(Generic[T, T2], AbstractSubClassSafeGeneric):
+        pass
+
+    @dataclass
+    class Base2(Generic[V], AbstractSubClassSafeGeneric):
+        pass
+
+    @dataclass
+    class Combined(Generic[U, W], Base1[U, int], Base2[W]):
+        pass
+
+    @dataclass
+    class Final(Combined[str, bool]):
+        pass
+
+    subs = Final._get_generic_type_substitutions()
+
+    # T2 should be mapped to int (via Combined)
+    assert subs.get(ensure_hashable(T2)) == int
+    # V should be mapped to W and then to bool, so resolved V should be bool
+    # We use subs.get because it might be missing or wrongly mapped
+
+    # In a perfect world, we should be able to resolve V to bool through the chain V -> W -> bool
+    from krrood.class_diagrams.utils import resolve_type
+
+    res = resolve_type(V, subs)
+    assert res.resolved_type == bool
+
+
+def test_transitive_map_failure():
+    """
+    Test that the substitution map itself is not transitively resolved.
+    If T -> U and U -> int, resolving List[T] should give List[int].
+    """
+
+    @dataclass
+    class Base(Generic[T], AbstractSubClassSafeGeneric):
+        pass
+
+    @dataclass
+    class Intermediate(Generic[U], Base[U]):
+        pass
+
+    @dataclass
+    class Final(Intermediate[int]):
+        pass
+
+    subs = Final._get_generic_type_substitutions()
+    from krrood.class_diagrams.utils import resolve_type
+
+    res = resolve_type(List[T], subs)
+    assert res.resolved_type == List[int]
+
+
+@pytest.mark.parametrize(
+    "type_hint, expected_resolved",
+    [
+        (Union[T, U], Union[int, str]),
+        ("float | T", float | int),
+        (Optional[U], Optional[str]),
+        (Callable[[T], U], Callable[[int], str]),
+        (Annotated[V, "metadata"], Annotated[float, "metadata"]),
+        (List[Union[T, Dict[str, U]]], List[Union[int, Dict[str, str]]]),
+    ],
+)
+def test_complex_type_resolution(type_hint, expected_resolved):
+    """
+    Test that complex types are correctly resolved when bound in a subclass.
+    """
+
+    @dataclass
+    class Base(Generic[T, U, V], AbstractSubClassSafeGeneric):
+        attribute: type_hint
+
+    @dataclass
+    class Final(Base[int, str, float]):
+        pass
+
+    fields_by_name = {field.name: field for field in fields(Final)}
+    assert fields_by_name["attribute"].type == expected_resolved
+
+
+def test_circular_reference_resolution():
+    """
+    Test that circular references in type substitutions are handled without infinite recursion.
+    """
+    T_local = TypeVar("T_local")
+    U_local = TypeVar("U_local")
+
+    # Direct cycle: T -> U, U -> T
+    substitutions = {T_local: U_local, U_local: T_local}
+    resolved = AbstractSubClassSafeGeneric._resolve_substitutions_transitively(
+        substitutions
+    )
+    assert resolved[T_local] in {T_local, U_local}
+    assert resolved[U_local] in {T_local, U_local}
+
+    # Indirect cycle: T -> List[U], U -> T
+    substitutions = {T_local: List[U_local], U_local: T_local}
+    resolved = AbstractSubClassSafeGeneric._resolve_substitutions_transitively(
+        substitutions
+    )
+    assert resolved[T_local] is not None
+    assert resolved[U_local] is not None
