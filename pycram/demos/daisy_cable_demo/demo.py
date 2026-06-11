@@ -26,32 +26,39 @@ from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import FixedConnection
 from test.conftest import world_with_urdf_factory
 
+from demos.daisy_cable_demo.define_real_daisy import setup_daisy_context
+from demos.daisy_cable_demo.define_sim_daisy import setup_sim_daisy
+
+real = True
+
+# %% Robot and World Setup
+if real:
+    rclpy_node, world, robot_view, context = setup_daisy_context()
+else:
+    world, robot_view, context = setup_sim_daisy()
+
 # %% Environment Setup
-apartment_path = os.path.join("package://iai_apartment/urdf/apartment.urdf")
-apartment_parser = URDFParser.from_file(file_path=apartment_path)
-apartment_world = apartment_parser.parse()
+if not real:
+    apartment_path = os.path.join("package://iai_apartment/urdf/apartment.urdf")
+    apartment_parser = URDFParser.from_file(file_path=apartment_path)
+    apartment_world = apartment_parser.parse()
 
-# %% Robot Setup
-daisy = "package://iai_daisy_description/robots/daisy.urdf.xacro"
-daisy_parser = URDFParser.from_file(file_path=daisy)
-daisy_world = daisy_parser.parse()
-DAiSy.from_world(daisy_world)
+    with world.modify_world():
+        world.merge_world_at_pose(
+            apartment_world,
+            HomogeneousTransformationMatrix.from_xyz_rpy(
+                2, -5, 0, 0, 0, 3.14 / 2, reference_frame=world.root
+            ),
+        )
 
+# %% Define Additional Objects
 bowl = STLParser(
     os.path.join(
         os.path.dirname(__file__), "..", "..", "resources", "objects", "bowl.stl"
     )
 ).parse()
 
-world = daisy_world
-
 with world.modify_world():
-    world.merge_world_at_pose(
-        apartment_world,
-        HomogeneousTransformationMatrix.from_xyz_rpy(
-            2, -4, 0, 0, 0, 3.14 / 2, reference_frame=world.root
-        ),
-    )
     world.merge_world_at_pose(
         bowl,
         HomogeneousTransformationMatrix.from_xyz_quaternion(
@@ -60,18 +67,19 @@ with world.modify_world():
     )
 
 # %% Visualization
-try:
-    import rclpy
+if real:
+    try:
+        import rclpy
 
-    rclpy.init()
-    rclpy_node = rclpy.create_node("demo_node")
-    v = VizMarkerPublisher(_world=world, node=rclpy_node)
-    v.with_tf_publisher()
-except ImportError:
-    pass
+        # rclpy.init()
+        # rclpy_node = rclpy.create_node("demo_node")
+        v = VizMarkerPublisher(_world=world, node=rclpy_node)
+        v.with_tf_publisher()
+    except ImportError:
+        pass
 
 # %% Demo
-context = Context.from_world(world)
+# context = Context.from_world(world)
 # daisy = world.get_semantic_annotation_by_name(DAiSy)[0]
 
 print(world.root.name)
@@ -82,25 +90,25 @@ pick_up_grasp = GraspDescription(
     manipulator=context.robot.left_arm.manipulator,
 )
 
-with simulated_robot:
-    plan = sequential(
-        [
-            ParkArmsAction(arm=Arms.BOTH),
-            PickUpAction(world.get_body_by_name("bowl.stl"), Arms.LEFT, pick_up_grasp),
-            PlaceAction(
-                world.get_body_by_name("bowl.stl"),
-                HomogeneousTransformationMatrix.from_xyz_rpy(
-                    -0.6, -0.1, 0.635, reference_frame=world.root
-                ).to_pose(),
-                Arms.LEFT,
-            ),
-        ],
-        context,
-    )
-    # pose_T_object
-    # world.transform(pose_T_object, world.root)
-    plan.perform()
+plan = sequential(
+    [
+        ParkArmsAction(arm=Arms.BOTH),
+        # PickUpAction(world.get_body_by_name("bowl.stl"), Arms.LEFT, pick_up_grasp),
+        # PlaceAction(
+        #     world.get_body_by_name("bowl.stl"),
+        #     HomogeneousTransformationMatrix.from_xyz_rpy(
+        #         -0.6, -0.1, 0.635, reference_frame=world.root
+        #     ).to_pose(),
+        #     Arms.LEFT,
+        # ),
+    ],
+    context,
+)
+# pose_T_object
+# world.transform(pose_T_object, world.root)
 
+with real_robot:
+    plan.perform()
 
 while True:
     continue
