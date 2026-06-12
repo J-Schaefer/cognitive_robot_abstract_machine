@@ -177,6 +177,20 @@ class Grasp(Enum):
         return next((grasp for grasp in cls if grasp.value == (axis, direction)), None)
 
 
+class WPGGripPreset(Enum):
+    """
+    Enum for the different WPG grip presets.
+    """
+    PRESET_0 = 0
+    PRESET_1 = 1
+    PRESET_2 = 2
+    PRESET_3 = 3
+    PRESET_4 = 4
+    PRESET_5 = 5
+    PRESET_6 = 6
+    PRESET_7 = 7
+
+
 class ApproachDirection(Grasp):
     """
     Enum for the approach direction of a gripper.
