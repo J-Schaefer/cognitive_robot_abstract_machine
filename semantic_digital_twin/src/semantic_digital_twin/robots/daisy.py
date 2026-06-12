@@ -192,7 +192,14 @@ class DAiSy(AbstractRobot, SpecifiesLeftRightArm):
                         for c in self.left_arm.connections
                         if type(c) != FixedConnection
                     ],
-                    [2.62, -1.035, 1.13, -0.966, -0.88, 2.07],
+                    [
+                        -0.26,  # left_shoulder_pan_joint
+                        -2.02,  # left_shoulder_lift_joint
+                        1.78,  # left_elbow_joint
+                        -1.28,  # left_wrist_1_joint
+                        -1.55,  # left_wrist_2_joint
+                        -1.83,  # left_wrist_3_joint
+                    ],
                 )
             ),
             state_type=StaticJointState.PARK,
@@ -209,7 +216,14 @@ class DAiSy(AbstractRobot, SpecifiesLeftRightArm):
                         for c in self.right_arm.connections
                         if type(c) != FixedConnection
                     ],
-                    [3.72, -2.07, -1.17, 4.0, 0.82, 0.75],
+                    [
+                        -0.41,  # right_shoulder_pan_joint
+                        -1.08,  # right_shoulder_lift_joint
+                        -1.78,  # right_elbow_joint
+                        -1.86,  # right_wrist_1_joint
+                        1.57,  # right_wrist_2_joint
+                        -1.18,  # right_wrist_3_joint
+                    ],
                 )
             ),
             state_type=StaticJointState.PARK,
