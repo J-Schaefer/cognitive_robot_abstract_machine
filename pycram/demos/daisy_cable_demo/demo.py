@@ -35,21 +35,21 @@ real = True
 if real:
     rclpy_node, world, robot_view, context = setup_daisy_context()
 else:
-    world, robot_view, context = setup_sim_daisy()
+    rclpy_node, world, robot_view, context = setup_sim_daisy()
 
 # %% Environment Setup
-if not real:
-    apartment_path = os.path.join("package://iai_apartment/urdf/apartment.urdf")
-    apartment_parser = URDFParser.from_file(file_path=apartment_path)
-    apartment_world = apartment_parser.parse()
-
-    with world.modify_world():
-        world.merge_world_at_pose(
-            apartment_world,
-            HomogeneousTransformationMatrix.from_xyz_rpy(
-                2, -5, 0, 0, 0, 3.14 / 2, reference_frame=world.root
-            ),
-        )
+# if not real:
+#     apartment_path = os.path.join("package://iai_apartment/urdf/apartment.urdf")
+#     apartment_parser = URDFParser.from_file(file_path=apartment_path)
+#     apartment_world = apartment_parser.parse()
+#
+#     with world.modify_world():
+#         world.merge_world_at_pose(
+#             apartment_world,
+#             HomogeneousTransformationMatrix.from_xyz_rpy(
+#                 2, -5, 0, 0, 0, 3.14 / 2, reference_frame=world.root
+#             ),
+#         )
 
 # %% Define Additional Objects
 bowl = STLParser(
@@ -59,30 +59,35 @@ bowl = STLParser(
 ).parse()
 
 with world.modify_world():
-    world.merge_world_at_pose(
+    world.merge_world(
         bowl,
-        HomogeneousTransformationMatrix.from_xyz_quaternion(
-            -0.4, -0.1, 0.635, reference_frame=world.root
+        FixedConnection(
+            world.root,
+            bowl.root,
+            parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_quaternion(
+                -0.4, -0.1, 0.635, reference_frame=world.root
+            ),
         ),
     )
 
 # %% Visualization
-if real:
-    try:
-        import rclpy
-
-        # rclpy.init()
-        # rclpy_node = rclpy.create_node("demo_node")
-        v = VizMarkerPublisher(_world=world, node=rclpy_node)
-        v.with_tf_publisher()
-    except ImportError:
-        pass
+try:
+    # rclpy.init()
+    # rclpy_node = rclpy.create_node("demo_node")
+    v = VizMarkerPublisher(_world=world, node=rclpy_node)
+    v.with_tf_publisher()
+except ImportError as e:
+    print(f"Error: {e}")
 
 # %% Demo
 # context = Context.from_world(world)
 # daisy = world.get_semantic_annotation_by_name(DAiSy)[0]
 
 print(world.root.name)
+
+# Print joint states
+for dof in context.robot.degrees_of_freedom_with_hardware_interface:
+    print(f"{dof.name}: {dof.variables.position.resolve()}")
 
 pick_up_grasp = GraspDescription(
     approach_direction=ApproachDirection.FRONT,
@@ -93,8 +98,8 @@ pick_up_grasp = GraspDescription(
 plan = sequential(
     [
         ParkArmsAction(arm=Arms.BOTH),
-        # PickUpAction(world.get_body_by_name("bowl.stl"), Arms.LEFT, pick_up_grasp),
-        # PlaceAction(
+        PickUpAction(world.get_body_by_name("bowl.stl"), Arms.LEFT, pick_up_grasp),
+        # Place`Action(
         #     world.get_body_by_name("bowl.stl"),
         #     HomogeneousTransformationMatrix.from_xyz_rpy(
         #         -0.6, -0.1, 0.635, reference_frame=world.root
@@ -107,8 +112,14 @@ plan = sequential(
 # pose_T_object
 # world.transform(pose_T_object, world.root)
 
-with real_robot:
-    plan.perform()
+if real:
+    with real_robot:
+        plan.perform()
+else:
+    with simulated_robot:
+        plan.perform()
+
+print("Plan finished.")
 
 while True:
     continue
