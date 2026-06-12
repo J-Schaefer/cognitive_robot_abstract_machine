@@ -11,6 +11,12 @@ from geometry_msgs.msg import (
     Quaternion as ROSQuaternion,
 )
 
+from griplink_interfaces.action import Grip, Release, Flexgrip, Flexrelease
+
+from pycram.datastructures.enums import WPGGripPreset
+from semantic_digital_twin.datastructures.definitions import GripperState
+from semantic_digital_twin.robots.abstract_robot import Manipulator
+
 try:
     from nav2_msgs.action import NavigateToPose
 except ModuleNotFoundError:
@@ -190,4 +196,133 @@ class NavigateActionServerTask(
                 if self._result.error_code == NavigateToPose.Result.NONE
                 else ObservationStateValues.FALSE
             )
+        return ObservationStateValues.UNKNOWN
+
+
+class WPGGripperActionServerTask(
+    ActionServerTask[Grip, Grip.Goal, Grip.Result, Grip.Feedback]
+):
+    """
+    Node for calling a WPG-300 ROS2 action server to grip the object.
+    """
+
+    grip_preset: WPGGripPreset = WPGGripPreset.PRESET_0
+    """
+    Grip preset
+    """
+
+    grip_position: int
+    """
+    Opening width of the gripper [-5..120 mm].
+    """
+
+    grip_force: int
+    """
+    Force the gripper applies to the object [30..300 N].
+    """
+
+    grip_speed: int
+    """
+    Motion speed of the gripper [5..350 mm/s].
+    """
+
+    grip_acceleration: int
+    """
+    Motion acceleration of the gripper [100..4000 mm/s^2].
+    """
+
+    def build_msg(self, context: MotionStatechartContext):
+        """
+        Creates and returns a message based on the provided MotionStatechartContext.
+
+        The method processes the given context to construct a specific message
+        that can be utilized for further communication or logging purposes. The
+        context determines the message's content and structure.
+
+        Parameters:
+            context: MotionStatechartContext
+                The context from which the message is built. It contains information
+                necessary to construct the message.
+
+        Returns:
+            str: The constructed message based on the provided context.
+        """
+        super().build_msg(context)
+
+        if self.message_type == Flexgrip:
+            self._msg = Flexgrip.Goal(
+                port=0,
+                position=self.grip_position,
+                force=self.grip_force,
+                speed=self.grip_speed,
+                acceleration=self.grip_acceleration,
+            )
+        elif self.message_type == Flexrelease:
+            self._msg = Flexrelease.Goal(
+                port=0,
+                position=self.grip_position,
+                speed=self.grip_speed,
+                acceleration=self.grip_acceleration,
+            )
+        elif self.message_type == Grip:
+            self._msg = Grip.Goal(
+                port=0,
+                index=self.grip_preset,
+            )
+        elif self.message_type == Release:
+            self._msg = Release.Goal(
+                port=0,
+                index=self.grip_preset,
+            )
+        else:
+            raise ValueError(f"Unknown message type: {self.message_type}")
+
+    def build(self, context: MotionStatechartContext) -> NodeArtifacts:
+        """
+        Builds the required NodeArtifacts for the given context.
+
+        This method is used to construct the necessary node artifacts based on
+        the provided motion statechart context. It overrides the parent class
+        method to include specific message building functionality.
+
+        Parameters:
+        context (MotionStatechartContext): The motion statechart context used
+        to build the artifacts. Must be an instance of MotionStatechartContext.
+
+        Returns:
+        NodeArtifacts: The constructed node artifacts.
+        """
+        super().build_msg(context)
+
+        logger.info(f"Waiting for action server {self.action_topic}")
+        self._action_client.wait_for_server()
+
+    def on_tick(self, context: MotionStatechartContext) -> ObservationStateValues:
+        if self._result:
+            if self.message_type == Flexgrip:
+                return (
+                    ObservationStateValues.TRUE
+                    if self._result.error_code == Flexgrip.Result.NONE
+                    else ObservationStateValues.FALSE
+                )
+            elif self.message_type == Flexrelease:
+                return (
+                    ObservationStateValues.TRUE
+                    if self._result.error_code == Flexrelease.Result.NONE
+                    else ObservationStateValues.FALSE
+                )
+            elif self.message_type == Grip:
+                return (
+                    ObservationStateValues.TRUE
+                    if self._result.error_code == Grip.Result.NONE
+                    else ObservationStateValues.FALSE
+                )
+            elif self.message_type == Release:
+                return (
+                    ObservationStateValues.TRUE
+                    if self._result.error_code == Release.Result.NONE
+                    else ObservationStateValues.FALSE
+                )
+            else:
+                raise ValueError(f"Unknown message type: {self.message_type}")
         return ObservationStateValues.UNKNOWN
