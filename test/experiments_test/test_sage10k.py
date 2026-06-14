@@ -3,15 +3,15 @@ from copy import deepcopy
 import numpy as np
 import pytest
 
-import experiments.ormatic_interface  # type: ignore
+import experiments.orm.ormatic_interface  # type: ignore
 from experiments.sage_10k.sage10k_actions import Sage10kOpenDoor
 from krrood.entity_query_language.factories import underspecified
 from krrood.entity_query_language.backends import ProbabilisticBackend
 from krrood.parametrization.parameterizer import UnderspecifiedParameters
-from pycram.datastructures.dataclasses import Context
-from pycram.motion_executor import simulated_robot
-from pycram.plans.factories import execute_single
-from pycram.robot_plans.actions.core.misc import MoveToReach
+from coraplex.datastructures.dataclasses import Context
+from coraplex.motion_executor import simulated_robot
+from coraplex.plans.factories import execute_single
+from coraplex.robot_plans.actions.core.misc import MoveToReach
 from random_events.variable import Continuous
 from semantic_digital_twin.adapters.ros.visualization.viz_marker import (
     VizMarkerPublisher,
@@ -85,8 +85,8 @@ def wall_door_handle_world():
             active_axis=Vector3.Z(),
             world_root_T_self=world_T_hinge,
             connection_limits=DegreeOfFreedomLimits(
-                lower=DerivativeMap(position=0.0),
-                upper=DerivativeMap(position=np.pi / 2),
+                lower=DerivativeMap(position=0.0, velocity=0.0),
+                upper=DerivativeMap(position=np.pi / 2, velocity=1.0),
             ),
         )
         door.add_hinge(hinge)
@@ -94,11 +94,10 @@ def wall_door_handle_world():
     return world, wall, door, handle
 
 
-def test_door_opening(wall_door_handle_world, hsr_world_setup, rclpy_node):
+def test_door_opening(wall_door_handle_world, _hsr_world_setup, rclpy_node):
     world, wall, door, handle = wall_door_handle_world
-    hsr_copy = deepcopy(hsr_world_setup)
+    hsr_copy = deepcopy(_hsr_world_setup)
     world.merge_world(hsr_copy)
-    robot = HSRB.from_world(world)
     odom_combined = world.get_body_by_name("odom_combined")
     odom_combined.parent_connection.origin = (
         HomogeneousTransformationMatrix.from_xyz_rpy(x=1)
@@ -149,8 +148,12 @@ def test_translate_free_space_to_where_condition(wall_door_handle_world):
     result_to_compare = (
         parameters.truncation_assignments_from_where_conditions.update_variables(
             {
-                Continuous("MoveToReach.target_pose_offset_robot.x"): SpatialVariables.x.value,
-                Continuous("MoveToReach.target_pose_offset_robot.y"): SpatialVariables.y.value,
+                Continuous(
+                    "MoveToReach.target_pose_offset_robot.x"
+                ): SpatialVariables.x.value,
+                Continuous(
+                    "MoveToReach.target_pose_offset_robot.y"
+                ): SpatialVariables.y.value,
             }
         )
     )

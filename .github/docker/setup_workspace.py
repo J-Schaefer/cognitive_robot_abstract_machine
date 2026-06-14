@@ -111,6 +111,12 @@ class WorkspaceManager:
         Creates the workspace directories if they do not exist.
         """
         os.makedirs(self.src_path, exist_ok=True)
+        # Mark the workspace as safe for Git to avoid "dubious ownership" errors
+        # which can cause setuptools_scm to fail during build.
+        print(f"{bcolors.OKGREEN}Configuring Git safe directory...{bcolors.ENDC}")
+        subprocess.run(
+            ["git", "config", "--global", "--add", "safe.directory", "*"], check=True
+        )
 
     def build_workspace(self):
         """
@@ -196,7 +202,7 @@ def main():
         ),
         Repository(
             "https://github.com/maltehue/ros2_robotiq_gripper.git",
-            "main",
+            "iai_dualarm",
             "ros2_robotiq_gripper",
             [
                 "robotiq_controllers",

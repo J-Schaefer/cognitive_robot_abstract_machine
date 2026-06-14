@@ -7,18 +7,18 @@ import numpy as np
 
 from krrood.entity_query_language.backends import ProbabilisticBackend
 from krrood.entity_query_language.factories import *
-from pycram.datastructures.dataclasses import Context
-from pycram.datastructures.enums import Arms, ApproachDirection, VerticalAlignment
-from pycram.datastructures.grasp import GraspDescription
-from pycram.plans.factories import sequential
-from pycram.plans.plan import Plan
+from coraplex.datastructures.dataclasses import Context
+from coraplex.datastructures.enums import Arms, ApproachDirection, VerticalAlignment
+from coraplex.datastructures.grasp import GraspDescription
+from coraplex.plans.factories import sequential
+from coraplex.plans.plan import Plan
 from experiments.sage_10k.sage10k_actions import Sage10kOpenDoor
-from pycram.robot_plans.actions.composite.transporting import (
+from coraplex.robot_plans.actions.composite.transporting import (
     MoveAndPickUpAction,
     MoveAndPlaceAction,
 )
-from pycram.robot_plans.actions.core.navigation import NavigateAction
-from pycram.robot_plans.actions.core.robot_body import ParkArmsAction
+from coraplex.robot_plans.actions.core.navigation import NavigateAction
+from coraplex.robot_plans.actions.core.robot_body import ParkArmsAction
 from semantic_digital_twin.adapters.sage_10k_dataset.loader import Sage10kDatasetLoader
 from semantic_digital_twin.adapters.sage_10k_dataset.utils import (
     Sage10kActionableScenes,
@@ -176,7 +176,7 @@ class Sage10kGymDemo(Sage10kAbstractDemoHSRB):
         grasp_description = GraspDescription(
             ApproachDirection.FRONT,
             VerticalAlignment.NoAlignment,
-            self.robot.arm.manipulator,
+            self.robot.arm.end_effector,
         )
         open_door = Sage10kOpenDoor(self.main_entrance)
 
@@ -269,7 +269,7 @@ class Sage10kTVStudioDemo(Sage10kAbstractDemoHSRB):
         grasp_description = GraspDescription(
             approach_direction=ApproachDirection.FRONT,
             vertical_alignment=VerticalAlignment.NoAlignment,
-            manipulator=context.robot.arm.manipulator,
+            end_effector=context.robot.arm.end_effector,
             rotate_gripper=True,
         )
         open_door = Sage10kOpenDoor(self.main_entrance)
@@ -357,7 +357,7 @@ class Sage10kCraftsmanLobbyDemo(Sage10kAbstractDemoHSRB):
         grasp_description = GraspDescription(
             approach_direction=ApproachDirection.BACK,
             vertical_alignment=VerticalAlignment.NoAlignment,
-            manipulator=context.robot.arm.manipulator,
+            end_effector=context.robot.arm.end_effector,
             rotate_gripper=True,
         )
         mpu = MoveAndPickUpAction(
@@ -427,7 +427,7 @@ class Sage10kTropicalWarehouse(Sage10kAbstractDemoHSRB):
         grasp_description = GraspDescription(
             approach_direction=ApproachDirection.RIGHT,
             vertical_alignment=VerticalAlignment.NoAlignment,
-            manipulator=context.robot.arm.manipulator,
+            end_effector=context.robot.arm.end_effector,
             rotate_gripper=False,
         )
         navigate1 = NavigateAction(
@@ -506,7 +506,7 @@ class Sage10kVaporwave(Sage10kAbstractDemoHSRB):
         grasp_description = GraspDescription(
             approach_direction=ApproachDirection.FRONT,
             vertical_alignment=VerticalAlignment.TOP,
-            manipulator=context.robot.arm.manipulator,
+            end_effector=context.robot.arm.end_effector,
             rotate_gripper=True,
         )
         mpu = MoveAndPickUpAction(
@@ -587,7 +587,7 @@ class Sage10kEclecticResidence(Sage10kAbstractDemoHSRB):
         grasp_description = GraspDescription(
             approach_direction=ApproachDirection.RIGHT,
             vertical_alignment=VerticalAlignment.TOP,
-            manipulator=context.robot.arm.manipulator,
+            end_effector=context.robot.arm.end_effector,
             rotate_gripper=True,
         )
         navigate1 = NavigateAction(
@@ -632,7 +632,7 @@ class Sage10kSouthwesternStoreDemo(Sage10kAbstractDemoHSRB):
         grasp_description = GraspDescription(
             ApproachDirection.RIGHT,
             VerticalAlignment.NoAlignment,
-            self.robot.arm.manipulator,
+            self.robot.arm.end_effector,
         )
         open_door = Sage10kOpenDoor(self.main_entrance)
 
@@ -756,7 +756,7 @@ class Sage10kBrutalistStoreDemo(Sage10kAbstractDemoHSRB):
         grasp_description = GraspDescription(
             ApproachDirection.RIGHT,
             VerticalAlignment.NoAlignment,
-            self.robot.arm.manipulator,
+            self.robot.arm.end_effector,
         )
         open_door = Sage10kOpenDoor(self.main_entrance)
 
@@ -862,7 +862,7 @@ class Sage10kAmericanBuffetDemo(Sage10kAbstractDemoHSRB):
         grasp_description = GraspDescription(
             ApproachDirection.LEFT,
             VerticalAlignment.NoAlignment,
-            self.robot.arm.manipulator,
+            self.robot.arm.end_effector,
         )
         open_door = Sage10kOpenDoor(self.main_entrance)
         navigate = Pose.from_xyz_rpy(x=5.14, y=2.85, reference_frame=self.world.root)
