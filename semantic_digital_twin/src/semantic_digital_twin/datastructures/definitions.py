@@ -8,6 +8,8 @@ class GripperState(JointStateType):
     OPEN = auto()
     CLOSE = auto()
     MEDIUM = auto()
+    FLEXOPEN = auto()
+    FLEXCLOSE = auto()
 
 
 class TorsoState(JointStateType):
