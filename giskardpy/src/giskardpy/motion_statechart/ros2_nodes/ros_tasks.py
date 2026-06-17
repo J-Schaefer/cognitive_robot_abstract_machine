@@ -211,22 +211,22 @@ class WPGGripperActionServerTask(
     Grip preset
     """
 
-    grip_position: int
+    grip_position: int = None
     """
     Opening width of the gripper [-5..120 mm].
     """
 
-    grip_force: int
+    grip_force: int = None
     """
     Force the gripper applies to the object [30..300 N].
     """
 
-    grip_speed: int
+    grip_speed: int = None
     """
     Motion speed of the gripper [5..350 mm/s].
     """
 
-    grip_acceleration: int
+    grip_acceleration: int = None
     """
     Motion acceleration of the gripper [100..4000 mm/s^2].
     """
