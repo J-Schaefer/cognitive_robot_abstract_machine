@@ -5,137 +5,421 @@ from collections import defaultdict
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
-from typing import Self
+from typing import ClassVar, List, Self
 
 from semantic_digital_twin.collision_checking.collision_rules import (
-    SelfCollisionMatrixRule,
     AvoidExternalCollisions,
     AvoidSelfCollisions,
+    SelfCollisionMatrixRule,
 )
 from semantic_digital_twin.datastructures.definitions import (
-    StaticJointState,
     GripperState,
+    StaticJointState,
 )
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
-from semantic_digital_twin.robots.abstract_robot import (
-    Finger,
-    ParallelGripper,
-    Arm,
+from semantic_digital_twin.robots.robot_part_mixins import (
+    HasEndEffector,
+    HasLeftRightArm,
+    HasTwoFingers,
+)
+from semantic_digital_twin.robots.robot_parts import (
     AbstractRobot,
+    Arm,
+    EndEffector,
+    Finger,
 )
-from semantic_digital_twin.robots.robot_mixins import SpecifiesLeftRightArm
 from semantic_digital_twin.spatial_types import Quaternion, Vector3
-from semantic_digital_twin.world import World
-from semantic_digital_twin.world_description.connections import (
-    FixedConnection,
-    ActiveConnection,
+from semantic_digital_twin.world_description.connections import FixedConnection
+from semantic_digital_twin.world_description.world_entity import (
+    KinematicStructureEntity,
 )
+
+
+# ---------------------------------------------------------------------------
+# Left gripper fingers
+# ---------------------------------------------------------------------------
+
+@dataclass(eq=False)
+class DaisyLeftGripperLeftFinger(Finger):
+    """
+    The left finger (thumb) of the left WPG-300 parallel gripper.
+    """
+
+    def setup_hardware_interfaces(self):
+        """No separate hardware interface for the finger."""
+
+    def setup_joint_states(self) -> List[JointState]:
+        """No separate joint states for the finger."""
+        return []
+
+    @classmethod
+    def setup_default_configuration_in_world_below_robot_root(
+        cls, robot_root: KinematicStructureEntity
+    ) -> Self:
+        return cls(
+            root=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "left_gripper_left_finger_link"
+            ),
+            tip=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "left_gripper_left_finger_link"
+            ),
+        )
 
 
 @dataclass(eq=False)
-class DAiSy(AbstractRobot, SpecifiesLeftRightArm):
+class DaisyLeftGripperRightFinger(Finger):
     """
-    Represents two UR5 Arms mounted on a table.
-    The left arm is equipped with a WPG-300 parallel gripper.
-    The right arm carries a KMS40 force-torque sensor (no gripper).
+    The right finger of the left WPG-300 parallel gripper.
     """
 
-    def __hash__(self):
-        return hash(
-            tuple(
-                [self.__class__]
-                + sorted([kse.name for kse in self.kinematic_structure_entities])
-            )
-        )
+    def setup_hardware_interfaces(self):
+        """No separate hardware interface for the finger."""
+
+    def setup_joint_states(self) -> List[JointState]:
+        """No separate joint states for the finger."""
+        return []
 
     @classmethod
-    def _init_empty_robot(cls, world: World) -> Self:
+    def setup_default_configuration_in_world_below_robot_root(
+        cls, robot_root: KinematicStructureEntity
+    ) -> Self:
         return cls(
-            name=PrefixedName(name="daisy", prefix=world.name),
-            root=world.get_body_by_name("table"),
-            _world=world,
+            root=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "left_gripper_right_finger_link"
+            ),
+            tip=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "left_gripper_right_finger_link"
+            ),
         )
 
-    def _setup_semantic_annotations(self):
-        left_gripper_thumb = Finger(
-            name=PrefixedName("left_gripper_thumb", prefix=self.name.name),
-            root=self._world.get_body_by_name("left_gripper_left_finger_link"),
-            tip=self._world.get_body_by_name("left_gripper_left_finger_link"),
-            _world=self._world,
+
+# ---------------------------------------------------------------------------
+# Right gripper fingers
+# ---------------------------------------------------------------------------
+
+@dataclass(eq=False)
+class DaisyRightGripperLeftFinger(Finger):
+    """
+    The left finger (thumb) of the right WPG-300 parallel gripper.
+    """
+
+    def setup_hardware_interfaces(self):
+        """No separate hardware interface for the finger."""
+
+    def setup_joint_states(self) -> List[JointState]:
+        """No separate joint states for the finger."""
+        return []
+
+    @classmethod
+    def setup_default_configuration_in_world_below_robot_root(
+        cls, robot_root: KinematicStructureEntity
+    ) -> Self:
+        return cls(
+            root=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "right_gripper_left_finger_link"
+            ),
+            tip=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "right_gripper_left_finger_link"
+            ),
         )
 
-        left_gripper_finger = Finger(
-            name=PrefixedName("left_gripper_finger", prefix=self.name.name),
-            root=self._world.get_body_by_name("left_gripper_right_finger_link"),
-            tip=self._world.get_body_by_name("left_gripper_right_finger_link"),
-            _world=self._world,
+
+@dataclass(eq=False)
+class DaisyRightGripperRightFinger(Finger):
+    """
+    The right finger of the right WPG-300 parallel gripper.
+    """
+
+    def setup_hardware_interfaces(self):
+        """No separate hardware interface for the finger."""
+
+    def setup_joint_states(self) -> List[JointState]:
+        """No separate joint states for the finger."""
+        return []
+
+    @classmethod
+    def setup_default_configuration_in_world_below_robot_root(
+        cls, robot_root: KinematicStructureEntity
+    ) -> Self:
+        return cls(
+            root=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "right_gripper_right_finger_link"
+            ),
+            tip=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "right_gripper_right_finger_link"
+            ),
         )
 
-        left_gripper = ParallelGripper(
-            name=PrefixedName("left_gripper", prefix=self.name.name),
-            root=self._world.get_body_by_name("left_gripper_base_link"),
-            tool_frame=self._world.get_body_by_name("left_gripper_tool_frame"),
+
+# ---------------------------------------------------------------------------
+# Left gripper
+# ---------------------------------------------------------------------------
+
+@dataclass(eq=False)
+class DaisyLeftGripper(
+    EndEffector,
+    HasTwoFingers[DaisyLeftGripperLeftFinger, DaisyLeftGripperRightFinger],
+):
+    """
+    The left WPG-300 parallel gripper.
+    """
+
+    def setup_hardware_interfaces(self):
+        """Sets up hardware interfaces for the gripper's finger joints."""
+        for joint_name in (
+            "left_gripper_finger_joint",
+            "left_gripper_right_finger_joint",
+        ):
+            self._world.get_connection_by_name(joint_name).has_hardware_interface = True
+
+    def setup_joint_states(self) -> List[JointState]:
+        """Sets up open and close states for the gripper."""
+        gripper_joints = sorted(self.active_connections, key=lambda c: c.name.name)
+        gripper_open = JointState.from_mapping(
+            name=PrefixedName("gripper_open", prefix=self.name.name),
+            mapping=dict(zip(gripper_joints, [0.0, 0.0])),
+            state_type=GripperState.OPEN,
+        )
+        gripper_close = JointState.from_mapping(
+            name=PrefixedName("gripper_close", prefix=self.name.name),
+            mapping=dict(zip(gripper_joints, [0.06, -0.06])),
+            state_type=GripperState.CLOSE,
+        )
+        return [gripper_open, gripper_close]
+
+    @classmethod
+    def setup_default_configuration_in_world_below_robot_root(
+        cls, robot_root: KinematicStructureEntity
+    ) -> Self:
+        return cls(
+            root=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "left_gripper_base_link"
+            ),
+            tool_frame=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "left_gripper_tool_frame"
+            ),
             front_facing_orientation=Quaternion(0.5, 0.5, 0.5, 0.5),
-            front_facing_axis=Vector3(0, 0, 1),
-            thumb=left_gripper_thumb,
-            finger=left_gripper_finger,
-            _world=self._world,
         )
 
-        left_arm = Arm(
-            name=PrefixedName("left_arm", prefix=self.name.name),
-            root=self._world.get_body_by_name("left_base_link"),
-            tip=self._world.get_body_by_name("left_wrist_3_link"),
-            manipulator=left_gripper,
-            _world=self._world,
+
+# ---------------------------------------------------------------------------
+# Right gripper
+# ---------------------------------------------------------------------------
+
+@dataclass(eq=False)
+class DaisyRightGripper(
+    EndEffector,
+    HasTwoFingers[DaisyRightGripperLeftFinger, DaisyRightGripperRightFinger],
+):
+    """
+    The right WPG-300 parallel gripper.
+    """
+
+    def setup_hardware_interfaces(self):
+        """Sets up hardware interfaces for the gripper's finger joints."""
+        for joint_name in (
+            "right_gripper_finger_joint",
+            "right_gripper_right_finger_joint",
+        ):
+            self._world.get_connection_by_name(joint_name).has_hardware_interface = True
+
+    def setup_joint_states(self) -> List[JointState]:
+        """Sets up open and close states for the gripper."""
+        gripper_joints = sorted(self.active_connections, key=lambda c: c.name.name)
+        gripper_open = JointState.from_mapping(
+            name=PrefixedName("gripper_open", prefix=self.name.name),
+            mapping=dict(zip(gripper_joints, [0.0, 0.0])),
+            state_type=GripperState.OPEN,
         )
-
-        self.add_arm(left_arm)
-
-        right_gripper_thumb = Finger(
-            name=PrefixedName("right_gripper_thumb", prefix=self.name.name),
-            root=self._world.get_body_by_name("right_gripper_left_finger_link"),
-            tip=self._world.get_body_by_name("right_gripper_left_finger_link"),
-            _world=self._world,
+        gripper_close = JointState.from_mapping(
+            name=PrefixedName("gripper_close", prefix=self.name.name),
+            mapping=dict(zip(gripper_joints, [0.06, -0.06])),
+            state_type=GripperState.CLOSE,
         )
+        return [gripper_open, gripper_close]
 
-        right_gripper_finger = Finger(
-            name=PrefixedName("right_gripper_finger", prefix=self.name.name),
-            root=self._world.get_body_by_name("right_gripper_right_finger_link"),
-            tip=self._world.get_body_by_name("right_gripper_right_finger_link"),
-            _world=self._world,
-        )
-
-        right_gripper = ParallelGripper(
-            name=PrefixedName("right_gripper", prefix=self.name.name),
-            root=self._world.get_body_by_name("right_gripper_base_link"),
-            tool_frame=self._world.get_body_by_name("right_gripper_tool_frame"),
+    @classmethod
+    def setup_default_configuration_in_world_below_robot_root(
+        cls, robot_root: KinematicStructureEntity
+    ) -> Self:
+        return cls(
+            root=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "right_gripper_base_link"
+            ),
+            tool_frame=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "right_gripper_tool_frame"
+            ),
             front_facing_orientation=Quaternion(0.5, 0.5, 0.5, 0.5),
-            front_facing_axis=Vector3(0, 0, 1),
-            thumb=right_gripper_thumb,
-            finger=right_gripper_finger,
-            _world=self._world,
         )
 
-        right_arm = Arm(
-            name=PrefixedName("right_arm", prefix=self.name.name),
-            root=self._world.get_body_by_name("right_base_link"),
-            tip=self._world.get_body_by_name("right_wrist_3_link"),
-            manipulator=right_gripper,
-            _world=self._world,
+
+# ---------------------------------------------------------------------------
+# Left arm
+# ---------------------------------------------------------------------------
+
+@dataclass(eq=False)
+class DaisyLeftArm(Arm[DaisyLeftGripper]):
+    """
+    The left UR5 arm.
+    """
+
+    ARM_PARK_CONFIGURATION: ClassVar[dict[str, float]] = {
+        "shoulder_pan_joint": -0.26,
+        "shoulder_lift_joint": -2.02,
+        "elbow_joint": 1.78,
+        "wrist_1_joint": -1.28,
+        "wrist_2_joint": -1.55,
+        "wrist_3_joint": -1.83,
+    }
+
+    def setup_hardware_interfaces(self):
+        """Sets up hardware interfaces for the arm joints."""
+        for joint_name in (
+            "left_shoulder_pan_joint",
+            "left_shoulder_lift_joint",
+            "left_elbow_joint",
+            "left_wrist_1_joint",
+            "left_wrist_2_joint",
+            "left_wrist_3_joint",
+        ):
+            self._world.get_connection_by_name(joint_name).has_hardware_interface = True
+
+    def setup_joint_states(self) -> List[JointState]:
+        """Sets up the park configuration for the arm."""
+        arm_park = JointState.from_mapping(
+            name=PrefixedName("park", prefix=self.name.name),
+            mapping={
+                connection: position
+                for connection in self.connections
+                if not isinstance(connection, FixedConnection)
+                for joint_name, position in self.ARM_PARK_CONFIGURATION.items()
+                if connection.name.name.endswith(joint_name)
+            },
+            state_type=StaticJointState.PARK,
+        )
+        return [arm_park]
+
+    @classmethod
+    def setup_default_configuration_in_world_below_robot_root(
+        cls, robot_root: KinematicStructureEntity
+    ) -> Self:
+        return cls(
+            root=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "left_base_link"
+            ),
+            tip=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "left_wrist_3_link"
+            ),
         )
 
-        self.add_arm(right_arm)
+
+# ---------------------------------------------------------------------------
+# Right arm
+# ---------------------------------------------------------------------------
+
+@dataclass(eq=False)
+class DaisyRightArm(Arm[DaisyRightGripper]):
+    """
+    The right UR5 arm.
+    """
+
+    ARM_PARK_CONFIGURATION: ClassVar[dict[str, float]] = {
+        "shoulder_pan_joint": -0.41,
+        "shoulder_lift_joint": -1.08,
+        "elbow_joint": -1.78,
+        "wrist_1_joint": -1.86,
+        "wrist_2_joint": 1.57,
+        "wrist_3_joint": -1.18,
+    }
+
+    def setup_hardware_interfaces(self):
+        """Sets up hardware interfaces for the arm joints."""
+        for joint_name in (
+            "right_shoulder_pan_joint",
+            "right_shoulder_lift_joint",
+            "right_elbow_joint",
+            "right_wrist_1_joint",
+            "right_wrist_2_joint",
+            "right_wrist_3_joint",
+        ):
+            self._world.get_connection_by_name(joint_name).has_hardware_interface = True
+
+    def setup_joint_states(self) -> List[JointState]:
+        """Sets up the park configuration for the arm."""
+        arm_park = JointState.from_mapping(
+            name=PrefixedName("park", prefix=self.name.name),
+            mapping={
+                connection: position
+                for connection in self.connections
+                if not isinstance(connection, FixedConnection)
+                for joint_name, position in self.ARM_PARK_CONFIGURATION.items()
+                if connection.name.name.endswith(joint_name)
+            },
+            state_type=StaticJointState.PARK,
+        )
+        return [arm_park]
+
+    @classmethod
+    def setup_default_configuration_in_world_below_robot_root(
+        cls, robot_root: KinematicStructureEntity
+    ) -> Self:
+        return cls(
+            root=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "right_base_link"
+            ),
+            tip=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "right_wrist_3_link"
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
+# DAiSy robot
+# ---------------------------------------------------------------------------
+
+@dataclass(eq=False)
+class DAiSy(AbstractRobot, HasLeftRightArm[DaisyLeftArm, DaisyRightArm]):
+    """
+    Represents two UR5 arms mounted on a table.
+    The left arm is equipped with a WPG-300 parallel gripper.
+    The right arm carries a WPG-300 parallel gripper.
+    """
+
+    @classmethod
+    def get_ros_file_path(cls) -> str:
+        """
+        Returns the ROS file path for the DAiSy robot description.
+        """
+        raise NotImplementedError("We don't have the ROS Package yet")
+
+    @classmethod
+    def _get_root_body_name(cls) -> str:
+        """
+        Returns the name of the root body for the DAiSy robot.
+        """
+        return "table"
+
+    def _setup_velocity_limits(self):
+        """
+        Sets up velocity limits for the robot's joints.
+        All 1-DOF connections are limited to 0.2.
+        """
+        vel_limits = defaultdict(lambda: 0.2)
+        self.tighten_dof_velocity_limits_of_1dof_connections(new_limits=vel_limits)
 
     def _setup_collision_rules(self):
+        """
+        Sets up collision avoidance rules for the robot, including SRDF-based
+        self-collision ignore rules.
+        """
         srdf_path = os.path.join(
             Path(files("semantic_digital_twin")).parent.parent,
             "resources",
             "collision_configs",
             "daisy.srdf",
         )
-        self._world.collision_manager.ignore_collision_rules.append(
+        self._world.collision_manager.add_ignore_collision_rule(
             SelfCollisionMatrixRule.from_collision_srdf(srdf_path, self._world)
         )
 
@@ -151,121 +435,3 @@ class DAiSy(AbstractRobot, SpecifiesLeftRightArm):
                 robot=self,
             )
         )
-
-    def _setup_velocity_limits(self):
-        vel_limits = defaultdict(lambda: 0.2)
-        self.tighten_dof_velocity_limits_of_1dof_connections(new_limits=vel_limits)
-
-    def _setup_hardware_interfaces(self):
-        controlled_joints = [
-            "left_shoulder_pan_joint",
-            "left_shoulder_lift_joint",
-            "left_elbow_joint",
-            "left_wrist_1_joint",
-            "left_wrist_2_joint",
-            "left_wrist_3_joint",
-            "right_shoulder_pan_joint",
-            "right_shoulder_lift_joint",
-            "right_elbow_joint",
-            "right_wrist_1_joint",
-            "right_wrist_2_joint",
-            "right_wrist_3_joint",
-            "left_gripper_finger_joint",
-            "left_gripper_right_finger_joint",
-            "right_gripper_finger_joint",
-            "right_gripper_right_finger_joint",
-        ]
-        for joint_name in controlled_joints:
-            connection: ActiveConnection = self._world.get_connection_by_name(
-                joint_name
-            )
-            connection.has_hardware_interface = True
-
-    def _setup_joint_states(self):
-        # --- Left arm park state ---
-        left_arm_park = JointState.from_mapping(
-            name=PrefixedName("left_arm_park", prefix=self.name.name),
-            mapping=dict(
-                zip(
-                    [
-                        c
-                        for c in self.left_arm.connections
-                        if type(c) != FixedConnection
-                    ],
-                    [
-                        -0.26,  # left_shoulder_pan_joint
-                        -2.02,  # left_shoulder_lift_joint
-                        1.78,  # left_elbow_joint
-                        -1.28,  # left_wrist_1_joint
-                        -1.55,  # left_wrist_2_joint
-                        -1.83,  # left_wrist_3_joint
-                    ],
-                )
-            ),
-            state_type=StaticJointState.PARK,
-        )
-        self.left_arm.add_joint_state(left_arm_park)
-
-        # --- Right arm park state ---
-        right_arm_park = JointState.from_mapping(
-            name=PrefixedName("right_arm_park", prefix=self.name.name),
-            mapping=dict(
-                zip(
-                    [
-                        c
-                        for c in self.right_arm.connections
-                        if type(c) != FixedConnection
-                    ],
-                    [
-                        -0.41,  # right_shoulder_pan_joint
-                        -1.08,  # right_shoulder_lift_joint
-                        -1.78,  # right_elbow_joint
-                        -1.86,  # right_wrist_1_joint
-                        1.57,  # right_wrist_2_joint
-                        -1.18,  # right_wrist_3_joint
-                    ],
-                )
-            ),
-            state_type=StaticJointState.PARK,
-        )
-        self.right_arm.add_joint_state(right_arm_park)
-
-        left_gripper_joints = [
-            self._world.get_connection_by_name("left_gripper_finger_joint"),
-            self._world.get_connection_by_name("left_gripper_right_finger_joint"),
-        ]
-
-        left_gripper_open = JointState.from_mapping(
-            name=PrefixedName("left_gripper_open", prefix=self.name.name),
-            mapping=dict(zip(left_gripper_joints, [0.0, 0.0])),
-            state_type=GripperState.OPEN,
-        )
-
-        left_gripper_close = JointState.from_mapping(
-            name=PrefixedName("left_gripper_close", prefix=self.name.name),
-            mapping=dict(zip(left_gripper_joints, [0.06, -0.06])),
-            state_type=GripperState.CLOSE,
-        )
-
-        self.left_arm.manipulator.add_joint_state(left_gripper_open)
-        self.left_arm.manipulator.add_joint_state(left_gripper_close)
-
-        right_gripper_joints = [
-            self._world.get_connection_by_name("right_gripper_finger_joint"),
-            self._world.get_connection_by_name("right_gripper_right_finger_joint"),
-        ]
-
-        right_gripper_open = JointState.from_mapping(
-            name=PrefixedName("right_gripper_open", prefix=self.name.name),
-            mapping=dict(zip(right_gripper_joints, [0.0, 0.0])),
-            state_type=GripperState.OPEN,
-        )
-
-        right_gripper_close = JointState.from_mapping(
-            name=PrefixedName("right_gripper_close", prefix=self.name.name),
-            mapping=dict(zip(right_gripper_joints, [0.06, -0.06])),
-            state_type=GripperState.CLOSE,
-        )
-
-        self.right_arm.manipulator.add_joint_state(right_gripper_open)
-        self.right_arm.manipulator.add_joint_state(right_gripper_close)
