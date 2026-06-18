@@ -1,6 +1,6 @@
 from typing import Any
 
-from pycram.datastructures.dataclasses import Context
+from coraplex.datastructures.dataclasses import Context
 from semantic_digital_twin.adapters.urdf import URDFParser
 from semantic_digital_twin.robots.daisy import DAiSy
 
@@ -10,7 +10,7 @@ from semantic_digital_twin.world import World
 
 
 def setup_sim_daisy(
-    node_name: str = "pycram_node",
+    node_name: str = "coraplex_node",
 ) -> tuple[Any, World, DAiSy, Context]:
     # Initialize ROS 2
     rclpy.init()
