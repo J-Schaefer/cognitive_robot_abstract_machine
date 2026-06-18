@@ -13,9 +13,9 @@ from geometry_msgs.msg import (
 
 from griplink_interfaces.action import Grip, Release, Flexgrip, Flexrelease
 
-from pycram.datastructures.enums import WPGGripPreset
+from coraplex.datastructures.enums import WPGGripPreset
 from semantic_digital_twin.datastructures.definitions import GripperState
-from semantic_digital_twin.robots.abstract_robot import Manipulator
+from semantic_digital_twin.robots.robot_parts import EndEffector
 
 try:
     from nav2_msgs.action import NavigateToPose
