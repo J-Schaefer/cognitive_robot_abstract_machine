@@ -1,33 +1,35 @@
 import os
 
-from pycram.datastructures.dataclasses import Context
-from pycram.datastructures.grasp import GraspDescription
-from pycram.motion_executor import real_robot, simulated_robot
-from pycram.datastructures.enums import Arms, ApproachDirection, VerticalAlignment
+from coraplex.alternative_motion_mappings.daisy_motion_mapping import DAISYGripMotion
+from coraplex.datastructures.dataclasses import Context
+from coraplex.datastructures.grasp import GraspDescription
+from coraplex.motion_executor import real_robot, simulated_robot
+from coraplex.datastructures.enums import Arms, ApproachDirection, VerticalAlignment
 import rclpy
 
-from pycram.plans.factories import sequential
-from pycram.plans.plan import Plan
-from pycram.robot_plans.actions.core.pick_up import PickUpAction
-from pycram.robot_plans.actions.core.placing import PlaceAction
-from pycram.testing import setup_world
-from pycram.language import SequentialNode
-from pycram.robot_plans.actions.core.robot_body import ParkArmsAction
-from pycram.view_manager import ViewManager
+from coraplex.plans.factories import sequential
+from coraplex.plans.plan import Plan
+from coraplex.robot_plans import MoveGripperMotion
+from coraplex.robot_plans.actions.core.pick_up import PickUpAction
+from coraplex.robot_plans.actions.core.placing import PlaceAction
+from coraplex.testing import setup_world
+from coraplex.language import SequentialNode
+from coraplex.robot_plans.actions.core.robot_body import ParkArmsAction, SetGripperAction
+from coraplex.view_manager import ViewManager
 from semantic_digital_twin.adapters.mesh import STLParser
 from semantic_digital_twin.adapters.ros.visualization.viz_marker import (
     VizMarkerPublisher,
 )
 from semantic_digital_twin.adapters.urdf import URDFParser
-from semantic_digital_twin.robots.abstract_robot import Manipulator
+from semantic_digital_twin.datastructures.definitions import GripperState
+from semantic_digital_twin.robots.robot_parts import EndEffector
 from semantic_digital_twin.robots.daisy import DAiSy
-from semantic_digital_twin.robots.robot_mixins import SpecifiesLeftRightArm
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import FixedConnection
 from test.conftest import world_with_urdf_factory
 
-from demos.daisy_cable_demo.define_real_daisy import setup_daisy_context
-from demos.daisy_cable_demo.define_sim_daisy import setup_sim_daisy
+from define_real_daisy import setup_daisy_context
+from define_sim_daisy import setup_sim_daisy
 
 real = True
 
@@ -92,13 +94,16 @@ for dof in context.robot.degrees_of_freedom_with_hardware_interface:
 pick_up_grasp = GraspDescription(
     approach_direction=ApproachDirection.FRONT,
     vertical_alignment=VerticalAlignment.TOP,
-    manipulator=context.robot.left_arm.manipulator,
+    end_effector=context.robot.get_left_arm_if_specified().end_effector,
 )
 
 plan = sequential(
     [
         ParkArmsAction(arm=Arms.BOTH),
-        PickUpAction(world.get_body_by_name("bowl.stl"), Arms.LEFT, pick_up_grasp),
+        # PickUpAction(world.get_body_by_name("bowl.stl"), Arms.LEFT, pick_up_grasp),
+        # SetGripperAction(gripper=Arms.BOTH, motion=GripperState.CLOSE),
+        # SetGripperAction(gripper=Arms.BOTH, motion=GripperState.OPEN),
+        DAISYGripMotion(gripper=Arms.RIGHT, motion=GripperState.CLOSE),
         # Place`Action(
         #     world.get_body_by_name("bowl.stl"),
         #     HomogeneousTransformationMatrix.from_xyz_rpy(
