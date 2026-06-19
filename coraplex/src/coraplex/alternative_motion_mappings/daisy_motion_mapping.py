@@ -30,6 +30,8 @@ class DAISYGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
     Uses the griplink action server to move the gripper of real DAiSy
     """
 
+    execution_type = ExecutionType.REAL
+
     def perform(self):
         logger.info(f"Performing action {self.__class__.__name__}")
         return
@@ -64,7 +66,6 @@ class DAISYGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
             raise ValueError(f"Gripper {self.gripper} not supported")
 
         return WPGGripperActionServerTask(
-            logger.info(f"Creating action server task for {self.action_topic}"),
             action_topic=self.action_topic,
             message_type=self.message_type,
         )
@@ -74,6 +75,8 @@ class DaisyFlexGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
     """
     Use flex grip and release motions for the WPG grippers.
     """
+
+    execution_type = ExecutionType.REAL
 
     def perform(self):
         return
@@ -105,4 +108,5 @@ class DaisyFlexGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
 
         return WPGGripperActionServerTask(
             action_topic=self.action_topic,
+            message_type=self.message_type,
         )
