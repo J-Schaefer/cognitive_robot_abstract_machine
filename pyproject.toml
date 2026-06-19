@@ -102,3 +102,8 @@ experiments = { path = "experiments", develop = true }
 
 [tool.setuptools]
 packages = []
+
+[tool.docformatter]
+make-summary-multi-line = true
+pre-summary-newline = true
+close-quotes-on-newline = true
