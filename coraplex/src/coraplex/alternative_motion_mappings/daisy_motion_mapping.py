@@ -6,31 +6,41 @@ from griplink_interfaces.action import Grip, Release, Flexgrip, Flexrelease
 
 from giskardpy.motion_statechart.ros2_nodes.ros_tasks import (
     NavigateActionServerTask,
-    ActionServerTask, WPGGripperActionServerTask,
+    ActionServerTask,
+    WPGGripperActionServerTask,
 )
 
 from semantic_digital_twin.robots.daisy import DAiSy
 from coraplex.datastructures.enums import ExecutionType, Arms
 from coraplex.view_manager import ViewManager
-from coraplex.robot_plans import MoveMotion, MoveToolCenterPointMotion, LookingMotion, MoveGripperMotion
+from coraplex.robot_plans import (
+    MoveMotion,
+    MoveToolCenterPointMotion,
+    LookingMotion,
+    MoveGripperMotion,
+)
 
 from coraplex.robot_plans.motions.base import AlternativeMotion
 
 logger = logging.getLogger(__name__)
+
 
 class DAISYGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
     """
     Uses the griplink action server to move the gripper of real DAiSy
     """
 
-    execution_type = ExecutionType.REAL
-
     def perform(self):
         logger.info(f"Performing action {self.__class__.__name__}")
         return
 
     @property
-    def _motion_chart(self) -> ActionServerTask:
+    def _motion_chart(self) -> WPGGripperActionServerTask:
+        if (
+            self.motion == GripperState.FLEXOPEN
+            or self.motion == GripperState.FLEXCLOSE
+        ):
+            raise ValueError(f"Gripper action {self.motion} not supported")
 
         if self.gripper == Arms.LEFT:
             if self.motion == GripperState.OPEN:
@@ -53,7 +63,12 @@ class DAISYGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
         else:
             raise ValueError(f"Gripper {self.gripper} not supported")
 
-        return WPGGripperActionServerTask(action_topic=self.action_topic, message_type=self.message_type)
+        return WPGGripperActionServerTask(
+            logger.info(f"Creating action server task for {self.action_topic}"),
+            action_topic=self.action_topic,
+            message_type=self.message_type,
+        )
+
 
 class DaisyFlexGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
     """
@@ -63,7 +78,10 @@ class DaisyFlexGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
     def perform(self):
         return
 
-    def _motion_chart(self) -> ActionServerTask:
+    def _motion_chart(self) -> WPGGripperActionServerTask:
+        if self.motion == GripperState.CLOSE or self.motion == GripperState.OPEN:
+            raise ValueError(f"Gripper action {self.motion} not supported")
+
         if self.gripper == Arms.LEFT:
             if self.motion == GripperState.FLEXCLOSE:
                 self.action_topic = "/left_gripper/flexgrip"
@@ -85,5 +103,6 @@ class DaisyFlexGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
         else:
             raise ValueError(f"Gripper {self.gripper} not supported")
 
-        if self.motion == GripperState.FLEXOPEN or self.motion == GripperState.FLEXCLOSE:
-            return WPGGripperActionServerTask(action_topic=self.action_topic, )
+        return WPGGripperActionServerTask(
+            action_topic=self.action_topic,
+        )
