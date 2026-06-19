@@ -199,6 +199,7 @@ class NavigateActionServerTask(
         return ObservationStateValues.UNKNOWN
 
 
+@dataclass(eq=False, repr=False)
 class WPGGripperActionServerTask(
     ActionServerTask[Grip, Grip.Goal, Grip.Result, Grip.Feedback]
 ):
@@ -267,60 +268,40 @@ class WPGGripperActionServerTask(
         elif self.message_type == Grip:
             self._msg = Grip.Goal(
                 port=0,
-                index=self.grip_preset,
+                index=self.grip_preset.value,
             )
         elif self.message_type == Release:
             self._msg = Release.Goal(
                 port=0,
-                index=self.grip_preset,
+                index=self.grip_preset.value,
             )
         else:
             raise ValueError(f"Unknown message type: {self.message_type}")
-
-    def build(self, context: MotionStatechartContext) -> NodeArtifacts:
-        """
-        Builds the required NodeArtifacts for the given context.
-
-        This method is used to construct the necessary node artifacts based on
-        the provided motion statechart context. It overrides the parent class
-        method to include specific message building functionality.
-
-        Parameters:
-        context (MotionStatechartContext): The motion statechart context used
-        to build the artifacts. Must be an instance of MotionStatechartContext.
-
-        Returns:
-        NodeArtifacts: The constructed node artifacts.
-        """
-        super().build_msg(context)
-
-        logger.info(f"Waiting for action server {self.action_topic}")
-        self._action_client.wait_for_server()
 
     def on_tick(self, context: MotionStatechartContext) -> ObservationStateValues:
         if self._result:
             if self.message_type == Flexgrip:
                 return (
                     ObservationStateValues.TRUE
-                    if self._result.error_code == Flexgrip.Result.NONE
+                    if self._result.status == 0
                     else ObservationStateValues.FALSE
                 )
             elif self.message_type == Flexrelease:
                 return (
                     ObservationStateValues.TRUE
-                    if self._result.error_code == Flexrelease.Result.NONE
+                    if self._result.status == 0
                     else ObservationStateValues.FALSE
                 )
             elif self.message_type == Grip:
                 return (
                     ObservationStateValues.TRUE
-                    if self._result.error_code == Grip.Result.NONE
+                    if self._result.status == 0
                     else ObservationStateValues.FALSE
                 )
             elif self.message_type == Release:
                 return (
                     ObservationStateValues.TRUE
-                    if self._result.error_code == Release.Result.NONE
+                    if self._result.status == 0
                     else ObservationStateValues.FALSE
                 )
             else:
