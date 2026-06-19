@@ -99,12 +99,12 @@ pick_up_grasp = GraspDescription(
 
 plan = sequential(
     [
-        # ParkArmsAction(arm=Arms.BOTH),
+        ParkArmsAction(arm=Arms.BOTH),
         # PickUpAction(world.get_body_by_name("bowl.stl"), Arms.LEFT, pick_up_grasp),
         # SetGripperAction(gripper=Arms.BOTH, motion=GripperState.CLOSE),
         # SetGripperAction(gripper=Arms.BOTH, motion=GripperState.OPEN),
-        DAISYGripMotion(gripper=Arms.RIGHT, motion=GripperState.CLOSE),
-        DAISYGripMotion(gripper=Arms.RIGHT, motion=GripperState.OPEN),
+        MoveGripperMotion(gripper=Arms.RIGHT, motion=GripperState.CLOSE),
+        MoveGripperMotion(gripper=Arms.RIGHT, motion=GripperState.OPEN),
         # Place`Action(
         #     world.get_body_by_name("bowl.stl"),
         #     HomogeneousTransformationMatrix.from_xyz_rpy(
