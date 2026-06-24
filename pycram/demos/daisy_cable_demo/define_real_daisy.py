@@ -14,6 +14,7 @@ from coraplex.datastructures.dataclasses import Context
 from coraplex.datastructures.enums import Arms
 # from coraplex.language import SequentialPlan
 from coraplex.motion_executor import real_robot
+from giskardpy.middleware.ros2 import rospy
 # from coraplex.robot_plans import ParkArmsActionDescription
 from semantic_digital_twin.adapters.ros.messages import LoadModel
 from semantic_digital_twin.adapters.ros.tf_publisher import TFPublisher
@@ -61,39 +62,23 @@ def setup_daisy_context(
             - context
     """
 
-    # Initialize ROS 2
-    rclpy.init()
-
-    # Create node
-    rclpy_node = rclpy.create_node(node_name)
-
-    # Create executor
-    executor = SingleThreadedExecutor()
-    executor.add_node(rclpy_node)
-
-    # Start executor in background thread
-    thread = threading.Thread(
-        target=executor.spin,
-        daemon=True,
-        name="rclpy-executor",
-    )
-    thread.start()
+    rospy.init_node("demo_node")
 
     # Fetch world
-    world: World = fetch_world_from_service(rclpy_node)
+    world: World = fetch_world_from_service(rospy.node)
 
     # Synchronizer
-    world_sync = WorldSynchronizer(_world=world, node=rclpy_node)
+    world_sync = WorldSynchronizer(_world=world, node=rospy.node)
 
     # Optional TF publisher
-    # TFPublisher(world=world, node=rclpy_node)
+    # TFPublisher(world=world, node=rospy.node)
 
     # env_world = load_environment()
     # with world.modify_world():
     #     world.merge_world(env_world)
 
     # Visualization
-    # VizMarkerPublisher(world=world, node=rclpy_node)
+    # VizMarkerPublisher(world=world, node=rospy.node)
 
     # Robot semantic view
     robot_view = world.get_semantic_annotations_by_type(DAiSy)[0]
@@ -102,7 +87,7 @@ def setup_daisy_context(
     context = Context(
         world,
         robot_view,
-        ros_node=rclpy_node
+        ros_node=rospy.node
     )
 
-    return rclpy_node, world, robot_view, context
+    return rospy.node, world, robot_view, context
