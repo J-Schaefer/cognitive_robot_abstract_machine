@@ -10,6 +10,7 @@ import rclpy
 from coraplex.plans.factories import sequential
 from coraplex.plans.plan import Plan
 from coraplex.robot_plans import MoveGripperMotion
+import coraplex.alternative_motion_mappings.daisy_motion_mapping  # type: ignore
 from coraplex.robot_plans.actions.core.pick_up import PickUpAction
 from coraplex.robot_plans.actions.core.placing import PlaceAction
 from coraplex.testing import setup_world
@@ -30,6 +31,8 @@ from test.conftest import world_with_urdf_factory
 
 from define_real_daisy import setup_daisy_context
 from define_sim_daisy import setup_sim_daisy
+
+# %% Environmental Variables Setup
 
 real = True
 
@@ -72,15 +75,6 @@ with world.modify_world():
         ),
     )
 
-# %% Visualization
-try:
-    # rclpy.init()
-    # rclpy_node = rclpy.create_node("demo_node")
-    v = VizMarkerPublisher(_world=world, node=rclpy_node)
-    v.with_tf_publisher()
-except ImportError as e:
-    print(f"Error: {e}")
-
 # %% Demo
 # context = Context.from_world(world)
 # daisy = world.get_semantic_annotation_by_name(DAiSy)[0]
@@ -101,11 +95,11 @@ plan = sequential(
     [
         ParkArmsAction(arm=Arms.BOTH),
         # PickUpAction(world.get_body_by_name("bowl.stl"), Arms.LEFT, pick_up_grasp),
-        # SetGripperAction(gripper=Arms.BOTH, motion=GripperState.CLOSE),
-        # SetGripperAction(gripper=Arms.BOTH, motion=GripperState.OPEN),
-        MoveGripperMotion(gripper=Arms.RIGHT, motion=GripperState.CLOSE),
-        MoveGripperMotion(gripper=Arms.RIGHT, motion=GripperState.OPEN),
-        # Place`Action(
+        SetGripperAction(gripper=Arms.BOTH, motion=GripperState.OPEN),
+        SetGripperAction(gripper=Arms.BOTH, motion=GripperState.CLOSE),
+        # SetGripperAction(gripper=Arms.RIGHT, motion=GripperState.CLOSE),
+        SetGripperAction(gripper=Arms.BOTH, motion=GripperState.OPEN),
+        # PlaceAction(
         #     world.get_body_by_name("bowl.stl"),
         #     HomogeneousTransformationMatrix.from_xyz_rpy(
         #         -0.6, -0.1, 0.635, reference_frame=world.root
@@ -127,7 +121,7 @@ else:
 
 print("Plan finished.")
 
-while True:
-    continue
+# while True:
+#     continue
 
 print("Done.")
