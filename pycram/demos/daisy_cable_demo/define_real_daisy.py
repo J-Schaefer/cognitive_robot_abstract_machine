@@ -2,8 +2,6 @@ import threading
 import time
 from dataclasses import dataclass
 
-import rclpy
-from rclpy.executors import SingleThreadedExecutor
 import logging
 # from suturo_resources.suturo_map import load_environment
 from typing_extensions import Tuple, Any
@@ -40,12 +38,6 @@ from semantic_digital_twin.world_description.world_entity import Body
 from test.krrood_test.dataset.example_classes import Node
 
 logger = logging.getLogger(__name__)
-
-
-import threading
-import rclpy
-from rclpy.executors import SingleThreadedExecutor
-
 
 def setup_daisy_context(
     node_name: str = "coraplex_node",
