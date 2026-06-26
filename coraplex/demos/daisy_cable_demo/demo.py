@@ -75,6 +75,24 @@ with world.modify_world():
         ),
     )
 
+cable_post = STLParser(
+    os.path.join(
+        os.path.dirname(__file__), "..", "..", "resources", "objects", "item_profile_8_40x40_720.stl"
+    )
+).parse()
+
+with world.modify_world():
+    world.merge_world(
+        cable_post,
+        FixedConnection(
+            world.root,
+            cable_post.root,
+            parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_quaternion(
+                -0.8, -0.1, 0.635, reference_frame=world.root
+            )
+        )
+    )
+
 # %% Demo
 # context = Context.from_world(world)
 # daisy = world.get_semantic_annotation_by_name(DAiSy)[0]
@@ -89,16 +107,17 @@ pick_up_grasp = GraspDescription(
     approach_direction=ApproachDirection.FRONT,
     vertical_alignment=VerticalAlignment.TOP,
     end_effector=context.robot.get_left_arm_if_specified().end_effector,
+    manipulation_offset=0.2
 )
 
 plan = sequential(
     [
         ParkArmsAction(arm=Arms.BOTH),
-        # PickUpAction(world.get_body_by_name("bowl.stl"), Arms.LEFT, pick_up_grasp),
         SetGripperAction(gripper=Arms.BOTH, motion=GripperState.OPEN),
         SetGripperAction(gripper=Arms.BOTH, motion=GripperState.CLOSE),
         # SetGripperAction(gripper=Arms.RIGHT, motion=GripperState.CLOSE),
         SetGripperAction(gripper=Arms.BOTH, motion=GripperState.OPEN),
+        PickUpAction(world.get_body_by_name("bowl.stl"), Arms.LEFT, pick_up_grasp),
         # PlaceAction(
         #     world.get_body_by_name("bowl.stl"),
         #     HomogeneousTransformationMatrix.from_xyz_rpy(
