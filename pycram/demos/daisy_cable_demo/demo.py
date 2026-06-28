@@ -16,7 +16,10 @@ from coraplex.robot_plans.actions.core.pick_up import PickUpAction
 from coraplex.robot_plans.actions.core.placing import PlaceAction
 from coraplex.testing import setup_world
 from coraplex.language import SequentialNode
-from coraplex.robot_plans.actions.core.robot_body import ParkArmsAction, SetGripperAction
+from coraplex.robot_plans.actions.core.robot_body import (
+    ParkArmsAction,
+    SetGripperAction,
+)
 from coraplex.view_manager import ViewManager
 from semantic_digital_twin.adapters.mesh import STLParser
 from semantic_digital_twin.adapters.ros.visualization.viz_marker import (
@@ -24,10 +27,12 @@ from semantic_digital_twin.adapters.ros.visualization.viz_marker import (
 )
 from semantic_digital_twin.adapters.urdf import URDFParser
 from semantic_digital_twin.datastructures.definitions import GripperState
+from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.robot_parts import EndEffector
 from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import FixedConnection
+from semantic_digital_twin.world_description.world_entity import SemanticAnnotation
 from test.conftest import world_with_urdf_factory
 
 from define_real_daisy import setup_daisy_context
@@ -78,20 +83,58 @@ with world.modify_world():
 
 cable_post = STLParser(
     os.path.join(
-        os.path.dirname(__file__), "..", "..", "resources", "objects", "item_profile_8_40x40_720.stl"
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "resources",
+        "objects",
+        "item_profile_8_40x40_720.stl",
     )
 ).parse()
+cable_post_root = (
+    cable_post.root
+)  # get object root because it is cleared and becomes None after merging
 
 with world.modify_world():
     world.merge_world(
         cable_post,
         FixedConnection(
-            world.root,
-            cable_post.root,
+            world.get_semantic_annotations_by_type(DAiSy)[0].root,
+            cable_post_root,
             parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                x=-0.8, y=-0.1, z=0.635, pitch=math.pi/2, reference_frame=world.root
-            )
-        )
+                x=0.02,
+                y=-0.02,
+                z=0.8,
+                roll=math.pi / 2,
+                reference_frame=world.get_semantic_annotations_by_type(DAiSy)[0].root,
+            ),
+        ),
+    )
+
+cable_hanger = STLParser(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "resources",
+        "objects",
+        "cable_hanger_item.stl",
+    )
+).parse()
+cable_hanger_root = (
+    cable_hanger.root
+)  # get object root because it is cleared and becomes None after merging
+
+with world.modify_world():
+    world.merge_world(
+        cable_hanger,
+        FixedConnection(
+            cable_post_root,
+            cable_hanger_root,
+            parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
+                x=0.02, y=0.0, z=0.72, reference_frame=cable_post_root
+            ),
+        ),
     )
 
 # %% Demo
@@ -99,6 +142,7 @@ with world.modify_world():
 # daisy = world.get_semantic_annotation_by_name(DAiSy)[0]
 
 print(world.root.name)
+print([body.name for body in world.bodies])
 
 # Print joint states
 for dof in context.robot.degrees_of_freedom_with_hardware_interface:
@@ -108,7 +152,7 @@ pick_up_grasp = GraspDescription(
     approach_direction=ApproachDirection.FRONT,
     vertical_alignment=VerticalAlignment.TOP,
     end_effector=context.robot.get_left_arm_if_specified().end_effector,
-    manipulation_offset=0.2
+    manipulation_offset=0.2,
 )
 
 plan = sequential(
