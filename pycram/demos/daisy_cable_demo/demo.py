@@ -1,4 +1,5 @@
 import os
+import math
 
 from coraplex.alternative_motion_mappings.daisy_motion_mapping import DAISYGripMotion
 from coraplex.datastructures.dataclasses import Context
@@ -34,13 +35,13 @@ from define_sim_daisy import setup_sim_daisy
 
 # %% Environmental Variables Setup
 
-real = True
+real = False
 
 # %% Robot and World Setup
 if real:
-    rclpy_node, world, robot_view, context = setup_daisy_context()
+    node, world, robot_view, context = setup_daisy_context()
 else:
-    rclpy_node, world, robot_view, context = setup_sim_daisy()
+    node, world, robot_view, context = setup_sim_daisy()
 
 # %% Environment Setup
 # if not real:
@@ -87,8 +88,8 @@ with world.modify_world():
         FixedConnection(
             world.root,
             cable_post.root,
-            parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_quaternion(
-                -0.8, -0.1, 0.635, reference_frame=world.root
+            parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
+                x=-0.8, y=-0.1, z=0.635, pitch=math.pi/2, reference_frame=world.root
             )
         )
     )
