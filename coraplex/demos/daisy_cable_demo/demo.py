@@ -155,10 +155,10 @@ for dof in context.robot.degrees_of_freedom_with_hardware_interface:
     print(f"{dof.name}: {dof.variables.position.resolve()}")
 
 pick_up_grasp = GraspDescription(
-    approach_direction=ApproachDirection.FRONT,
+    approach_direction=ApproachDirection.DIAGONAL,
     vertical_alignment=VerticalAlignment.TOP,
     end_effector=context.robot.get_left_arm_if_specified().end_effector,
-    manipulation_offset=0.2,
+    manipulation_offset=0.15,
 )
 
 plan = sequential(
