@@ -1,5 +1,5 @@
 import os
-import math
+from math import pi
 
 from coraplex.alternative_motion_mappings.daisy_motion_mapping import DAISYGripMotion
 from coraplex.datastructures.dataclasses import Context
@@ -105,7 +105,7 @@ with world.modify_world():
                 x=0.02,
                 y=-0.02,
                 z=0.8,
-                roll=math.pi / 2,
+                roll=pi / 2,
                 reference_frame=world.get_semantic_annotations_by_type(DAiSy)[0].root,
             ),
         ),
@@ -132,7 +132,13 @@ with world.modify_world():
             cable_post_root,
             cable_hanger_root,
             parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                x=0.02, y=0.0, z=0.72, reference_frame=cable_post_root
+                x=-0.02,
+                y=0.3,
+                z=0.0,
+                roll=-pi / 2,
+                pitch=-pi / 2,
+                # yaw=math.pi,
+                reference_frame=cable_post_root,
             ),
         ),
     )
