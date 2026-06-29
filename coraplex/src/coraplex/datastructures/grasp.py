@@ -80,13 +80,19 @@ class GraspDescription:
                 body
             ).bounding_box()
 
-            approach_axis = np.array(self.approach_direction.axis.value, dtype=bool)
+            approach_axes = [
+                np.array(axis.value, dtype=bool)
+                for axis, direction in self.approach_direction.axes
+            ]
 
             # Pre-pose calculation
-            offset = (
-                np.array(bb_in_frame.dimensions)[approach_axis] / 2
-                + self.manipulation_offset
-            )[0]
+            max_dim = 0
+            for axis_mask in approach_axes:
+                dim = np.array(bb_in_frame.dimensions)[axis_mask][0]
+                if dim > max_dim:
+                    max_dim = dim
+
+            offset = max_dim / 2 + self.manipulation_offset
         else:
             offset = 0
 
@@ -213,15 +219,17 @@ class GraspDescription:
         :param body: The body to calculate the edge offset for.
         :return: The edge offset.
         """
-        rim_direction_index = self.approach_direction.value[0].value.index(1)
-
-        rim_offset = (
+        bb_dimensions = np.array(
             body.collision.as_bounding_box_collection_in_frame(body)
             .bounding_box()
-            .dimensions[rim_direction_index]
-            / 2
+            .dimensions
         )
-        return rim_offset
+        offsets = []
+        for axis, direction in self.approach_direction.axes:
+            rim_direction_index = axis.value.index(1)
+            offsets.append(bb_dimensions[rim_direction_index] / 2)
+
+        return float(np.max(offsets))
 
     def grasp_pose(self, body: Body, grasp_edge: bool = False) -> Pose:
         """

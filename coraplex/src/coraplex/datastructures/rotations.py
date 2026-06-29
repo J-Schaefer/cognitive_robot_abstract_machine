@@ -23,6 +23,7 @@ class Rotations(Dict[Optional[Union[Grasp, bool]], List[float]]):
         ApproachDirection.BACK: [0, 0, 1, 0],
         ApproachDirection.LEFT: [0, 0, -math.sqrt(2) / 2, math.sqrt(2) / 2],
         ApproachDirection.RIGHT: [0, 0, math.sqrt(2) / 2, math.sqrt(2) / 2],
+        ApproachDirection.DIAGONAL: [0.3627, 0, 0, 0.9239]
     }
 
     VERTICAL_ROTATIONS = {
