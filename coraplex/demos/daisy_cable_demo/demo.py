@@ -40,7 +40,7 @@ from define_sim_daisy import setup_sim_daisy
 
 # %% Environmental Variables Setup
 
-real = False
+real = True
 
 # %% Robot and World Setup
 if real:
@@ -63,23 +63,34 @@ else:
 #         )
 
 # %% Define Additional Objects
-bowl = STLParser(
-    os.path.join(
-        os.path.dirname(__file__), "..", "..", "resources", "objects", "bowl.stl"
-    )
-).parse()
+try:
 
-with world.modify_world():
-    world.merge_world(
-        bowl,
-        FixedConnection(
-            world.root,
-            bowl.root,
-            parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_quaternion(
-                -0.4, -0.1, 0.635, reference_frame=world.root
+    cup = STLParser(
+        os.path.join(
+            os.path.dirname(__file__), "..", "..", "resources", "objects", "jeroen_cup.stl"
+        )
+    ).parse()
+    cup_root = cup.root
+
+    with world.modify_world():
+        world.merge_world(
+            cup,
+            FixedConnection(
+                world.root,
+                cup.root,
+                parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_quaternion(
+                    -0.6, -0.1, 0.68, reference_frame=world.root
+                ),
             ),
-        ),
+        )
+
+except Exception as e:
+    print(e)
+    print(
+        "Bowl already exists in the world. Using existing bowl instead of creating a new one."
     )
+    bowl = world.get_body_by_name(PrefixedName("bowl"))
+
 
 cable_post = STLParser(
     os.path.join(
@@ -155,20 +166,22 @@ for dof in context.robot.degrees_of_freedom_with_hardware_interface:
     print(f"{dof.name}: {dof.variables.position.resolve()}")
 
 pick_up_grasp = GraspDescription(
-    approach_direction=ApproachDirection.DIAGONAL,
+    approach_direction=ApproachDirection.FRONT,
     vertical_alignment=VerticalAlignment.TOP,
     end_effector=context.robot.get_left_arm_if_specified().end_effector,
-    manipulation_offset=0.15,
+    manipulation_offset=0.05,
 )
+# pick_up_grasp.grasp_pose()  # Body for geometry
+# pick_up_grasp._pose_sequence()
 
 plan = sequential(
     [
         ParkArmsAction(arm=Arms.BOTH),
-        SetGripperAction(gripper=Arms.BOTH, motion=GripperState.OPEN),
-        SetGripperAction(gripper=Arms.BOTH, motion=GripperState.CLOSE),
+        # SetGripperAction(gripper=Arms.BOTH, motion=GripperState.OPEN),
+        # SetGripperAction(gripper=Arms.BOTH, motion=GripperState.CLOSE),
         # SetGripperAction(gripper=Arms.RIGHT, motion=GripperState.CLOSE),
         SetGripperAction(gripper=Arms.BOTH, motion=GripperState.OPEN),
-        PickUpAction(world.get_body_by_name("bowl.stl"), Arms.LEFT, pick_up_grasp),
+        PickUpAction(world.get_body_by_name("jeroen_cup.stl"), Arms.LEFT, pick_up_grasp),
         # PlaceAction(
         #     world.get_body_by_name("bowl.stl"),
         #     HomogeneousTransformationMatrix.from_xyz_rpy(
