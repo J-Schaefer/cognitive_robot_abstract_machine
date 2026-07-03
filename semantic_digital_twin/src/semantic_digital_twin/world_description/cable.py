@@ -94,10 +94,9 @@ def build_cable(
     from semantic_digital_twin.adapters.multi_sim import MujocoEquality
 
     # Rotate cylinder from its native z-axis to the cable direction (x-axis).
-    # A 90 deg pitch about y maps z -> x.
-    cylinder_origin = HomogeneousTransformationMatrix.from_xyz_rpy(
-        0.0, 0.0, 0.0, 0.0, pi / 2.0, 0.0
-    )
+    # A 90 deg pitch about y maps z -> x.  Each segment gets its own copy
+    # because the visualisation pipeline may mutate the origin's
+    # reference_frame per-body.
 
     # Capture root BEFORE entering modify_world to avoid the FK root-detection
     # assertion that fires when many bodies still lack parent connections.
@@ -137,11 +136,14 @@ def build_cable(
 
     with world.modify_world():
         for i in range(config.segment_count):
+            cyl_origin = HomogeneousTransformationMatrix.from_xyz_rpy(
+                0.0, 0.0, 0.0, 0.0, pi / 2.0, 0.0
+            )
             cyl = Cylinder(
                 width=2.0 * config.radius,
                 height=config.segment_length,
                 color=config.color,
-                origin=cylinder_origin,
+                origin=cyl_origin,
             )
             body = Body(
                 name=PrefixedName(f"cable_segment_{i}"),

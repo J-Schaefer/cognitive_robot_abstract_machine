@@ -80,6 +80,17 @@ class TestBuildCable:
         rpy = shape.origin.to_rotation_matrix().to_rpy()
         assert_allclose([float(v) for v in rpy], (0.0, pi / 2.0, 0.0), atol=1e-6)
 
+    def test_each_segment_has_distinct_origin_object(self):
+        """Each segment's Cylinder origin must be a distinct object so that
+        the visualisation pipeline can assign a per-body frame_id."""
+        world = World()
+        config = CableConfig(segment_count=5)
+        cable = build_cable(config, world)
+        origins = {
+            id(segment.visual[0].origin) for segment in cable.segments
+        }
+        assert len(origins) == config.segment_count
+
     def test_each_segment_has_free_joint(self):
         world = World()
         config = CableConfig(segment_count=4)
