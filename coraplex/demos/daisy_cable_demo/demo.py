@@ -1,10 +1,7 @@
-import logging
 import os
 import time
 from math import pi
 
-from coraplex.alternative_motion_mappings.daisy_motion_mapping import DAISYGripMotion
-from coraplex.datastructures.dataclasses import Context
 from coraplex.datastructures.enums import ApproachDirection, Arms, VerticalAlignment
 from coraplex.datastructures.grasp import GraspDescription
 from coraplex.motion_executor import real_robot, simulated_robot
@@ -15,7 +12,6 @@ from coraplex.robot_plans.actions.core.robot_body import (
     SetGripperAction,
 )
 from semantic_digital_twin.adapters.mesh import STLParser
-from semantic_digital_twin.adapters.urdf import URDFParser
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.daisy import DAiSy
@@ -25,9 +21,6 @@ from semantic_digital_twin.world_description.connections import FixedConnection
 
 from define_real_daisy import setup_daisy_context
 from define_sim_daisy import setup_sim_daisy
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 real = False
 
@@ -50,7 +43,7 @@ with world.modify_world():
         cup,
         FixedConnection(
             world.root,
-            cup.root,
+            cup_root,
             parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_quaternion(
                 -0.6, -0.1, 0.68, reference_frame=world.root
             ),
@@ -114,6 +107,8 @@ with world.modify_world():
         ),
     )
 
+hanger_body = world.get_body_by_name(PrefixedName("cable_hanger_item.stl"))
+
 # %% Build cable and start background physics simulation
 cable_config = CableConfig(
     segment_count=12,
@@ -121,8 +116,14 @@ cable_config = CableConfig(
     radius=0.006,
     mass_per_segment=0.005,
 )
-cable_sim = CableSimulation(config=cable_config, world=world)
+cable_sim = CableSimulation(
+    config=cable_config,
+    world=world,
+    parent_body=hanger_body,
+)
 cable_sim.start()
+
+time.sleep(2.0)
 
 # %% Demo Plan
 pick_up_grasp = GraspDescription(
@@ -132,10 +133,13 @@ pick_up_grasp = GraspDescription(
     manipulation_offset=0.05,
 )
 
+cable_segment = world.get_body_by_name(PrefixedName("cable_segment_0"))
+
 plan = sequential(
     [
         ParkArmsAction(arm=Arms.BOTH),
         SetGripperAction(gripper=Arms.BOTH, motion=GripperState.OPEN),
+        PickUpAction(cable_segment, Arms.RIGHT, pick_up_grasp),
     ],
     context,
 )
@@ -147,17 +151,12 @@ else:
     with simulated_robot:
         plan.perform()
 
-print("Plan finished. Background cable simulation is running.")
+print("Plan finished.")
 
-# %% Demonstrate cable grasp and release in the simulation
-time.sleep(1.0)
-try:
-    cable_sim.grasp(gripper_body_name="right_gripper_tool_frame", segment_index=0)
-    print("Cable segment 0 grasped by right gripper tool frame.")
-    time.sleep(2.0)
-    cable_positions = cable_sim.get_segment_positions()
-    print(f"Cable segment 0 position after grasp: {cable_positions['cable_segment_0']}")
-except Exception as e:
-    logger.warning("Cable grasp demonstration failed: %s", e)
+# %% Wait to observe the cable following the robot
+time.sleep(2.0)
+positions = cable_sim.get_segment_positions()
+print(f"Cable segment 0 position: {positions['cable_segment_0']}")
 
+cable_sim.stop()
 print("Done.")
