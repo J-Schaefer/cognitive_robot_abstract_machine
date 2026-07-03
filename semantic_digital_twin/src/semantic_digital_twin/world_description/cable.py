@@ -94,7 +94,7 @@ def build_cable(
     from semantic_digital_twin.adapters.multi_sim import MujocoEquality
 
     # Rotate cylinder from its native z-axis to the cable direction (x-axis).
-    # A 90 deg pitch about y maps z -> x.  Each segment gets its own copy
+    # A 90 deg pitch about y maps z -> x. Each segment gets its own copy
     # because the visualisation pipeline may mutate the origin's
     # reference_frame per-body.
 
@@ -398,9 +398,7 @@ class CableSimulation:
             body_1_name=segment_name,
             body_2_name=gripper_body_name,
         )
-        logger.info(
-            "Cable segment %d attached to %s", segment_index, gripper_body_name
-        )
+        logger.info("Cable segment %d attached to %s", segment_index, gripper_body_name)
 
     def release(self, segment_index: int = 0) -> None:
         """
