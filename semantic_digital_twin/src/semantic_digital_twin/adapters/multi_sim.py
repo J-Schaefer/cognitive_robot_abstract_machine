@@ -1523,6 +1523,14 @@ class MujocoBuilder(MultiSimBuilder):
 
     spec: mujoco.MjSpec = field(default=mujoco.MjSpec())
 
+    _skip_hardware_interface_connections: ClassVar[bool] = False
+    """
+    When True, connections with ``has_hardware_interface=True`` are not built
+    into the MuJoCo model. Set by :class:`~semantic_digital_twin.world_description.cable.CableSimulation`
+    to prevent the background cable physics simulation from interfering with
+    robot joint state.
+    """
+
     def _start_build(self, file_path: str):
         self.spec = mujoco.MjSpec()
         self.spec.modelname = "scene"
@@ -1567,11 +1575,13 @@ class MujocoBuilder(MultiSimBuilder):
                 or parent_connection is None
             ):
                 continue
-            qpos += [
-                self.world.state[dof.id].position
-                for dof in parent_connection.active_dofs
-                + parent_connection.passive_dofs
-            ]
+            if self._skip_hardware_interface_connections and parent_connection.has_hardware_interface:
+                continue
+            dofs = parent_connection.active_dofs + parent_connection.passive_dofs
+            if isinstance(parent_connection, Connection6DoF):
+                dofs = list(dofs)
+                dofs[3], dofs[4], dofs[5], dofs[6] = dofs[6], dofs[3], dofs[4], dofs[5]
+            qpos += [self.world.state[dof.id].position for dof in dofs]
         key_element.set("qpos", " ".join(map(str, qpos)))
         tree.write(file_path, encoding="utf-8", xml_declaration=True)
 
@@ -1704,6 +1714,8 @@ class MujocoBuilder(MultiSimBuilder):
 
     def _build_connection(self, connection: Connection):
         if isinstance(connection, self._ignore_connection_types):
+            return
+        if self._skip_hardware_interface_connections and connection.has_hardware_interface:
             return
         joint_props = MujocoJointConverter.convert(connection)
         if "equality_joint" in joint_props:
@@ -2507,6 +2519,15 @@ class MujocoSynchronizer(MultiSimSynchronizer):
     into MuJoCo regardless.
     """
 
+    _skip_hardware_interface_connections: ClassVar[bool] = False
+    """
+    When True, connections with ``has_hardware_interface=True`` are skipped
+    during sim→world and world→sim synchronisation. Set by
+    :class:`~semantic_digital_twin.world_description.cable.CableSimulation`
+    to prevent the background cable physics simulation from interfering with
+    robot joint state.
+    """
+
     _last_sync_time: float = field(init=False, default=0.0, repr=False)
 
     def __post_init__(self):
@@ -2609,6 +2630,8 @@ class MujocoSynchronizer(MultiSimSynchronizer):
 
         for connection in self._world.connections:
             if isinstance(connection, FixedConnection):
+                continue
+            if self._skip_hardware_interface_connections and connection.has_hardware_interface:
                 continue
             qpos_adr = self._resolve_qpos_adr(connection)
             if qpos_adr is None:
@@ -2718,6 +2741,8 @@ class MujocoSynchronizer(MultiSimSynchronizer):
 
         for connection in self._world.connections:
             if isinstance(connection, FixedConnection):
+                continue
+            if self._skip_hardware_interface_connections and connection.has_hardware_interface:
                 continue
             qpos_adr = self._resolve_qpos_adr(connection)
             if qpos_adr is None:
