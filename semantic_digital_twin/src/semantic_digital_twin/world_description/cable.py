@@ -306,14 +306,26 @@ class CableSimulation:
     _is_paused: bool = field(init=False, default=False)
 
     def __post_init__(self):
-        from semantic_digital_twin.adapters.multi_sim import MujocoSim
+        from semantic_digital_twin.adapters.multi_sim import (
+            MujocoBuilder,
+            MujocoSim,
+            MujocoSynchronizer,
+        )
 
         self.cable = build_cable(
             config=self.config,
             world=self.world,
             parent_body=self.parent_body,
         )
-        self.multi_sim = MujocoSim(world=self.world, headless=True)
+        old_builder_skip = MujocoBuilder._skip_hardware_interface_connections
+        old_sync_skip = MujocoSynchronizer._skip_hardware_interface_connections
+        MujocoBuilder._skip_hardware_interface_connections = True
+        MujocoSynchronizer._skip_hardware_interface_connections = True
+        try:
+            self.multi_sim = MujocoSim(world=self.world, headless=True)
+        finally:
+            MujocoBuilder._skip_hardware_interface_connections = old_builder_skip
+            MujocoSynchronizer._skip_hardware_interface_connections = old_sync_skip
         self.multi_sim.synchronizer.sync_rate_hz = self.sync_rate_hz
         self._segment_ids = {s.id for s in self.cable.segments}
         self._register_model_callback()
