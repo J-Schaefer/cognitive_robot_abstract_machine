@@ -1,6 +1,7 @@
 from math import pi
 
 import mujoco
+import numpy
 import pytest
 from numpy.testing import assert_allclose
 
@@ -12,6 +13,7 @@ from semantic_digital_twin.world_description.cable import (
     Cable,
     CableConfig,
     CableSimulation,
+    CableSimulationStrategy,
     build_cable,
 )
 from semantic_digital_twin.world_description.connections import Connection6DoF
@@ -40,6 +42,17 @@ class TestCableConfig:
         assert config.segment_count == 15
         assert config.segment_length == 0.05
         assert config.radius == 0.01
+
+    def test_default_strategy(self):
+        config = CableConfig()
+        assert config.strategy == CableSimulationStrategy.KINEMATIC_ATTACH
+        assert config.use_composite is False
+
+    def test_strategy_override(self):
+        config = CableConfig(
+            strategy=CableSimulationStrategy.POSITION_OVERRIDE
+        )
+        assert config.strategy == CableSimulationStrategy.POSITION_OVERRIDE
 
     def test_cable_dataclass(self):
         cable = Cable()
@@ -369,3 +382,401 @@ class TestCableSimulation:
         cable_sim.stop()
         assert cable_sim._started is False
         logging.disable(logging.NOTSET)
+
+
+class TestPositionOverrideStrategy:
+    """Tests for CableSimulationStrategy.POSITION_OVERRIDE."""
+
+    def _make_gripper_in_world(self, world: World) -> Body:
+        r"""Add a free-joint gripper body to the world and spec."""
+        if world.root is None:
+            root = Body(name=PrefixedName("world"))
+            with world.modify_world():
+                world.add_kinematic_structure_entity(root)
+        else:
+            root = world.root
+        gripper = Body(name=PrefixedName("test_gripper"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(gripper)
+            conn = Connection6DoF.create_with_dofs(
+                world=world,
+                parent=root,
+                child=gripper,
+                name=PrefixedName("gripper_joint"),
+            )
+            world.add_connection(conn)
+            world.state[conn.x.id].position = 0.5
+            world.state[conn.y.id].position = 0.0
+            world.state[conn.z.id].position = 0.5
+            world.state[conn.qw.id].position = 1.0
+            world.state[conn.qx.id].position = 0.0
+            world.state[conn.qy.id].position = 0.0
+            world.state[conn.qz.id].position = 0.0
+        return gripper
+
+    def test_strategy_override_via_config(self):
+        """CableSimulation uses CableConfig.strategy when
+        strategy_override is None."""
+        import logging
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        config = CableConfig(
+            segment_count=3,
+            segment_length=0.03,
+            radius=0.005,
+            strategy=CableSimulationStrategy.POSITION_OVERRIDE,
+        )
+
+        cable_sim = CableSimulation(config=config, world=world)
+        try:
+            assert cable_sim._effective_strategy == CableSimulationStrategy.POSITION_OVERRIDE
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+    def test_strategy_override_via_simulation(self):
+        """strategy_override trumps CableConfig.strategy."""
+        import logging
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        config = CableConfig(
+            segment_count=3,
+            strategy=CableSimulationStrategy.KINEMATIC_ATTACH,
+        )
+        cable_sim = CableSimulation(
+            config=config,
+            world=world,
+            strategy_override=CableSimulationStrategy.POSITION_OVERRIDE,
+        )
+        try:
+            assert cable_sim._effective_strategy == CableSimulationStrategy.POSITION_OVERRIDE
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+    def test_grasp_release_no_crash(self):
+        """grasp() and release() do not raise under POSITION_OVERRIDE."""
+        import logging
+        import time
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        config = CableConfig(
+            segment_count=3,
+            segment_length=0.03,
+            radius=0.005,
+            strategy=CableSimulationStrategy.POSITION_OVERRIDE,
+        )
+        gripper = self._make_gripper_in_world(world)
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            cable_sim.start()
+            time.sleep(1.0)
+            cable_sim.grasp("test_gripper", segment_index=0)
+            cable_sim.release(segment_index=0)
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+    def test_grasped_segment_follows_gripper(self):
+        """When a segment is grasped (POSITION_OVERRIDE), moving the
+        gripper should move the segment along with it."""
+        import logging
+        import time
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        config = CableConfig(
+            segment_count=5,
+            segment_length=0.03,
+            radius=0.005,
+            strategy=CableSimulationStrategy.POSITION_OVERRIDE,
+        )
+        gripper = self._make_gripper_in_world(world)
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            cable_sim.start()
+            time.sleep(2.0)
+
+            cable_sim.grasp("test_gripper", segment_index=0)
+            time.sleep(0.3)
+
+            # Move gripper gradually to avoid constraint solver instability
+            for y in [0.05, 0.10, 0.15, 0.20]:
+                cable_sim.multi_sim.simulator.callbacks["set_body_position"](
+                    "test_gripper", numpy.array([0.5, y, 0.5])
+                )
+                time.sleep(0.1)
+
+            time.sleep(0.3)
+            positions = cable_sim.get_segment_positions()
+            seg0 = positions["cable_segment_0"]
+            assert seg0[1] > 0.05, (
+                f"Grasped segment y={seg0[1]:.3f} should follow gripper y>0.05"
+            )
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+    def test_grasped_segment_does_not_crash(self):
+        """After grasping, the cable should still be in a valid state
+        (no segfaults or thread crashes)."""
+        import logging
+        import time
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        config = CableConfig(
+            segment_count=5,
+            segment_length=0.03,
+            radius=0.005,
+            strategy=CableSimulationStrategy.POSITION_OVERRIDE,
+        )
+        gripper = self._make_gripper_in_world(world)
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            cable_sim.start()
+            time.sleep(2.0)
+
+            cable_sim.grasp("test_gripper", segment_index=0)
+            time.sleep(1.0)
+
+            positions = cable_sim.get_segment_positions()
+            for i in range(config.segment_count):
+                assert f"cable_segment_{i}" in positions
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+    def test_release_removes_override(self):
+        """After releasing, the segment falls under gravity again."""
+        import logging
+        import time
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        config = CableConfig(
+            segment_count=5,
+            segment_length=0.03,
+            radius=0.005,
+            strategy=CableSimulationStrategy.POSITION_OVERRIDE,
+        )
+        gripper = self._make_gripper_in_world(world)
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            cable_sim.start()
+            time.sleep(2.0)
+
+            positions_before = cable_sim.get_segment_positions()
+            seg0_z_before = positions_before["cable_segment_0"][2]
+
+            cable_sim.grasp("test_gripper", segment_index=0)
+            time.sleep(0.5)
+            cable_sim.release(segment_index=0)
+            time.sleep(1.0)
+
+            positions_after = cable_sim.get_segment_positions()
+            seg0_z_after = positions_after["cable_segment_0"][2]
+            assert seg0_z_after < 0, (
+                f"Released segment z={seg0_z_after:.3f} should fall below zero"
+            )
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+
+class TestKinematicAttachStrategy:
+    """Tests for CableSimulationStrategy.KINEMATIC_ATTACH with state
+    preservation during recompilation."""
+
+    def _make_gripper_in_world(self, world: World) -> Body:
+        r"""Add a free-joint gripper body to the world and spec."""
+        if world.root is None:
+            root = Body(name=PrefixedName("world"))
+            with world.modify_world():
+                world.add_kinematic_structure_entity(root)
+        else:
+            root = world.root
+        gripper = Body(name=PrefixedName("test_gripper"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(gripper)
+            conn = Connection6DoF.create_with_dofs(
+                world=world,
+                parent=root,
+                child=gripper,
+                name=PrefixedName("gripper_joint"),
+            )
+            world.add_connection(conn)
+            world.state[conn.x.id].position = 0.5
+            world.state[conn.y.id].position = 0.0
+            world.state[conn.z.id].position = 0.5
+            world.state[conn.qw.id].position = 1.0
+            world.state[conn.qx.id].position = 0.0
+            world.state[conn.qy.id].position = 0.0
+            world.state[conn.qz.id].position = 0.0
+        return gripper
+
+    def test_attach_and_detach_do_not_crash(self):
+        """Grasp and release via KINEMATIC_ATTACH do not crash the
+        simulation thread, even though the inter-segment connect
+        constraints require all bodies to have independent DOFs."""
+        import logging
+        import time
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        config = CableConfig(
+            segment_count=5,
+            segment_length=0.03,
+            radius=0.005,
+            strategy=CableSimulationStrategy.KINEMATIC_ATTACH,
+        )
+        gripper = self._make_gripper_in_world(world)
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            cable_sim.start()
+            time.sleep(2.0)
+
+            cable_sim.grasp("test_gripper", segment_index=0)
+            time.sleep(0.5)
+            cable_sim.release(segment_index=0)
+            time.sleep(1.0)
+
+            positions = cable_sim.get_segment_positions()
+            for i in range(config.segment_count):
+                assert f"cable_segment_{i}" in positions
+                # Segment bodies exist and report positions
+                assert numpy.isfinite(positions[f"cable_segment_{i}"]).all()
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+
+class TestCompositeCableStrategy:
+    """Tests for CableConfig.use_composite = True."""
+
+    @staticmethod
+    def _requires_composite_api():
+        """Skip test if MuJoCo doesn't support composite objects."""
+        import mujoco
+        if not hasattr(mujoco.MjSpec, "add_composite"):
+            pytest.skip("MuJoCo version does not support composite API")
+
+    def test_creates_composite_cable(self):
+        """A CableSimulation with use_composite=True starts without error."""
+        self._requires_composite_api()
+        import logging
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        config = CableConfig(
+            segment_count=5,
+            segment_length=0.03,
+            radius=0.005,
+            use_composite=True,
+        )
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            assert cable_sim.cable is not None
+            assert len(cable_sim.cable.segments) == config.segment_count
+            assert len(cable_sim._composite_body_names) == config.segment_count
+            assert cable_sim._composite_body_names[0] == "cable_segment_B0"
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+    def test_composite_cable_falls_under_gravity(self):
+        """Composite cable segments fall under gravity."""
+        self._requires_composite_api()
+        import logging
+        import time
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        config = CableConfig(
+            segment_count=5,
+            segment_length=0.03,
+            radius=0.005,
+            use_composite=True,
+        )
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            cable_sim.start()
+            time.sleep(2.0)
+            positions = cable_sim.get_segment_positions()
+            for i in range(config.segment_count):
+                pos = positions[f"cable_segment_{i}"]
+                assert pos[2] < 0, f"Composite segment {i} z={pos[2]:.3f} did not fall"
+                assert abs(pos[0]) < 2.0
+                assert abs(pos[1]) < 2.0
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+    def test_composite_cable_grasp_release(self):
+        """grasp() and release() work on composite cables."""
+        self._requires_composite_api()
+        import logging
+        import time
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        config = CableConfig(
+            segment_count=5,
+            segment_length=0.03,
+            radius=0.005,
+            use_composite=True,
+        )
+        if world.root is None:
+            root = Body(name=PrefixedName("world"))
+            with world.modify_world():
+                world.add_kinematic_structure_entity(root)
+        else:
+            root = world.root
+        gripper = Body(name=PrefixedName("test_gripper"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(gripper)
+            conn = Connection6DoF.create_with_dofs(
+                world=world,
+                parent=root,
+                child=gripper,
+                name=PrefixedName("gripper_joint"),
+            )
+            world.add_connection(conn)
+            world.state[conn.x.id].position = 0.5
+            world.state[conn.y.id].position = 0.0
+            world.state[conn.z.id].position = 0.5
+            world.state[conn.qw.id].position = 1.0
+
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            cable_sim.start()
+            time.sleep(2.0)
+            cable_sim.grasp("test_gripper", segment_index=0)
+            time.sleep(0.5)
+            positions = cable_sim.get_segment_positions()
+            assert "cable_segment_0" in positions
+            cable_sim.release(segment_index=0)
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
