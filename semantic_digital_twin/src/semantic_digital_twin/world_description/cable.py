@@ -30,6 +30,38 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _matrix_to_mujoco_quat(m: numpy.ndarray) -> numpy.ndarray:
+    r"""
+    Convert a 3×3 rotation matrix to a MuJoCo quaternion ``[w, x, y, z]``.
+    """
+    trace = m[0, 0] + m[1, 1] + m[2, 2]
+    if trace > 0.0:
+        s = numpy.sqrt(trace + 1.0) * 2.0
+        w = s / 4.0
+        x = (m[2, 1] - m[1, 2]) / s
+        y = (m[0, 2] - m[2, 0]) / s
+        z = (m[1, 0] - m[0, 1]) / s
+    elif m[0, 0] > m[1, 1] and m[0, 0] > m[2, 2]:
+        s = numpy.sqrt(1.0 + m[0, 0] - m[1, 1] - m[2, 2]) * 2.0
+        w = (m[2, 1] - m[1, 2]) / s
+        x = s / 4.0
+        y = (m[0, 1] + m[1, 0]) / s
+        z = (m[0, 2] + m[2, 0]) / s
+    elif m[1, 1] > m[2, 2]:
+        s = numpy.sqrt(1.0 + m[1, 1] - m[0, 0] - m[2, 2]) * 2.0
+        w = (m[0, 2] - m[2, 0]) / s
+        x = (m[0, 1] + m[1, 0]) / s
+        y = s / 4.0
+        z = (m[1, 2] + m[2, 1]) / s
+    else:
+        s = numpy.sqrt(1.0 + m[2, 2] - m[0, 0] - m[1, 1]) * 2.0
+        w = (m[1, 0] - m[0, 1]) / s
+        x = (m[0, 2] + m[2, 0]) / s
+        y = (m[1, 2] + m[2, 1]) / s
+        z = s / 4.0
+    return numpy.array([w, x, y, z])
+
+
 class CableSimulationStrategy(enum.Enum):
     """
     Strategy for how cable segments are attached to grippers during grasping.
@@ -105,18 +137,18 @@ class CableConfig:
 
     anchor_offset: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
     """
-    Offset added to the parent body position when computing the cable's
-    initial spawn point.  Useful for placing the cable above a hanger
-    (e.g. ``[0, 0, 0.05]``) so it falls onto the object rather than
-    clipping through it.
+    Offset in the **parent body's local frame** added to the cable's
+    initial spawn point.  For non-rotated parents this is equivalent to
+    the world frame.  Useful for draping: set z > 0 to spawn above the
+    parent in its local "up" direction.
     """
 
     anchor_rpy: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
     """
-    Roll-pitch-yaw rotation applied to the cable's spawn direction
-    (radians).  By default the cable extends along the world x-axis.
-    Set e.g. ``[pi/2, 0, 0]`` to hang the cable horizontally along the
-    y-axis (useful for draping over a horizontal hanger).
+    Roll-pitch-yaw rotation in the **parent body's local frame** applied
+    to the cable's spawn direction (radians).  By default the cable
+    extends along the parent's local x-axis.  When no parent is given
+    the rotation is relative to the world frame.
     """
 
     use_composite: bool = False
@@ -209,43 +241,51 @@ def build_cable(
     # The anchor_offset is applied additively on top of the computed base
     # position (useful for draping: set z > 0 to spawn above the parent).
     offset_x, offset_y, offset_z = (
-        config.anchor_offset
-        if len(config.anchor_offset) == 3
-        else [0.0, 0.0, 0.0]
+        config.anchor_offset if len(config.anchor_offset) == 3 else [0.0, 0.0, 0.0]
     )
-    rpy = (
-        config.anchor_rpy
-        if len(config.anchor_rpy) == 3
-        else [0.0, 0.0, 0.0]
-    )
+    offset_vec = numpy.array([offset_x, offset_y, offset_z])
+    rpy = config.anchor_rpy if len(config.anchor_rpy) == 3 else [0.0, 0.0, 0.0]
     anchor_rotation = HomogeneousTransformationMatrix.from_xyz_rpy(
         0.0, 0.0, 0.0, rpy[0], rpy[1], rpy[2]
     )
     rotation_4x4 = anchor_rotation.to_rotation_matrix().evaluate()
+    anchor_rot_3x3 = rotation_4x4[:3, :3]
     direction = numpy.array([1.0, 0.0, 0.0])
-    direction_rotated = rotation_4x4[:3, :3] @ direction
-    step = direction_rotated * config.segment_length
-    # When anchored to a parent body the segment centre is shifted half a
-    # segment along the cable direction so the endpoint rests on the parent.
-    base_shift = half * direction_rotated if config.anchor_to_parent else numpy.zeros(3)
+
     if parent_body is not None:
-        shift_x, shift_y, shift_z = base_shift[0], base_shift[1], base_shift[2]
         try:
             parent_pose = parent_body.global_transform.evaluate()
-            base_x = float(parent_pose[0, 3]) + offset_x + shift_x
-            base_y = float(parent_pose[1, 3]) + offset_y + shift_y
-            base_z = float(parent_pose[2, 3]) + offset_z + shift_z
+            parent_rot_3x3 = parent_pose[:3, :3]
+            # Transform offset from parent-local to world frame
+            offset_world = parent_rot_3x3 @ offset_vec
+            # Compose rotation: world = parent_rot @ anchor_rot
+            direction_rotated = (parent_rot_3x3 @ anchor_rot_3x3) @ direction
         except Exception:
             logger.warning(
                 "Could not compute parent body pose; placing cable at origin"
             )
-            base_x = offset_x + shift_x
-            base_y = offset_y + shift_y
-            base_z = offset_z + shift_z
+            parent_rot_3x3 = numpy.eye(3)
+            offset_world = offset_vec
+            direction_rotated = anchor_rot_3x3 @ direction
     else:
-        base_x = offset_x
-        base_y = offset_y
-        base_z = offset_z
+        offset_world = offset_vec
+        direction_rotated = anchor_rot_3x3 @ direction
+
+    step = direction_rotated * config.segment_length
+    base_shift = half * direction_rotated if config.anchor_to_parent else numpy.zeros(3)
+    if parent_body is not None:
+        try:
+            base_x = float(parent_pose[0, 3]) + offset_world[0] + base_shift[0]
+            base_y = float(parent_pose[1, 3]) + offset_world[1] + base_shift[1]
+            base_z = float(parent_pose[2, 3]) + offset_world[2] + base_shift[2]
+        except Exception:
+            base_x = offset_world[0] + base_shift[0]
+            base_y = offset_world[1] + base_shift[1]
+            base_z = offset_world[2] + base_shift[2]
+    else:
+        base_x = offset_world[0]
+        base_y = offset_world[1]
+        base_z = offset_world[2]
 
     with world.modify_world():
         for i in range(config.segment_count):
@@ -280,11 +320,16 @@ def build_cable(
             world.state[connection.x.id].position = base_x + step[0] * i
             world.state[connection.y.id].position = base_y + step[1] * i
             world.state[connection.z.id].position = base_z + step[2] * i
-            anchor_quat = anchor_rotation.to_rotation_matrix().to_quaternion().evaluate()
-            world.state[connection.qw.id].position = float(anchor_quat[3])
-            world.state[connection.qx.id].position = float(anchor_quat[0])
-            world.state[connection.qy.id].position = float(anchor_quat[1])
-            world.state[connection.qz.id].position = float(anchor_quat[2])
+            composed_rot = (
+                parent_rot_3x3 @ anchor_rot_3x3
+                if parent_body is not None
+                else anchor_rot_3x3
+            )
+            segment_quat = _matrix_to_mujoco_quat(composed_rot)
+            world.state[connection.qw.id].position = float(segment_quat[0])
+            world.state[connection.qx.id].position = float(segment_quat[1])
+            world.state[connection.qy.id].position = float(segment_quat[2])
+            world.state[connection.qz.id].position = float(segment_quat[3])
 
     # Connect equalities are added in a separate modify_world context to avoid
     # FK confusion during the first context exit.
@@ -441,7 +486,9 @@ class CableSimulation:
     override hook can be removed on release.
     """
 
-    _composite_body_names: Dict[int, str] = field(init=False, repr=False, default_factory=dict)
+    _composite_body_names: Dict[int, str] = field(
+        init=False, repr=False, default_factory=dict
+    )
     """
     Maps ``segment_index`` → MuJoCo body name for composite cables.
     """
@@ -510,44 +557,56 @@ class CableSimulation:
 
         half = config.segment_length / 2.0
         offset_x, offset_y, offset_z = (
-            config.anchor_offset
-            if len(config.anchor_offset) == 3
-            else [0.0, 0.0, 0.0]
+            config.anchor_offset if len(config.anchor_offset) == 3 else [0.0, 0.0, 0.0]
         )
-        rpy = (
-            config.anchor_rpy
-            if len(config.anchor_rpy) == 3
-            else [0.0, 0.0, 0.0]
-        )
+        offset_vec = numpy.array([offset_x, offset_y, offset_z])
+        rpy = config.anchor_rpy if len(config.anchor_rpy) == 3 else [0.0, 0.0, 0.0]
         anchor_rotation = HomogeneousTransformationMatrix.from_xyz_rpy(
             0.0, 0.0, 0.0, rpy[0], rpy[1], rpy[2]
         )
         rotation_4x4 = anchor_rotation.to_rotation_matrix().evaluate()
+        anchor_rot_3x3 = rotation_4x4[:3, :3]
         direction = numpy.array([1.0, 0.0, 0.0])
-        direction_rotated = rotation_4x4[:3, :3] @ direction
-        step = direction_rotated * config.segment_length
-        base_shift = half * direction_rotated if config.anchor_to_parent else numpy.zeros(3)
 
         if self.parent_body is not None:
-            shift_x, shift_y, shift_z = base_shift[0], base_shift[1], base_shift[2]
             try:
                 parent_pose = self.parent_body.global_transform.evaluate()
-                base_x = float(parent_pose[0, 3]) + offset_x + shift_x
-                base_y = float(parent_pose[1, 3]) + offset_y + shift_y
-                base_z = float(parent_pose[2, 3]) + offset_z + shift_z
+                parent_rot_3x3 = parent_pose[:3, :3]
+                offset_world = parent_rot_3x3 @ offset_vec
+                direction_rotated = (parent_rot_3x3 @ anchor_rot_3x3) @ direction
             except Exception:
                 logger.warning(
                     "Could not compute parent body pose; placing cable at origin"
                 )
-                base_x = offset_x + shift_x
-                base_y = offset_y + shift_y
-                base_z = offset_z + shift_z
+                parent_rot_3x3 = numpy.eye(3)
+                offset_world = offset_vec
+                direction_rotated = anchor_rot_3x3 @ direction
         else:
-            base_x = offset_x
-            base_y = offset_y
-            base_z = offset_z
+            parent_rot_3x3 = numpy.eye(3)
+            offset_world = offset_vec
+            direction_rotated = anchor_rot_3x3 @ direction
 
-        anchor_quat = anchor_rotation.to_rotation_matrix().to_quaternion().evaluate()
+        step = direction_rotated * config.segment_length
+        base_shift = (
+            half * direction_rotated if config.anchor_to_parent else numpy.zeros(3)
+        )
+
+        if self.parent_body is not None:
+            try:
+                base_x = float(parent_pose[0, 3]) + offset_world[0] + base_shift[0]
+                base_y = float(parent_pose[1, 3]) + offset_world[1] + base_shift[1]
+                base_z = float(parent_pose[2, 3]) + offset_world[2] + base_shift[2]
+            except Exception:
+                base_x = offset_world[0] + base_shift[0]
+                base_y = offset_world[1] + base_shift[1]
+                base_z = offset_world[2] + base_shift[2]
+        else:
+            base_x = offset_world[0]
+            base_y = offset_world[1]
+            base_z = offset_world[2]
+
+        composed_rot = parent_rot_3x3 @ anchor_rot_3x3
+        segment_quat = _matrix_to_mujoco_quat(composed_rot)
 
         with world.modify_world():
             for i in range(config.segment_count):
@@ -567,10 +626,10 @@ class CableSimulation:
                 world.state[connection.x.id].position = base_x + step[0] * i
                 world.state[connection.y.id].position = base_y + step[1] * i
                 world.state[connection.z.id].position = base_z + step[2] * i
-                world.state[connection.qw.id].position = float(anchor_quat[3])
-                world.state[connection.qx.id].position = float(anchor_quat[0])
-                world.state[connection.qy.id].position = float(anchor_quat[1])
-                world.state[connection.qz.id].position = float(anchor_quat[2])
+                world.state[connection.qw.id].position = float(segment_quat[0])
+                world.state[connection.qx.id].position = float(segment_quat[1])
+                world.state[connection.qy.id].position = float(segment_quat[2])
+                world.state[connection.qz.id].position = float(segment_quat[3])
 
         return Cable(
             segments=segments,
@@ -610,6 +669,7 @@ class CableSimulation:
             if len(self.config.anchor_offset) == 3
             else [0.0, 0.0, 0.0]
         )
+        offset_vec = numpy.array([offset_x, offset_y, offset_z])
         rpy = (
             self.config.anchor_rpy
             if len(self.config.anchor_rpy) == 3
@@ -619,26 +679,42 @@ class CableSimulation:
             0.0, 0.0, 0.0, rpy[0], rpy[1], rpy[2]
         )
         rotation_4x4 = anchor_rotation.to_rotation_matrix().evaluate()
+        anchor_rot_3x3 = rotation_4x4[:3, :3]
         direction = numpy.array([1.0, 0.0, 0.0])
-        direction_rotated = rotation_4x4[:3, :3] @ direction
-        step_vec = direction_rotated * segment_length
-        base_shift = half * direction_rotated if self.config.anchor_to_parent else numpy.zeros(3)
 
         if self.parent_body is not None:
-            shift_x, shift_y, shift_z = base_shift[0], base_shift[1], base_shift[2]
             try:
                 parent_pose = self.parent_body.global_transform.evaluate()
-                base_x = float(parent_pose[0, 3]) + offset_x + shift_x
-                base_y = float(parent_pose[1, 3]) + offset_y + shift_y
-                base_z = float(parent_pose[2, 3]) + offset_z + shift_z
+                parent_rot_3x3 = parent_pose[:3, :3]
+                offset_world = parent_rot_3x3 @ offset_vec
+                direction_rotated = (parent_rot_3x3 @ anchor_rot_3x3) @ direction
             except Exception:
-                base_x = offset_x + shift_x
-                base_y = offset_y + shift_y
-                base_z = offset_z + shift_z
+                parent_rot_3x3 = numpy.eye(3)
+                offset_world = offset_vec
+                direction_rotated = anchor_rot_3x3 @ direction
         else:
-            base_x = offset_x
-            base_y = offset_y
-            base_z = offset_z
+            parent_rot_3x3 = numpy.eye(3)
+            offset_world = offset_vec
+            direction_rotated = anchor_rot_3x3 @ direction
+
+        step_vec = direction_rotated * segment_length
+        base_shift = (
+            half * direction_rotated if self.config.anchor_to_parent else numpy.zeros(3)
+        )
+
+        if self.parent_body is not None:
+            try:
+                base_x = float(parent_pose[0, 3]) + offset_world[0] + base_shift[0]
+                base_y = float(parent_pose[1, 3]) + offset_world[1] + base_shift[1]
+                base_z = float(parent_pose[2, 3]) + offset_world[2] + base_shift[2]
+            except Exception:
+                base_x = offset_world[0] + base_shift[0]
+                base_y = offset_world[1] + base_shift[1]
+                base_z = offset_world[2] + base_shift[2]
+        else:
+            base_x = offset_world[0]
+            base_y = offset_world[1]
+            base_z = offset_world[2]
 
         try:
             flex = spec.add_flex()
@@ -656,11 +732,13 @@ class CableSimulation:
         vert_count = segment_count + 1
         vert_flat = []
         for i in range(vert_count):
-            vert_flat.extend([
-                base_x - half * direction_rotated[0] + i * step_vec[0],
-                base_y - half * direction_rotated[1] + i * step_vec[1],
-                base_z - half * direction_rotated[2] + i * step_vec[2],
-            ])
+            vert_flat.extend(
+                [
+                    base_x - half * direction_rotated[0] + i * step_vec[0],
+                    base_y - half * direction_rotated[1] + i * step_vec[1],
+                    base_z - half * direction_rotated[2] + i * step_vec[2],
+                ]
+            )
         flex.vert = vert_flat
 
         elem_flat = []
@@ -679,9 +757,7 @@ class CableSimulation:
             try:
                 spec.recompile(mj_model, mj_data)
             except Exception as e:
-                logger.warning(
-                    "Flex cable recompilation failed (%s). Falling back.", e
-                )
+                logger.warning("Flex cable recompilation failed (%s). Falling back.", e)
                 self._composite_body_names = {
                     i: f"cable_segment_{i}" for i in range(segment_count)
                 }
@@ -788,7 +864,10 @@ class CableSimulation:
                 f" [0, {len(self.cable.segments)})"
             )
         strategy = self._effective_strategy
-        if self.config.use_composite or strategy == CableSimulationStrategy.POSITION_OVERRIDE:
+        if (
+            self.config.use_composite
+            or strategy == CableSimulationStrategy.POSITION_OVERRIDE
+        ):
             self._grasp_via_position_override(gripper_body_name, segment_index)
         else:
             self._grasp_via_kinematic_attach(gripper_body_name, segment_index)
@@ -815,13 +894,13 @@ class CableSimulation:
         mj_model = self.multi_sim.simulator._mj_model
         mj_data = self.multi_sim.simulator._mj_data
 
-        if len(saved_qpos) == len(mj_data.qpos) and len(saved_qvel) == len(mj_data.qvel):
+        if len(saved_qpos) == len(mj_data.qpos) and len(saved_qvel) == len(
+            mj_data.qvel
+        ):
             mj_data.qpos[:] = saved_qpos
             mj_data.qvel[:] = saved_qvel
 
-        logger.info(
-            "Cable segment %d attached to %s", segment_index, gripper_body_name
-        )
+        logger.info("Cable segment %d attached to %s", segment_index, gripper_body_name)
 
     def _grasp_via_position_override(
         self, gripper_body_name: str, segment_index: int
@@ -843,9 +922,7 @@ class CableSimulation:
             raise ValueError(f"Gripper body '{gripper_body_name}' not found")
 
         segment_name = self._body_name_for_segment(segment_index)
-        segment_id = mujoco.mj_name2id(
-            mj_model, mujoco.mjtObj.mjOBJ_BODY, segment_name
-        )
+        segment_id = mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_BODY, segment_name)
         if segment_id == -1:
             raise ValueError(f"Segment body '{segment_name}' not found")
 
@@ -900,9 +977,7 @@ class CableSimulation:
         mujoco.mju_mulQuat(segment_world_quat, gripper_xquat, rel_quat)
 
         segment_name = self._body_name_for_segment(segment_index)
-        segment_id = mujoco.mj_name2id(
-            mj_model, mujoco.mjtObj.mjOBJ_BODY, segment_name
-        )
+        segment_id = mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_BODY, segment_name)
         if segment_id < 0:
             logger.warning("Segment body '%s' not in model", segment_name)
             return
@@ -934,7 +1009,10 @@ class CableSimulation:
                 f" [0, {len(self.cable.segments)})"
             )
         strategy = self._effective_strategy
-        if self.config.use_composite or strategy == CableSimulationStrategy.POSITION_OVERRIDE:
+        if (
+            self.config.use_composite
+            or strategy == CableSimulationStrategy.POSITION_OVERRIDE
+        ):
             self._release_via_position_override(segment_index)
         else:
             self._release_via_kinematic_detach(segment_index)
@@ -958,7 +1036,9 @@ class CableSimulation:
 
         mj_data = self.multi_sim.simulator._mj_data
 
-        if len(saved_qpos) == len(mj_data.qpos) and len(saved_qvel) == len(mj_data.qvel):
+        if len(saved_qpos) == len(mj_data.qpos) and len(saved_qvel) == len(
+            mj_data.qvel
+        ):
             mj_data.qpos[:] = saved_qpos
             mj_data.qvel[:] = saved_qvel
 
@@ -1030,7 +1110,9 @@ class CableSimulation:
 
             gripper_qpos_adr = mj_model.jnt_qposadr[gripper_joint_id]
             gripper_xpos = mj_data.qpos[gripper_qpos_adr : gripper_qpos_adr + 3].copy()
-            gripper_xquat = mj_data.qpos[gripper_qpos_adr + 3 : gripper_qpos_adr + 7].copy()
+            gripper_xquat = mj_data.qpos[
+                gripper_qpos_adr + 3 : gripper_qpos_adr + 7
+            ].copy()
 
             self._set_segment_qpos(
                 segment_index, gripper_xpos, gripper_xquat, rel_pos, rel_quat
@@ -1038,7 +1120,9 @@ class CableSimulation:
 
     def _body_name_for_segment(self, segment_index: int) -> str:
         if self.config.use_composite:
-            return self._composite_body_names.get(segment_index, f"cable_segment_{segment_index}")
+            return self._composite_body_names.get(
+                segment_index, f"cable_segment_{segment_index}"
+            )
         return f"cable_segment_{segment_index}"
 
     def get_segment_positions(self) -> Dict[str, numpy.ndarray]:
@@ -1062,9 +1146,7 @@ class CableSimulation:
         for i in range(len(self.cable.segments)):
             world_name = self.cable.segments[i].name.name
             mujoco_name = self._body_name_for_segment(i)
-            body_id = mujoco.mj_name2id(
-                mj_model, mujoco.mjtObj.mjOBJ_BODY, mujoco_name
-            )
+            body_id = mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_BODY, mujoco_name)
             if body_id < 0:
                 continue
             joint_id = mj_model.body_jntadr[body_id]

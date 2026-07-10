@@ -49,9 +49,7 @@ class TestCableConfig:
         assert config.use_composite is False
 
     def test_strategy_override(self):
-        config = CableConfig(
-            strategy=CableSimulationStrategy.POSITION_OVERRIDE
-        )
+        config = CableConfig(strategy=CableSimulationStrategy.POSITION_OVERRIDE)
         assert config.strategy == CableSimulationStrategy.POSITION_OVERRIDE
 
     def test_cable_dataclass(self):
@@ -99,9 +97,7 @@ class TestBuildCable:
         world = World()
         config = CableConfig(segment_count=5)
         cable = build_cable(config, world)
-        origins = {
-            id(segment.visual[0].origin) for segment in cable.segments
-        }
+        origins = {id(segment.visual[0].origin) for segment in cable.segments}
         assert len(origins) == config.segment_count
 
     def test_each_segment_has_free_joint(self):
@@ -209,6 +205,71 @@ class TestBuildCable:
         assert_allclose(world.state[conn.y.id].position, 0.2, atol=1e-6)
         assert_allclose(world.state[conn.z.id].position, 0.05, atol=1e-6)
 
+    def test_offset_rotates_with_parent(self):
+        """anchor_offset is applied in the parent body's local frame."""
+        world = World()
+        root = Body(name=PrefixedName("world"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(root)
+        parent = Body(name=PrefixedName("rotated_hanger"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(parent)
+            conn = Connection6DoF.create_with_dofs(
+                world=world,
+                parent=root,
+                child=parent,
+                name=PrefixedName("hanger_joint"),
+            )
+            world.add_connection(conn)
+            # z-rotation of pi/2
+            world.state[conn.qw.id].position = numpy.cos(numpy.pi / 4)
+            world.state[conn.qx.id].position = 0.0
+            world.state[conn.qy.id].position = 0.0
+            world.state[conn.qz.id].position = numpy.sin(numpy.pi / 4)
+        config = CableConfig(
+            segment_count=3,
+            segment_length=0.03,
+            anchor_to_parent=False,
+            anchor_offset=[0.0, 0.0, 0.05],
+        )
+        cable = build_cable(config, world, parent_body=parent)
+        conn0 = cable.connections[0]
+        assert_allclose(world.state[conn0.z.id].position, 0.05, atol=1e-6)
+
+    def test_rpy_composes_with_parent_rotation(self):
+        """anchor_rpy composes with the parent body's world rotation."""
+        world = World()
+        root = Body(name=PrefixedName("world"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(root)
+        parent = Body(name=PrefixedName("rotated_hanger"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(parent)
+            conn = Connection6DoF.create_with_dofs(
+                world=world,
+                parent=root,
+                child=parent,
+                name=PrefixedName("hanger_joint"),
+            )
+            world.add_connection(conn)
+            # z-rotation of pi/2
+            world.state[conn.qw.id].position = numpy.cos(numpy.pi / 4)
+            world.state[conn.qx.id].position = 0.0
+            world.state[conn.qy.id].position = 0.0
+            world.state[conn.qz.id].position = numpy.sin(numpy.pi / 4)
+        config = CableConfig(
+            segment_count=3,
+            segment_length=0.03,
+            anchor_to_parent=False,
+            anchor_rpy=[0.0, 0.0, 0.0],
+        )
+        cable = build_cable(config, world, parent_body=parent)
+        conn0 = cable.connections[0]
+        conn1 = cable.connections[1]
+        # Cable extends along parent-local x = world y
+        assert_allclose(world.state[conn0.x.id].position, 0.0, atol=1e-6)
+        assert_allclose(world.state[conn1.y.id].position, 0.03, atol=1e-6)
+
     def test_anchor_rpy_rotates_spawn_direction(self):
         world = World()
         config = CableConfig(
@@ -256,6 +317,7 @@ class TestBuildCable:
         import os
         import tempfile
         import logging
+
         logging.disable(logging.CRITICAL)
 
         from semantic_digital_twin.adapters.multi_sim import MujocoBuilder
@@ -278,6 +340,7 @@ class TestBuildCable:
         import os
         import tempfile
         import logging
+
         logging.disable(logging.CRITICAL)
 
         from semantic_digital_twin.adapters.multi_sim import MujocoBuilder
@@ -517,7 +580,10 @@ class TestPositionOverrideStrategy:
 
         cable_sim = CableSimulation(config=config, world=world)
         try:
-            assert cable_sim._effective_strategy == CableSimulationStrategy.POSITION_OVERRIDE
+            assert (
+                cable_sim._effective_strategy
+                == CableSimulationStrategy.POSITION_OVERRIDE
+            )
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)
@@ -539,7 +605,10 @@ class TestPositionOverrideStrategy:
             strategy_override=CableSimulationStrategy.POSITION_OVERRIDE,
         )
         try:
-            assert cable_sim._effective_strategy == CableSimulationStrategy.POSITION_OVERRIDE
+            assert (
+                cable_sim._effective_strategy
+                == CableSimulationStrategy.POSITION_OVERRIDE
+            )
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)
@@ -603,9 +672,9 @@ class TestPositionOverrideStrategy:
 
             positions = cable_sim.get_segment_positions()
             for i in range(config.segment_count):
-                assert numpy.isfinite(positions[f"cable_segment_{i}"]).all(), (
-                    f"Segment {i} has NaN/inf position"
-                )
+                assert numpy.isfinite(
+                    positions[f"cable_segment_{i}"]
+                ).all(), f"Segment {i} has NaN/inf position"
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)
@@ -673,9 +742,9 @@ class TestPositionOverrideStrategy:
 
             positions_after = cable_sim.get_segment_positions()
             seg0_z_after = positions_after["cable_segment_0"][2]
-            assert seg0_z_after < 0, (
-                f"Released segment z={seg0_z_after:.3f} should fall below zero"
-            )
+            assert (
+                seg0_z_after < 0
+            ), f"Released segment z={seg0_z_after:.3f} should fall below zero"
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)
@@ -757,6 +826,7 @@ class TestCompositeCableStrategy:
     def _requires_composite_api():
         """Skip test if MuJoCo doesn't support flex-based cables."""
         import mujoco
+
         if not hasattr(mujoco.MjSpec, "add_flex"):
             pytest.skip("MuJoCo version does not support flex/composite API")
 
