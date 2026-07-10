@@ -11,7 +11,7 @@ from coraplex.datastructures import dataclasses
 from coraplex.datastructures.dataclasses import Context
 from coraplex.datastructures.enums import Arms
 # from coraplex.language import SequentialPlan
-from coraplex.motion_executor import real_robot
+from coraplex.execution_environment import real_robot
 from giskardpy.middleware.ros2 import rospy
 # from coraplex.robot_plans import ParkArmsActionDescription
 from semantic_digital_twin.adapters.ros.messages import LoadModel

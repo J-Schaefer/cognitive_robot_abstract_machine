@@ -4,7 +4,7 @@ from math import pi
 
 from coraplex.datastructures.enums import ApproachDirection, Arms, VerticalAlignment
 from coraplex.datastructures.grasp import GraspDescription
-from coraplex.motion_executor import real_robot, simulated_robot
+from coraplex.execution_environment import real_robot, simulated_robot
 from coraplex.plans.factories import sequential
 from coraplex.robot_plans.actions.core.pick_up import PickUpAction
 from coraplex.robot_plans.actions.core.robot_body import (
@@ -15,8 +15,12 @@ from semantic_digital_twin.adapters.mesh import STLParser
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.daisy import DAiSy
-from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
-from semantic_digital_twin.world_description.cable import CableConfig, CableSimulation
+from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix, Point3
+from semantic_digital_twin.world_description.cable import (
+    CableConfig,
+    CableSimulation,
+    CableSimulationStrategy,
+)
 from semantic_digital_twin.world_description.connections import FixedConnection
 
 from define_real_daisy import setup_daisy_context
@@ -45,7 +49,7 @@ with world.modify_world():
             world.root,
             cup_root,
             parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_quaternion(
-                -0.6, -0.1, 0.68, reference_frame=world.root
+                -0.6, -0.1, 0.605, reference_frame=world.root
             ),
         ),
     )
@@ -111,10 +115,15 @@ hanger_body = world.get_body_by_name(PrefixedName("cable_hanger_item.stl"))
 
 # %% Build cable and start background physics simulation
 cable_config = CableConfig(
-    segment_count=12,
-    segment_length=0.04,
+    segment_count=24,
+    segment_length=0.02,
     radius=0.006,
     mass_per_segment=0.005,
+    anchor_to_parent=False,
+    anchor_offset=[0.10, -0.03, 0.3],
+    anchor_rpy=[0.0, 0.0, pi / 2],
+    strategy=CableSimulationStrategy.POSITION_OVERRIDE,
+    use_composite=True,
 )
 cable_sim = CableSimulation(
     config=cable_config,
@@ -122,24 +131,37 @@ cable_sim = CableSimulation(
     parent_body=hanger_body,
 )
 cable_sim.start()
+print("Set up cable sim. Sleeping briefly.")
 
-time.sleep(2.0)
+time.sleep(5.0)
+print("Start planning now.")
 
 # %% Demo Plan
 pick_up_grasp = GraspDescription(
-    approach_direction=ApproachDirection.BACK,
+    approach_direction=ApproachDirection.LEFT,
     vertical_alignment=VerticalAlignment.NoAlignment,
     end_effector=context.robot.get_right_arm_if_specified().end_effector,
     manipulation_offset=0.05,
 )
 
-cable_segment = world.get_body_by_name(PrefixedName("cable_segment_0"))
+cable_grasp = GraspDescription(
+    approach_direction=ApproachDirection.FRONT,
+    vertical_alignment=VerticalAlignment.NoAlignment,
+    end_effector=context.robot.get_right_arm_if_specified().end_effector,
+    manipulation_offset=0.05,
+)
+
+cable_segment = world.get_body_by_name(PrefixedName("cable_segment_10"))
 
 plan = sequential(
     [
         ParkArmsAction(arm=Arms.BOTH),
         SetGripperAction(gripper=Arms.BOTH, motion=GripperState.OPEN),
-        PickUpAction(cable_segment, Arms.RIGHT, pick_up_grasp),
+        # PickUpAction(cable_segment, Arms.RIGHT, cable_grasp),
+        PickUpAction(
+            object_designator=cup_root, arm=Arms.LEFT, grasp_description=pick_up_grasp
+        ),
+        ParkArmsAction(arm=Arms.RIGHT),
     ],
     context,
 )
