@@ -385,14 +385,6 @@ class CableSimulation:
     for segments grasped via the POSITION_OVERRIDE strategy.
     """
 
-    _gripper_prev_xpos: Dict[str, numpy.ndarray] = field(
-        init=False, repr=False, default_factory=dict
-    )
-    """
-    Previous gripper world positions used to compute velocity for
-    grasped segments.
-    """
-
     _original_step_callback: Any = field(init=False, repr=False, default=None)
     """
     Saved original :meth:`MujocoSimulator.step_callback` so the position-
@@ -466,6 +458,25 @@ class CableSimulation:
             with world.modify_world():
                 world.add_kinematic_structure_entity(self.parent_body)
 
+        half = config.segment_length / 2.0
+        if self.parent_body is not None:
+            try:
+                parent_pose = self.parent_body.global_transform.evaluate()
+                base_x = float(parent_pose[0, 3]) + half
+                base_y = float(parent_pose[1, 3])
+                base_z = float(parent_pose[2, 3])
+            except Exception:
+                logger.warning(
+                    "Could not compute parent body pose; placing cable at origin"
+                )
+                base_x = half
+                base_y = 0.0
+                base_z = 0.0
+        else:
+            base_x = 0.0
+            base_y = 0.0
+            base_z = 0.0
+
         with world.modify_world():
             for i in range(config.segment_count):
                 body = Body(name=PrefixedName(f"cable_segment_{i}"))
@@ -482,9 +493,9 @@ class CableSimulation:
                 world.add_connection(connection)
                 connections.append(connection)
                 offset = i * config.segment_length
-                world.state[connection.x.id].position = float(offset)
-                world.state[connection.y.id].position = 0.0
-                world.state[connection.z.id].position = 0.0
+                world.state[connection.x.id].position = base_x + float(offset)
+                world.state[connection.y.id].position = base_y
+                world.state[connection.z.id].position = base_z
                 world.state[connection.qw.id].position = 1.0
                 world.state[connection.qx.id].position = 0.0
                 world.state[connection.qy.id].position = 0.0
@@ -524,6 +535,7 @@ class CableSimulation:
         segment_count = self.config.segment_count
         segment_length = self.config.segment_length
         radius = self.config.radius
+        half = segment_length / 2.0
 
         composite = spec.add_composite()
         composite.type = mujoco.mjtCompType.mjCOMPTYPE_CABLE
@@ -535,14 +547,16 @@ class CableSimulation:
         if self.parent_body is not None:
             try:
                 parent_pose = self.parent_body.global_transform.evaluate()
-                base_pos = numpy.array([
-                    float(parent_pose[0, 3]),
+                base_pos = [
+                    float(parent_pose[0, 3]) + half,
                     float(parent_pose[1, 3]),
                     float(parent_pose[2, 3]),
-                ])
+                ]
                 composite.offset = base_pos
             except Exception:
-                pass
+                composite.offset = [half, 0.0, 0.0]
+        else:
+            composite.offset = [0.0, 0.0, 0.0]
 
         self._composite_body_names = {
             i: f"cable_segment_B{i}" for i in range(segment_count)
@@ -688,8 +702,8 @@ class CableSimulation:
         self, gripper_body_name: str, segment_index: int
     ) -> None:
         r"""
-        Store the grasp relationship and install a pre-step qpos
-        override so the segment follows the gripper without changing
+        Store the grasp relationship and install a post-step qpos
+        correction so the segment follows the gripper without changing
         the kinematic tree.
         """
         import mujoco
@@ -710,10 +724,15 @@ class CableSimulation:
         if segment_id == -1:
             raise ValueError(f"Segment body '{segment_name}' not found")
 
-        gripper_xpos = mj_data.body(gripper_id).xpos.copy()
-        gripper_xquat = mj_data.body(gripper_id).xquat.copy()
-        segment_xpos = mj_data.body(segment_id).xpos.copy()
-        segment_xquat = mj_data.body(segment_id).xquat.copy()
+        gripper_joint_id = mj_model.body_jntadr[gripper_id]
+        gripper_qpos_adr = mj_model.jnt_qposadr[gripper_joint_id]
+        gripper_xpos = mj_data.qpos[gripper_qpos_adr : gripper_qpos_adr + 3].copy()
+        gripper_xquat = mj_data.qpos[gripper_qpos_adr + 3 : gripper_qpos_adr + 7].copy()
+
+        segment_joint_id = mj_model.body_jntadr[segment_id]
+        segment_qpos_adr = mj_model.jnt_qposadr[segment_joint_id]
+        segment_xpos = mj_data.qpos[segment_qpos_adr : segment_qpos_adr + 3].copy()
+        segment_xquat = mj_data.qpos[segment_qpos_adr + 3 : segment_qpos_adr + 7].copy()
 
         gripper_neg_quat = numpy.zeros(4)
         mujoco.mju_negQuat(gripper_neg_quat, gripper_xquat)
@@ -728,8 +747,6 @@ class CableSimulation:
             relative_quaternion,
         )
 
-        self._reset_all_segment_velocities()
-
         self._install_position_override_hook()
         logger.info(
             "Cable segment %d position-override grasped to %s",
@@ -737,30 +754,45 @@ class CableSimulation:
             gripper_body_name,
         )
 
-    def _reset_all_segment_velocities(self) -> None:
-        r"""
-        Set qvel to zero for every cable segment joint to prevent
-        velocity discontinuity when a grasp begins.
-        """
+    def _set_segment_qpos(
+        self,
+        segment_index: int,
+        gripper_xpos: numpy.ndarray,
+        gripper_xquat: numpy.ndarray,
+        rel_pos: numpy.ndarray,
+        rel_quat: numpy.ndarray,
+    ) -> None:
         import mujoco
 
         mj_model = self.multi_sim.simulator._mj_model
         mj_data = self.multi_sim.simulator._mj_data
 
-        for i in range(len(self.cable.segments)):
-            segment_name = self._body_name_for_segment(i)
-            segment_id = mujoco.mj_name2id(
-                mj_model, mujoco.mjtObj.mjOBJ_BODY, segment_name
-            )
-            if segment_id == -1:
-                continue
-            joint_id = mj_model.body_jntadr[segment_id]
-            if joint_id < 0:
-                continue
-            if mj_model.jnt_type[joint_id] != mujoco.mjtJoint.mjJNT_FREE:
-                continue
-            qvel_adr = mj_model.jnt_dofadr[joint_id]
-            mj_data.qvel[qvel_adr : qvel_adr + 6] = 0.0
+        segment_world_pos = numpy.zeros(3)
+        mujoco.mju_rotVecQuat(segment_world_pos, rel_pos, gripper_xquat)
+        segment_world_pos += gripper_xpos
+
+        segment_world_quat = numpy.zeros(4)
+        mujoco.mju_mulQuat(segment_world_quat, gripper_xquat, rel_quat)
+
+        segment_name = self._body_name_for_segment(segment_index)
+        segment_id = mujoco.mj_name2id(
+            mj_model, mujoco.mjtObj.mjOBJ_BODY, segment_name
+        )
+        if segment_id < 0:
+            logger.warning("Segment body '%s' not in model", segment_name)
+            return
+
+        joint_id = mj_model.body_jntadr[segment_id]
+        if joint_id < 0:
+            logger.warning("Segment body '%s' has no joint", segment_name)
+            return
+        if mj_model.jnt_type[joint_id] != mujoco.mjtJoint.mjJNT_FREE:
+            logger.warning("Segment '%s' joint is not free", segment_name)
+            return
+
+        qpos_adr = mj_model.jnt_qposadr[joint_id]
+        mj_data.qpos[qpos_adr : qpos_adr + 3] = segment_world_pos
+        mj_data.qpos[qpos_adr + 3 : qpos_adr + 7] = segment_world_quat
 
     def release(self, segment_index: int = 0) -> None:
         r"""
@@ -823,6 +855,7 @@ class CableSimulation:
         def step_with_override():
             self._apply_position_overrides()
             original_step()
+            self._apply_position_overrides()
 
         simulator.step_callback = step_with_override
         self._position_override_installed = True
@@ -835,12 +868,12 @@ class CableSimulation:
             simulator.step_callback = self._original_step_callback
             self._original_step_callback = None
         self._position_override_installed = False
-        self._gripper_prev_xpos.clear()
 
     def _apply_position_overrides(self) -> None:
         r"""
-        For every grasped segment, set its free-joint qpos to follow the
-        gripper and its qvel to match the gripper's motion.
+        For every grasped segment, correct its free-joint qpos to keep
+        it at the desired offset from the gripper.  Called before and
+        after every simulation step while a segment is grasped.
         """
         if not self._grasped_segments:
             return
@@ -848,7 +881,6 @@ class CableSimulation:
 
         mj_model = self.multi_sim.simulator._mj_model
         mj_data = self.multi_sim.simulator._mj_data
-        dt = self.multi_sim.simulator.step_size
 
         for segment_index, (
             gripper_name,
@@ -861,43 +893,17 @@ class CableSimulation:
             if gripper_id == -1:
                 continue
 
-            gripper_xpos = mj_data.body(gripper_id).xpos.copy()
-            gripper_xquat = mj_data.body(gripper_id).xquat.copy()
+            gripper_joint_id = mj_model.body_jntadr[gripper_id]
+            if gripper_joint_id < 0:
+                continue
 
-            segment_world_pos = numpy.zeros(3)
-            mujoco.mju_rotVecQuat(segment_world_pos, rel_pos, gripper_xquat)
-            segment_world_pos += gripper_xpos
+            gripper_qpos_adr = mj_model.jnt_qposadr[gripper_joint_id]
+            gripper_xpos = mj_data.qpos[gripper_qpos_adr : gripper_qpos_adr + 3].copy()
+            gripper_xquat = mj_data.qpos[gripper_qpos_adr + 3 : gripper_qpos_adr + 7].copy()
 
-            segment_world_quat = numpy.zeros(4)
-            mujoco.mju_mulQuat(segment_world_quat, gripper_xquat, rel_quat)
-
-            segment_name = self._body_name_for_segment(segment_index)
-            segment_id = mujoco.mj_name2id(
-                mj_model, mujoco.mjtObj.mjOBJ_BODY, segment_name
+            self._set_segment_qpos(
+                segment_index, gripper_xpos, gripper_xquat, rel_pos, rel_quat
             )
-            if segment_id == -1:
-                continue
-
-            joint_id = mj_model.body_jntadr[segment_id]
-            if joint_id < 0:
-                continue
-            joint_type = mj_model.jnt_type[joint_id]
-            if joint_type != mujoco.mjtJoint.mjJNT_FREE:
-                continue
-
-            qpos_adr = mj_model.jnt_qposadr[joint_id]
-            mj_data.qpos[qpos_adr : qpos_adr + 3] = segment_world_pos
-            mj_data.qpos[qpos_adr + 3 : qpos_adr + 7] = segment_world_quat
-
-            if dt > 0 and gripper_name in self._gripper_prev_xpos:
-                prev_xpos = self._gripper_prev_xpos[gripper_name]
-                velocity = (gripper_xpos - prev_xpos) / dt
-                mj_data.qvel[qpos_adr : qpos_adr + 3] = velocity
-                mj_data.qvel[qpos_adr + 3 : qpos_adr + 6] = 0.0
-            else:
-                mj_data.qvel[qpos_adr : qpos_adr + 6] = 0.0
-
-            self._gripper_prev_xpos[gripper_name] = gripper_xpos.copy()
 
     def _body_name_for_segment(self, segment_index: int) -> str:
         if self.config.use_composite:
@@ -907,7 +913,8 @@ class CableSimulation:
     def get_segment_positions(self) -> Dict[str, numpy.ndarray]:
         r"""
         Return the current world-frame position of every cable segment
-        from the running simulation.
+        from the running simulation.  Reads qpos directly to avoid the
+        one-step lag in cartesian positions (xpos).
 
         :return: Mapping ``{segment_name: numpy.ndarray([x, y, z]), ...}``
             where keys are the world-model body names (e.g.
@@ -915,15 +922,24 @@ class CableSimulation:
         """
         if not self._started:
             raise RuntimeError("Simulation is not running")
-        world_model_names = [s.name.name for s in self.cable.segments]
-        mujoco_names = [
-            self._body_name_for_segment(i) for i in range(len(self.cable.segments))
-        ]
-        result = self.multi_sim.simulator.callbacks["get_bodies_positions"](
-            mujoco_names
-        )
-        raw = result.result
-        return {
-            world_model_names[i]: raw[mujoco_names[i]]
-            for i in range(len(self.cable.segments))
-        }
+        import mujoco
+
+        mj_model = self.multi_sim.simulator._mj_model
+        mj_data = self.multi_sim.simulator._mj_data
+        result: Dict[str, numpy.ndarray] = {}
+
+        for i in range(len(self.cable.segments)):
+            world_name = self.cable.segments[i].name.name
+            mujoco_name = self._body_name_for_segment(i)
+            body_id = mujoco.mj_name2id(
+                mj_model, mujoco.mjtObj.mjOBJ_BODY, mujoco_name
+            )
+            if body_id < 0:
+                continue
+            joint_id = mj_model.body_jntadr[body_id]
+            if joint_id < 0:
+                continue
+            qpos_adr = mj_model.jnt_qposadr[joint_id]
+            result[world_name] = mj_data.qpos[qpos_adr : qpos_adr + 3].copy()
+
+        return result
