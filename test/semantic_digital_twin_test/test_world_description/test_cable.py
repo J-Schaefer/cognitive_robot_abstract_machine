@@ -49,9 +49,7 @@ class TestCableConfig:
         assert config.use_composite is False
 
     def test_strategy_override(self):
-        config = CableConfig(
-            strategy=CableSimulationStrategy.POSITION_OVERRIDE
-        )
+        config = CableConfig(strategy=CableSimulationStrategy.POSITION_OVERRIDE)
         assert config.strategy == CableSimulationStrategy.POSITION_OVERRIDE
 
     def test_cable_dataclass(self):
@@ -99,9 +97,7 @@ class TestBuildCable:
         world = World()
         config = CableConfig(segment_count=5)
         cable = build_cable(config, world)
-        origins = {
-            id(segment.visual[0].origin) for segment in cable.segments
-        }
+        origins = {id(segment.visual[0].origin) for segment in cable.segments}
         assert len(origins) == config.segment_count
 
     def test_each_segment_has_free_joint(self):
@@ -256,6 +252,7 @@ class TestBuildCable:
         import os
         import tempfile
         import logging
+
         logging.disable(logging.CRITICAL)
 
         from semantic_digital_twin.adapters.multi_sim import MujocoBuilder
@@ -278,6 +275,7 @@ class TestBuildCable:
         import os
         import tempfile
         import logging
+
         logging.disable(logging.CRITICAL)
 
         from semantic_digital_twin.adapters.multi_sim import MujocoBuilder
@@ -517,7 +515,10 @@ class TestPositionOverrideStrategy:
 
         cable_sim = CableSimulation(config=config, world=world)
         try:
-            assert cable_sim._effective_strategy == CableSimulationStrategy.POSITION_OVERRIDE
+            assert (
+                cable_sim._effective_strategy
+                == CableSimulationStrategy.POSITION_OVERRIDE
+            )
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)
@@ -539,7 +540,10 @@ class TestPositionOverrideStrategy:
             strategy_override=CableSimulationStrategy.POSITION_OVERRIDE,
         )
         try:
-            assert cable_sim._effective_strategy == CableSimulationStrategy.POSITION_OVERRIDE
+            assert (
+                cable_sim._effective_strategy
+                == CableSimulationStrategy.POSITION_OVERRIDE
+            )
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)
@@ -603,9 +607,9 @@ class TestPositionOverrideStrategy:
 
             positions = cable_sim.get_segment_positions()
             for i in range(config.segment_count):
-                assert numpy.isfinite(positions[f"cable_segment_{i}"]).all(), (
-                    f"Segment {i} has NaN/inf position"
-                )
+                assert numpy.isfinite(
+                    positions[f"cable_segment_{i}"]
+                ).all(), f"Segment {i} has NaN/inf position"
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)
@@ -673,9 +677,9 @@ class TestPositionOverrideStrategy:
 
             positions_after = cable_sim.get_segment_positions()
             seg0_z_after = positions_after["cable_segment_0"][2]
-            assert seg0_z_after < 0, (
-                f"Released segment z={seg0_z_after:.3f} should fall below zero"
-            )
+            assert (
+                seg0_z_after < 0
+            ), f"Released segment z={seg0_z_after:.3f} should fall below zero"
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)
@@ -757,6 +761,7 @@ class TestCompositeCableStrategy:
     def _requires_composite_api():
         """Skip test if MuJoCo doesn't support flex-based cables."""
         import mujoco
+
         if not hasattr(mujoco.MjSpec, "add_flex"):
             pytest.skip("MuJoCo version does not support flex/composite API")
 
