@@ -120,8 +120,8 @@ cable_config = CableConfig(
     radius=0.006,
     mass_per_segment=0.005,
     anchor_to_parent=False,
-    anchor_offset=[0.10, -0.03, 0.3],
-    anchor_rpy=[0.0, 0.0, pi / 2],
+    anchor_offset=[-0.25, -0.02, 0.3],
+    anchor_rpy=[0.0, 0.0, 0.0],
     strategy=CableSimulationStrategy.POSITION_OVERRIDE,
     use_composite=True,
 )
@@ -157,10 +157,10 @@ plan = sequential(
     [
         ParkArmsAction(arm=Arms.BOTH),
         SetGripperAction(gripper=Arms.BOTH, motion=GripperState.OPEN),
-        # PickUpAction(cable_segment, Arms.RIGHT, cable_grasp),
-        PickUpAction(
-            object_designator=cup_root, arm=Arms.LEFT, grasp_description=pick_up_grasp
-        ),
+        PickUpAction(cable_segment, Arms.RIGHT, cable_grasp),
+        # PickUpAction(
+        #     object_designator=cup_root, arm=Arms.LEFT, grasp_description=pick_up_grasp
+        # ),
         ParkArmsAction(arm=Arms.RIGHT),
     ],
     context,
