@@ -158,6 +158,72 @@ class TestBuildCable:
         assert extra_constraint.name_1 == "gripper"
         assert extra_constraint.name_2 == "cable_segment_0"
 
+    def test_anchor_to_parent_false_omits_constraint(self):
+        world = World()
+        parent = Body(name=PrefixedName("gripper"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(parent)
+        config = CableConfig(segment_count=3, anchor_to_parent=False)
+        cable = build_cable(config, world, parent_body=parent)
+        # Only inter-segment constraints, no parent→segment constraint
+        assert len(cable.constraints) == config.segment_count - 1
+        for constraint in cable.constraints:
+            assert "gripper" not in (constraint.name_1, constraint.name_2)
+
+    def test_anchor_offset_shifts_initial_position(self):
+        world = World()
+        parent = Body(name=PrefixedName("gripper"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(parent)
+        config = CableConfig(
+            segment_count=3,
+            segment_length=0.03,
+            anchor_to_parent=False,
+            anchor_offset=[0.0, 0.0, 0.05],
+        )
+        cable = build_cable(config, world, parent_body=parent)
+        conn = cable.connections[0]
+        # base_x = parent_x(0) + half(0.015) + offset_x(0) = 0.015
+        assert_allclose(world.state[conn.x.id].position, 0.015, atol=1e-6)
+        assert_allclose(world.state[conn.y.id].position, 0.0)
+        # base_z = parent_z(0) + offset_z(0.05) = 0.05
+        assert_allclose(world.state[conn.z.id].position, 0.05, atol=1e-6)
+
+    def test_anchor_rpy_rotates_spawn_direction(self):
+        world = World()
+        config = CableConfig(
+            segment_count=3,
+            segment_length=0.03,
+            anchor_rpy=[0.0, 0.0, pi / 2],
+        )
+        cable = build_cable(config, world)
+        conn = cable.connections[0]
+        # z-rotation of pi/2 turns [1,0,0] → [0,1,0]
+        # segment 0 at [0, 0, 0], segment 1 at [0, 0.03, 0]
+        assert_allclose(world.state[conn.x.id].position, 0.0, atol=1e-6)
+        conn1 = cable.connections[1]
+        assert_allclose(world.state[conn1.x.id].position, 0.0, atol=1e-6)
+        assert_allclose(world.state[conn1.y.id].position, 0.03, atol=1e-6)
+
+    def test_anchor_rpy_with_offset(self):
+        world = World()
+        config = CableConfig(
+            segment_count=3,
+            segment_length=0.03,
+            anchor_offset=[0.1, 0.2, 0.3],
+            anchor_rpy=[pi / 2, 0.0, 0.0],
+        )
+        cable = build_cable(config, world)
+        conn = cable.connections[0]
+        # x-rotation of pi/2 turns [1,0,0] → [1,0,0]* (x unchanged, y→-z, z→y)
+        # Actually [1,0,0] rotated by rot_x(pi/2): stays [1,0,0]
+        # segment 0 at offset [0.1, 0.2, 0.3]
+        assert_allclose(world.state[conn.x.id].position, 0.1, atol=1e-6)
+        assert_allclose(world.state[conn.y.id].position, 0.2, atol=1e-6)
+        assert_allclose(world.state[conn.z.id].position, 0.3, atol=1e-6)
+        conn1 = cable.connections[1]
+        assert_allclose(world.state[conn1.x.id].position, 0.13, atol=1e-6)
+
     def test_empty_world_creates_root(self):
         world = World()
         config = CableConfig(segment_count=3)

@@ -93,6 +93,32 @@ class CableConfig:
     :attr:`CableSimulation.strategy_override`.
     """
 
+    anchor_to_parent: bool = True
+    """
+    When ``True`` (and a ``parent_body`` is given to
+    :class:`CableSimulation`), the first cable segment is pinned to the
+    parent via a ``connect`` equality constraint.  When ``False``, the
+    cable is still positioned near the parent but the constraint is
+    omitted, allowing the cable to rest on or slide over the parent
+    body purely through contact forces (e.g. draping over a hanger).
+    """
+
+    anchor_offset: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    """
+    Offset added to the parent body position when computing the cable's
+    initial spawn point.  Useful for placing the cable above a hanger
+    (e.g. ``[0, 0, 0.05]``) so it falls onto the object rather than
+    clipping through it.
+    """
+
+    anchor_rpy: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    """
+    Roll-pitch-yaw rotation applied to the cable's spawn direction
+    (radians).  By default the cable extends along the world x-axis.
+    Set e.g. ``[pi/2, 0, 0]`` to hang the cable horizontally along the
+    y-axis (useful for draping over a horizontal hanger).
+    """
+
     use_composite: bool = False
     """
     When ``True`` the cable is built using MuJoCo's native composite
@@ -180,23 +206,42 @@ def build_cable(
     # When a parent_body is given, the first segment connects to the parent
     # at the parent's world origin; the segment's -half endpoint is pulled to
     # that point, so the segment centre sits at parent_pos + half along x.
+    # The anchor_offset is applied additively on top of the computed base
+    # position (useful for draping: set z > 0 to spawn above the parent).
+    offset_x, offset_y, offset_z = (
+        config.anchor_offset
+        if len(config.anchor_offset) == 3
+        else [0.0, 0.0, 0.0]
+    )
+    rpy = (
+        config.anchor_rpy
+        if len(config.anchor_rpy) == 3
+        else [0.0, 0.0, 0.0]
+    )
+    anchor_rotation = HomogeneousTransformationMatrix.from_xyz_rpy(
+        0.0, 0.0, 0.0, rpy[0], rpy[1], rpy[2]
+    )
+    rotation_4x4 = anchor_rotation.to_rotation_matrix().evaluate()
+    direction = numpy.array([1.0, 0.0, 0.0])
+    direction_rotated = rotation_4x4[:3, :3] @ direction
+    step = direction_rotated * config.segment_length
     if parent_body is not None:
         try:
             parent_pose = parent_body.global_transform.evaluate()
-            base_x = float(parent_pose[0, 3]) + half
-            base_y = float(parent_pose[1, 3])
-            base_z = float(parent_pose[2, 3])
+            base_x = float(parent_pose[0, 3]) + half + offset_x
+            base_y = float(parent_pose[1, 3]) + offset_y
+            base_z = float(parent_pose[2, 3]) + offset_z
         except Exception:
             logger.warning(
                 "Could not compute parent body pose; placing cable at origin"
             )
-            base_x = half
-            base_y = 0.0
-            base_z = 0.0
+            base_x = half + offset_x
+            base_y = offset_y
+            base_z = offset_z
     else:
-        base_x = 0.0
-        base_y = 0.0
-        base_z = 0.0
+        base_x = offset_x
+        base_y = offset_y
+        base_z = offset_z
 
     with world.modify_world():
         for i in range(config.segment_count):
@@ -228,13 +273,14 @@ def build_cable(
             connections.append(connection)
 
             offset = i * config.segment_length
-            world.state[connection.x.id].position = base_x + offset
-            world.state[connection.y.id].position = base_y
-            world.state[connection.z.id].position = base_z
-            world.state[connection.qw.id].position = 1.0
-            world.state[connection.qx.id].position = 0.0
-            world.state[connection.qy.id].position = 0.0
-            world.state[connection.qz.id].position = 0.0
+            world.state[connection.x.id].position = base_x + step[0] * i
+            world.state[connection.y.id].position = base_y + step[1] * i
+            world.state[connection.z.id].position = base_z + step[2] * i
+            anchor_quat = anchor_rotation.to_rotation_matrix().to_quaternion().evaluate()
+            world.state[connection.qw.id].position = float(anchor_quat[3])
+            world.state[connection.qx.id].position = float(anchor_quat[0])
+            world.state[connection.qy.id].position = float(anchor_quat[1])
+            world.state[connection.qz.id].position = float(anchor_quat[2])
 
     # Connect equalities are added in a separate modify_world context to avoid
     # FK confusion during the first context exit.
@@ -250,7 +296,7 @@ def build_cable(
             world.simulator_additional_properties.append(constraint)
             constraints.append(constraint)
 
-        if parent_body is not None:
+        if parent_body is not None and config.anchor_to_parent:
             constraint = MujocoEquality(
                 type=mujoco.mjtEq.mjEQ_CONNECT,
                 object_type=mujoco.mjtObj.mjOBJ_BODY,
