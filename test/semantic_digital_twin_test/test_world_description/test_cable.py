@@ -178,15 +178,35 @@ class TestBuildCable:
         config = CableConfig(
             segment_count=3,
             segment_length=0.03,
-            anchor_to_parent=False,
+            anchor_to_parent=True,
             anchor_offset=[0.0, 0.0, 0.05],
         )
         cable = build_cable(config, world, parent_body=parent)
         conn = cable.connections[0]
         # base_x = parent_x(0) + half(0.015) + offset_x(0) = 0.015
         assert_allclose(world.state[conn.x.id].position, 0.015, atol=1e-6)
-        assert_allclose(world.state[conn.y.id].position, 0.0)
+        assert_allclose(world.state[conn.y.id].position, 0.0, atol=1e-6)
         # base_z = parent_z(0) + offset_z(0.05) = 0.05
+        assert_allclose(world.state[conn.z.id].position, 0.05, atol=1e-6)
+
+    def test_drape_offset_no_half_shift(self):
+        """When anchor_to_parent=False, the cable starts at parent+offset
+        with no half-segment shift."""
+        world = World()
+        parent = Body(name=PrefixedName("hanger"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(parent)
+        config = CableConfig(
+            segment_count=3,
+            segment_length=0.03,
+            anchor_to_parent=False,
+            anchor_offset=[0.1, 0.2, 0.05],
+        )
+        cable = build_cable(config, world, parent_body=parent)
+        conn = cable.connections[0]
+        # No half-shift: base = parent + offset = [0.1, 0.2, 0.05]
+        assert_allclose(world.state[conn.x.id].position, 0.1, atol=1e-6)
+        assert_allclose(world.state[conn.y.id].position, 0.2, atol=1e-6)
         assert_allclose(world.state[conn.z.id].position, 0.05, atol=1e-6)
 
     def test_anchor_rpy_rotates_spawn_direction(self):

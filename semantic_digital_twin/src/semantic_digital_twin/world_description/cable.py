@@ -225,19 +225,23 @@ def build_cable(
     direction = numpy.array([1.0, 0.0, 0.0])
     direction_rotated = rotation_4x4[:3, :3] @ direction
     step = direction_rotated * config.segment_length
+    # When anchored to a parent body the segment centre is shifted half a
+    # segment along the cable direction so the endpoint rests on the parent.
+    base_shift = half * direction_rotated if config.anchor_to_parent else numpy.zeros(3)
     if parent_body is not None:
+        shift_x, shift_y, shift_z = base_shift[0], base_shift[1], base_shift[2]
         try:
             parent_pose = parent_body.global_transform.evaluate()
-            base_x = float(parent_pose[0, 3]) + half + offset_x
-            base_y = float(parent_pose[1, 3]) + offset_y
-            base_z = float(parent_pose[2, 3]) + offset_z
+            base_x = float(parent_pose[0, 3]) + offset_x + shift_x
+            base_y = float(parent_pose[1, 3]) + offset_y + shift_y
+            base_z = float(parent_pose[2, 3]) + offset_z + shift_z
         except Exception:
             logger.warning(
                 "Could not compute parent body pose; placing cable at origin"
             )
-            base_x = half + offset_x
-            base_y = offset_y
-            base_z = offset_z
+            base_x = offset_x + shift_x
+            base_y = offset_y + shift_y
+            base_z = offset_z + shift_z
     else:
         base_x = offset_x
         base_y = offset_y
@@ -505,23 +509,45 @@ class CableSimulation:
                 world.add_kinematic_structure_entity(self.parent_body)
 
         half = config.segment_length / 2.0
+        offset_x, offset_y, offset_z = (
+            config.anchor_offset
+            if len(config.anchor_offset) == 3
+            else [0.0, 0.0, 0.0]
+        )
+        rpy = (
+            config.anchor_rpy
+            if len(config.anchor_rpy) == 3
+            else [0.0, 0.0, 0.0]
+        )
+        anchor_rotation = HomogeneousTransformationMatrix.from_xyz_rpy(
+            0.0, 0.0, 0.0, rpy[0], rpy[1], rpy[2]
+        )
+        rotation_4x4 = anchor_rotation.to_rotation_matrix().evaluate()
+        direction = numpy.array([1.0, 0.0, 0.0])
+        direction_rotated = rotation_4x4[:3, :3] @ direction
+        step = direction_rotated * config.segment_length
+        base_shift = half * direction_rotated if config.anchor_to_parent else numpy.zeros(3)
+
         if self.parent_body is not None:
+            shift_x, shift_y, shift_z = base_shift[0], base_shift[1], base_shift[2]
             try:
                 parent_pose = self.parent_body.global_transform.evaluate()
-                base_x = float(parent_pose[0, 3]) + half
-                base_y = float(parent_pose[1, 3])
-                base_z = float(parent_pose[2, 3])
+                base_x = float(parent_pose[0, 3]) + offset_x + shift_x
+                base_y = float(parent_pose[1, 3]) + offset_y + shift_y
+                base_z = float(parent_pose[2, 3]) + offset_z + shift_z
             except Exception:
                 logger.warning(
                     "Could not compute parent body pose; placing cable at origin"
                 )
-                base_x = half
-                base_y = 0.0
-                base_z = 0.0
+                base_x = offset_x + shift_x
+                base_y = offset_y + shift_y
+                base_z = offset_z + shift_z
         else:
-            base_x = 0.0
-            base_y = 0.0
-            base_z = 0.0
+            base_x = offset_x
+            base_y = offset_y
+            base_z = offset_z
+
+        anchor_quat = anchor_rotation.to_rotation_matrix().to_quaternion().evaluate()
 
         with world.modify_world():
             for i in range(config.segment_count):
@@ -538,14 +564,13 @@ class CableSimulation:
                 )
                 world.add_connection(connection)
                 connections.append(connection)
-                offset = i * config.segment_length
-                world.state[connection.x.id].position = base_x + float(offset)
-                world.state[connection.y.id].position = base_y
-                world.state[connection.z.id].position = base_z
-                world.state[connection.qw.id].position = 1.0
-                world.state[connection.qx.id].position = 0.0
-                world.state[connection.qy.id].position = 0.0
-                world.state[connection.qz.id].position = 0.0
+                world.state[connection.x.id].position = base_x + step[0] * i
+                world.state[connection.y.id].position = base_y + step[1] * i
+                world.state[connection.z.id].position = base_z + step[2] * i
+                world.state[connection.qw.id].position = float(anchor_quat[3])
+                world.state[connection.qx.id].position = float(anchor_quat[0])
+                world.state[connection.qy.id].position = float(anchor_quat[1])
+                world.state[connection.qz.id].position = float(anchor_quat[2])
 
         return Cable(
             segments=segments,
@@ -585,18 +610,33 @@ class CableSimulation:
             if len(self.config.anchor_offset) == 3
             else [0.0, 0.0, 0.0]
         )
+        rpy = (
+            self.config.anchor_rpy
+            if len(self.config.anchor_rpy) == 3
+            else [0.0, 0.0, 0.0]
+        )
+        anchor_rotation = HomogeneousTransformationMatrix.from_xyz_rpy(
+            0.0, 0.0, 0.0, rpy[0], rpy[1], rpy[2]
+        )
+        rotation_4x4 = anchor_rotation.to_rotation_matrix().evaluate()
+        direction = numpy.array([1.0, 0.0, 0.0])
+        direction_rotated = rotation_4x4[:3, :3] @ direction
+        step_vec = direction_rotated * segment_length
+        base_shift = half * direction_rotated if self.config.anchor_to_parent else numpy.zeros(3)
+
         if self.parent_body is not None:
+            shift_x, shift_y, shift_z = base_shift[0], base_shift[1], base_shift[2]
             try:
                 parent_pose = self.parent_body.global_transform.evaluate()
-                base_x = float(parent_pose[0, 3]) + half + offset_x
-                base_y = float(parent_pose[1, 3]) + offset_y
-                base_z = float(parent_pose[2, 3]) + offset_z
+                base_x = float(parent_pose[0, 3]) + offset_x + shift_x
+                base_y = float(parent_pose[1, 3]) + offset_y + shift_y
+                base_z = float(parent_pose[2, 3]) + offset_z + shift_z
             except Exception:
-                base_x = half + offset_x
-                base_y = offset_y
-                base_z = offset_z
+                base_x = offset_x + shift_x
+                base_y = offset_y + shift_y
+                base_z = offset_z + shift_z
         else:
-            base_x = half + offset_x
+            base_x = offset_x
             base_y = offset_y
             base_z = offset_z
 
@@ -616,7 +656,11 @@ class CableSimulation:
         vert_count = segment_count + 1
         vert_flat = []
         for i in range(vert_count):
-            vert_flat.extend([base_x - half + i * segment_length, base_y, base_z])
+            vert_flat.extend([
+                base_x - half * direction_rotated[0] + i * step_vec[0],
+                base_y - half * direction_rotated[1] + i * step_vec[1],
+                base_z - half * direction_rotated[2] + i * step_vec[2],
+            ])
         flex.vert = vert_flat
 
         elem_flat = []
