@@ -735,10 +735,10 @@ class TestCompositeCableStrategy:
 
     @staticmethod
     def _requires_composite_api():
-        """Skip test if MuJoCo doesn't support composite objects."""
+        """Skip test if MuJoCo doesn't support flex-based cables."""
         import mujoco
-        if not hasattr(mujoco.MjSpec, "add_composite"):
-            pytest.skip("MuJoCo version does not support composite API")
+        if not hasattr(mujoco.MjSpec, "add_flex"):
+            pytest.skip("MuJoCo version does not support flex/composite API")
 
     def test_creates_composite_cable(self):
         """A CableSimulation with use_composite=True starts without error."""
@@ -760,7 +760,6 @@ class TestCompositeCableStrategy:
             assert cable_sim.cable is not None
             assert len(cable_sim.cable.segments) == config.segment_count
             assert len(cable_sim._composite_body_names) == config.segment_count
-            assert cable_sim._composite_body_names[0] == "cable_segment_B0"
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)

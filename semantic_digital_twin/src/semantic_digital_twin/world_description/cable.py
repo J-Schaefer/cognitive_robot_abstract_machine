@@ -556,25 +556,22 @@ class CableSimulation:
 
     def _build_composite_cable_in_spec(self):
         r"""
-        Add a MuJoCo native composite cable to the spec and recompile.
+        Add a MuJoCo native flexible-body cable to the spec and recompile.
 
-        The bodies created by :meth:`_build_world_model_cable_for_composite`
-        exist in the MuJoCo spec as empty free-joint bodies (no geoms).
-        The composite bodies -- named ``cable_segment_B{idx}`` -- handle
-        the actual physics.
-
-        .. note::
-           Requires MuJoCo ≥ 3.2 for the composite API.  Falls back to
-           the non-composite rigid-body chain if unavailable.
+        Uses :meth:`mujoco.MjSpec.add_flex` (MuJoCo ≥ 3.2) to create a
+        1D flex cable.  Falls back to the non-composite rigid-body chain
+        if flex is unavailable or the build fails.
         """
         import mujoco
 
-        if not hasattr(mujoco.MjSpec, "add_composite"):
+        if not hasattr(mujoco.MjSpec, "add_flex"):
             logger.warning(
-                "MuJoCo %s does not support composite objects. "
-                "Falling back to non-composite cable.",
+                "MuJoCo %s does not support flex. Falling back.",
                 mujoco.__version__,
             )
+            self._composite_body_names = {
+                i: f"cable_segment_{i}" for i in range(self.config.segment_count)
+            }
             return
 
         spec = self.multi_sim.simulator._mj_spec
@@ -583,33 +580,71 @@ class CableSimulation:
         radius = self.config.radius
         half = segment_length / 2.0
 
-        composite = spec.add_composite()
-        composite.type = mujoco.mjtCompType.mjCOMPTYPE_CABLE
-        composite.prefix = "cable_segment"
-        composite.count = [segment_count, 1, 1]
-        composite.spacing = [segment_length, 0, 0]
-        composite.radius = [radius]
-
+        offset_x, offset_y, offset_z = (
+            self.config.anchor_offset
+            if len(self.config.anchor_offset) == 3
+            else [0.0, 0.0, 0.0]
+        )
         if self.parent_body is not None:
             try:
                 parent_pose = self.parent_body.global_transform.evaluate()
-                base_pos = [
-                    float(parent_pose[0, 3]) + half,
-                    float(parent_pose[1, 3]),
-                    float(parent_pose[2, 3]),
-                ]
-                composite.offset = base_pos
+                base_x = float(parent_pose[0, 3]) + half + offset_x
+                base_y = float(parent_pose[1, 3]) + offset_y
+                base_z = float(parent_pose[2, 3]) + offset_z
             except Exception:
-                composite.offset = [half, 0.0, 0.0]
+                base_x = half + offset_x
+                base_y = offset_y
+                base_z = offset_z
         else:
-            composite.offset = [0.0, 0.0, 0.0]
+            base_x = half + offset_x
+            base_y = offset_y
+            base_z = offset_z
 
-        self._composite_body_names = {
-            i: f"cable_segment_B{i}" for i in range(segment_count)
-        }
+        try:
+            flex = spec.add_flex()
+        except Exception:
+            logger.warning("add_flex() failed. Falling back.")
+            self._composite_body_names = {
+                i: f"cable_segment_{i}" for i in range(segment_count)
+            }
+            return
 
-        if spec._model is not None:
-            spec.recompile(spec._model, spec._data)
+        flex.name = "cable_segment_flex"
+        flex.dim = 1
+        flex.radius = float(radius)
+
+        vert_count = segment_count + 1
+        vert_flat = []
+        for i in range(vert_count):
+            vert_flat.extend([base_x - half + i * segment_length, base_y, base_z])
+        flex.vert = vert_flat
+
+        elem_flat = []
+        for i in range(segment_count):
+            elem_flat.extend([i, i + 1])
+        flex.elem = elem_flat
+
+        flex.damping = 0.0
+        flex.edgestiffness = 1000.0
+        flex.edgedamping = 0.1
+
+        simulator = self.multi_sim.simulator
+        mj_model = simulator._mj_model
+        mj_data = simulator._mj_data
+        if mj_model is not None:
+            try:
+                spec.recompile(mj_model, mj_data)
+            except Exception as e:
+                logger.warning(
+                    "Flex cable recompilation failed (%s). Falling back.", e
+                )
+                self._composite_body_names = {
+                    i: f"cable_segment_{i}" for i in range(segment_count)
+                }
+                return
+
+        for i in range(segment_count):
+            self._composite_body_names[i] = f"cable_segment_B{i}"
 
     def _register_model_callback(self) -> None:
         self.world._model_manager.model_change_callbacks.append(self)
@@ -923,6 +958,12 @@ class CableSimulation:
         """
         if not self._grasped_segments:
             return
+        # Snapshot to avoid "dict changed size during iteration" from
+        # concurrent grasp/release in model-change callbacks.
+        items = list(self._grasped_segments.items())
+        if not items:
+            return
+
         import mujoco
 
         mj_model = self.multi_sim.simulator._mj_model
@@ -932,7 +973,7 @@ class CableSimulation:
             gripper_name,
             rel_pos,
             rel_quat,
-        ) in self._grasped_segments.items():
+        ) in items:
             gripper_id = mujoco.mj_name2id(
                 mj_model, mujoco.mjtObj.mjOBJ_BODY, gripper_name
             )
