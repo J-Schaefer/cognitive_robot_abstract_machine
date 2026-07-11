@@ -7,6 +7,7 @@ from math import pi
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import numpy
+import trimesh
 from physics_simulators.base_simulator import SimulatorState
 
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
@@ -16,7 +17,8 @@ from semantic_digital_twin.world_description.connections import (
     Connection6DoF,
     FixedConnection,
 )
-from semantic_digital_twin.world_description.geometry import Color, Cylinder
+from semantic_digital_twin.world_description.geometry import Box, Color, Cylinder, Mesh, Scale
+from semantic_digital_twin.world_description.inertial_properties import Inertial
 from semantic_digital_twin.world_description.shape_collection import ShapeCollection
 from semantic_digital_twin.world_description.world_entity import Body
 from semantic_digital_twin.world_description.world_modification import (
@@ -302,6 +304,7 @@ def build_cable(
                 name=PrefixedName(f"cable_segment_{i}"),
                 visual=ShapeCollection([cyl]),
                 collision=ShapeCollection([cyl]),
+                inertial=Inertial(mass=config.mass_per_segment),
             )
             world.add_kinematic_structure_entity(body)
             segments.append(body)
@@ -516,6 +519,7 @@ class CableSimulation:
                 world=self.world,
                 parent_body=self.parent_body,
             )
+        self._add_primitive_collision_proxies()
         old_builder_skip = MujocoBuilder._skip_hardware_interface_connections
         old_sync_skip = MujocoSynchronizer._skip_hardware_interface_connections
         MujocoBuilder._skip_hardware_interface_connections = True
@@ -610,7 +614,21 @@ class CableSimulation:
 
         with world.modify_world():
             for i in range(config.segment_count):
-                body = Body(name=PrefixedName(f"cable_segment_{i}"))
+                cyl_origin = HomogeneousTransformationMatrix.from_xyz_rpy(
+                    0.0, 0.0, 0.0, 0.0, pi / 2.0, 0.0
+                )
+                cyl = Cylinder(
+                    width=2.0 * config.radius,
+                    height=config.segment_length,
+                    color=config.color,
+                    origin=cyl_origin,
+                )
+                body = Body(
+                    name=PrefixedName(f"cable_segment_{i}"),
+                    visual=ShapeCollection([cyl]),
+                    collision=ShapeCollection([cyl]),
+                    inertial=Inertial(mass=config.mass_per_segment),
+                )
                 world.add_kinematic_structure_entity(body)
                 segments.append(body)
 
@@ -631,6 +649,25 @@ class CableSimulation:
                 world.state[connection.qy.id].position = float(segment_quat[2])
                 world.state[connection.qz.id].position = float(segment_quat[3])
 
+        import mujoco
+        from semantic_digital_twin.adapters.multi_sim import MujocoEquality
+
+        half = config.segment_length / 2.0
+        with world.modify_world():
+            for i in range(config.segment_count - 1):
+                constraint = MujocoEquality(
+                    type=mujoco.mjtEq.mjEQ_CONNECT,
+                    object_type=mujoco.mjtObj.mjOBJ_BODY,
+                    name_1=f"cable_segment_{i}",
+                    name_2=f"cable_segment_{i + 1}",
+                    data=[
+                        half, 0.0, 0.0,
+                        -half, 0.0, 0.0,
+                        0.0, 0.0, 0.0, 1.0, 0.0,
+                    ],
+                )
+                world.simulator_additional_properties.append(constraint)
+
         return Cable(
             segments=segments,
             connections=connections,
@@ -642,11 +679,29 @@ class CableSimulation:
         r"""
         Add a MuJoCo native flexible-body cable to the spec and recompile.
 
-        Uses :meth:`mujoco.MjSpec.add_flex` (MuJoCo ≥ 3.2) to create a
-        1D flex cable.  Falls back to the non-composite rigid-body chain
-        if flex is unavailable or the build fails.
+        Uses :meth:`mujoco.MjSpec.add_flex` (MuJoCo ≥ 3.2, < 3.9) to
+        create a 1D flex cable.  MuJoCo ≥ 3.9 changed the flex API to
+        require a full structured grid with explicit ``vertbody`` and
+        ``nodebody`` assignments; building a 1D cable with that API needs
+        substantially more work.
+
+        Falls back to the non-composite rigid-body chain when flex is
+        unavailable.
         """
         import mujoco
+
+        major_version = int(mujoco.__version__.split(".")[0])
+        minor_version = int(mujoco.__version__.split(".")[1])
+        if major_version > 3 or (major_version == 3 and minor_version >= 9):
+            logger.debug(
+                "MuJoCo %s flex API changed; using rigid-body fallback.",
+                mujoco.__version__,
+            )
+            self._composite_body_names = {
+                i: f"cable_segment_{i}"
+                for i in range(self.config.segment_count)
+            }
+            return
 
         if not hasattr(mujoco.MjSpec, "add_flex"):
             logger.warning(
@@ -654,7 +709,8 @@ class CableSimulation:
                 mujoco.__version__,
             )
             self._composite_body_names = {
-                i: f"cable_segment_{i}" for i in range(self.config.segment_count)
+                i: f"cable_segment_{i}"
+                for i in range(self.config.segment_count)
             }
             return
 
@@ -699,7 +755,9 @@ class CableSimulation:
 
         step_vec = direction_rotated * segment_length
         base_shift = (
-            half * direction_rotated if self.config.anchor_to_parent else numpy.zeros(3)
+            half * direction_rotated
+            if self.config.anchor_to_parent
+            else numpy.zeros(3)
         )
 
         if self.parent_body is not None:
@@ -757,7 +815,9 @@ class CableSimulation:
             try:
                 spec.recompile(mj_model, mj_data)
             except Exception as e:
-                logger.warning("Flex cable recompilation failed (%s). Falling back.", e)
+                logger.warning(
+                    "Flex cable recompilation failed (%s). Falling back.", e
+                )
                 self._composite_body_names = {
                     i: f"cable_segment_{i}" for i in range(segment_count)
                 }
@@ -1124,6 +1184,54 @@ class CableSimulation:
                 segment_index, f"cable_segment_{segment_index}"
             )
         return f"cable_segment_{segment_index}"
+
+    def _add_primitive_collision_proxies(self) -> None:
+        r"""
+        For every body in the world whose collision shapes are exclusively
+        ``Mesh`` instances, add a ``Box`` shape that approximates the
+        overall bounding box of the meshes.  MuJoCo flex cables
+        have limited collision support with mesh geoms; primitive proxies
+        ensure reliable physical interaction.
+        """
+        for body in self.world.bodies:
+            collision_shapes = body.collision.shapes if body.collision else []
+            mesh_shapes = [s for s in collision_shapes if isinstance(s, Mesh)]
+            if not mesh_shapes:
+                continue
+            if any(not isinstance(s, Mesh) for s in collision_shapes):
+                continue
+
+            meshes = []
+            for shape in mesh_shapes:
+                m = shape.mesh.copy()
+                origin_np = shape.origin.to_np()
+                m.apply_transform(origin_np)
+                meshes.append(m)
+
+            combined = trimesh.util.concatenate(meshes)
+            min_pt = combined.bounds[0]
+            max_pt = combined.bounds[1]
+            size = max_pt - min_pt
+            center = (min_pt + max_pt) / 2
+
+            box = Box(
+                scale=Scale(x=float(size[0]), y=float(size[1]), z=float(size[2])),
+                origin=HomogeneousTransformationMatrix.from_xyz_rpy(
+                    float(center[0]),
+                    float(center[1]),
+                    float(center[2]),
+                    0.0,
+                    0.0,
+                    0.0,
+                    reference_frame=body,
+                ),
+            )
+            body.collision.shapes.append(box)
+            logger.debug(
+                "Added collision proxy Box(%s) to body '%s'",
+                tuple(box.scale.to_np().tolist()),
+                body.name.name,
+            )
 
     def get_segment_positions(self) -> Dict[str, numpy.ndarray]:
         r"""

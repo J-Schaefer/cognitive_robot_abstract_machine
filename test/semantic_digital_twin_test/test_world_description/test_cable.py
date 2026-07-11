@@ -1,4 +1,5 @@
 from math import pi
+import os
 
 import mujoco
 import numpy
@@ -16,10 +17,27 @@ from semantic_digital_twin.world_description.cable import (
     CableSimulationStrategy,
     build_cable,
 )
-from semantic_digital_twin.world_description.connections import Connection6DoF
-from semantic_digital_twin.world_description.geometry import Color, Cylinder
+from semantic_digital_twin.world_description.connections import Connection6DoF, FixedConnection
+from semantic_digital_twin.world_description.geometry import (
+    Box,
+    Color,
+    Cylinder,
+    Mesh,
+    Scale,
+)
+from semantic_digital_twin.world_description.inertial_properties import Inertial
 from semantic_digital_twin.world_description.shape_collection import ShapeCollection
 from semantic_digital_twin.world_description.world_entity import Body
+
+_RESOURCES_DIR = os.path.join(
+    os.path.dirname(__file__),
+    "..",
+    "..",
+    "..",
+    "semantic_digital_twin",
+    "resources",
+    "stl",
+)
 
 
 class TestCableConfig:
@@ -930,6 +948,169 @@ class TestCompositeCableStrategy:
             positions = cable_sim.get_segment_positions()
             assert "cable_segment_0" in positions
             cable_sim.release(segment_index=0)
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+    def test_composite_cable_collides_with_box(self):
+        """Composite cable falls onto a box body and its z-positions plateau."""
+        self._requires_composite_api()
+        import logging
+        import time
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        if world.root is None:
+            root = Body(name=PrefixedName("world"))
+            with world.modify_world():
+                world.add_kinematic_structure_entity(root)
+        else:
+            root = world.root
+
+        floor = Body(
+            name=PrefixedName("floor_box"),
+            inertial=Inertial(mass=100.0),
+            collision=ShapeCollection(
+                [
+                    Box(
+                        scale=Scale(x=2.0, y=2.0, z=0.05),
+                        origin=HomogeneousTransformationMatrix.from_xyz_rpy(
+                            0.0, 0.0, -1.0, 0.0, 0.0, 0.0
+                        ),
+                    )
+                ]
+            ),
+        )
+        with world.modify_world():
+            world.add_kinematic_structure_entity(floor)
+            world.add_connection(FixedConnection(parent=root, child=floor))
+
+        config = CableConfig(
+            segment_count=5,
+            segment_length=0.03,
+            radius=0.005,
+            mass_per_segment=0.005,
+            use_composite=True,
+        )
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            cable_sim.start()
+            time.sleep(3.0)
+            positions = cable_sim.get_segment_positions()
+            for i in range(config.segment_count):
+                pos = positions[f"cable_segment_{i}"]
+                assert pos[2] > -2.0, (
+                    f"Composite segment {i} z={pos[2]:.3f} fell through box"
+                )
+                assert pos[2] < 0.1, (
+                    f"Composite segment {i} z={pos[2]:.3f} should be below start"
+                )
+                assert abs(pos[0]) < 2.0
+                assert abs(pos[1]) < 2.0
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+    def test_collision_proxies_added_for_mesh_only_body(self):
+        """CableSimulation adds Box proxy shapes to bodies with only Mesh collision."""
+        self._requires_composite_api()
+        import logging
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        if world.root is None:
+            root = Body(name=PrefixedName("world"))
+            with world.modify_world():
+                world.add_kinematic_structure_entity(root)
+        else:
+            root = world.root
+
+        cup_stl = os.path.join(_RESOURCES_DIR, "jeroen_cup.stl")
+        mesh_shape = Mesh(
+            filename=cup_stl,
+            origin=HomogeneousTransformationMatrix.from_xyz_rpy(
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, reference_frame=root
+            ),
+        )
+        mesh_body = Body(
+            name=PrefixedName("mesh_object"),
+            collision=ShapeCollection([mesh_shape]),
+        )
+        with world.modify_world():
+            world.add_kinematic_structure_entity(mesh_body)
+            mesh_conn = Connection6DoF.create_with_dofs(
+                world=world,
+                parent=root,
+                child=mesh_body,
+                name=PrefixedName("mesh_obj_joint"),
+            )
+            world.add_connection(mesh_conn)
+            world.state[mesh_conn.qw.id].position = 1.0
+
+        config = CableConfig(
+            segment_count=3,
+            segment_length=0.03,
+            radius=0.005,
+            use_composite=True,
+        )
+        assert all(
+            isinstance(s, Mesh) for s in mesh_body.collision.shapes
+        ), "Precondition: mesh_body starts with only Mesh shapes"
+
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            box_shapes = [
+                s for s in mesh_body.collision.shapes if isinstance(s, Box)
+            ]
+            assert len(box_shapes) >= 1, (
+                "Expected at least one Box collision proxy on mesh_body"
+            )
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+    def test_mass_per_segment_applied(self):
+        """build_cable applies config.mass_per_segment to segment body inertial."""
+        world = World()
+        config = CableConfig(
+            segment_count=3,
+            segment_length=0.03,
+            radius=0.005,
+            mass_per_segment=0.002,
+        )
+        cable = build_cable(config=config, world=world)
+        for segment in cable.segments:
+            assert segment.inertial is not None
+            assert segment.inertial.mass == pytest.approx(0.002), (
+                f"Segment {segment.name} has mass {segment.inertial.mass}, expected 0.002"
+            )
+
+    def test_mass_per_segment_applied_composite(self):
+        """_build_world_model_cable_for_composite applies mass_per_segment."""
+        self._requires_composite_api()
+        import logging
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        config = CableConfig(
+            segment_count=3,
+            segment_length=0.03,
+            radius=0.005,
+            mass_per_segment=0.003,
+            use_composite=True,
+        )
+        cable_sim = CableSimulation(config=config, world=world)
+        try:
+            for segment in cable_sim.cable.segments:
+                assert segment.inertial is not None
+                assert segment.inertial.mass == pytest.approx(0.003), (
+                    f"Segment {segment.name} has mass {segment.inertial.mass}, expected 0.003"
+                )
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)
