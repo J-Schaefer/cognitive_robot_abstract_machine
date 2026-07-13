@@ -999,15 +999,10 @@ class CableSimulation:
         if segment_id == -1:
             raise ValueError(f"Segment body '{segment_name}' not found")
 
-        gripper_joint_id = mj_model.body_jntadr[gripper_id]
-        gripper_qpos_adr = mj_model.jnt_qposadr[gripper_joint_id]
-        gripper_xpos = mj_data.qpos[gripper_qpos_adr : gripper_qpos_adr + 3].copy()
-        gripper_xquat = mj_data.qpos[gripper_qpos_adr + 3 : gripper_qpos_adr + 7].copy()
-
-        segment_joint_id = mj_model.body_jntadr[segment_id]
-        segment_qpos_adr = mj_model.jnt_qposadr[segment_joint_id]
-        segment_xpos = mj_data.qpos[segment_qpos_adr : segment_qpos_adr + 3].copy()
-        segment_xquat = mj_data.qpos[segment_qpos_adr + 3 : segment_qpos_adr + 7].copy()
+        gripper_xpos = mj_data.xpos[gripper_id].copy()
+        gripper_xquat = mj_data.xquat[gripper_id].copy()
+        segment_xpos = mj_data.xpos[segment_id].copy()
+        segment_xquat = mj_data.xquat[segment_id].copy()
 
         gripper_neg_quat = numpy.zeros(4)
         mujoco.mju_negQuat(gripper_neg_quat, gripper_xquat)
@@ -1177,15 +1172,8 @@ class CableSimulation:
             if gripper_id == -1:
                 continue
 
-            gripper_joint_id = mj_model.body_jntadr[gripper_id]
-            if gripper_joint_id < 0:
-                continue
-
-            gripper_qpos_adr = mj_model.jnt_qposadr[gripper_joint_id]
-            gripper_xpos = mj_data.qpos[gripper_qpos_adr : gripper_qpos_adr + 3].copy()
-            gripper_xquat = mj_data.qpos[
-                gripper_qpos_adr + 3 : gripper_qpos_adr + 7
-            ].copy()
+            gripper_xpos = mj_data.xpos[gripper_id].copy()
+            gripper_xquat = mj_data.xquat[gripper_id].copy()
 
             self._set_segment_qpos(
                 segment_index, gripper_xpos, gripper_xquat, rel_pos, rel_quat

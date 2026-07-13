@@ -770,6 +770,85 @@ class TestPositionOverrideStrategy:
             cable_sim.stop()
             logging.disable(logging.NOTSET)
 
+    def test_grasp_with_welded_gripper_moves_segment(self):
+        """When a segment is grasped via POSITION_OVERRIDE and the
+        gripper body has no free joint (welded to a parent), the grasped
+        segment correctly follows the gripper's world position."""
+        import mujoco
+        import logging
+        import time
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        if world.root is None:
+            root = Body(name=PrefixedName("world"))
+            with world.modify_world():
+                world.add_kinematic_structure_entity(root)
+        else:
+            root = world.root
+
+        movable = Body(name=PrefixedName("gripper_root"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(movable)
+            conn = Connection6DoF.create_with_dofs(
+                world=world,
+                parent=root,
+                child=movable,
+                name=PrefixedName("gripper_root_joint"),
+            )
+            world.add_connection(conn)
+            world.state[conn.x.id].position = 0.5
+            world.state[conn.y.id].position = 0.0
+            world.state[conn.z.id].position = 0.5
+            world.state[conn.qw.id].position = 1.0
+            world.state[conn.qx.id].position = 0.0
+            world.state[conn.qy.id].position = 0.0
+            world.state[conn.qz.id].position = 0.0
+
+        gripper = Body(name=PrefixedName("test_gripper"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(gripper)
+            world.add_connection(FixedConnection(parent=movable, child=gripper))
+
+        config = CableConfig(
+            segment_count=5,
+            segment_length=0.03,
+            radius=0.005,
+            strategy=CableSimulationStrategy.POSITION_OVERRIDE,
+        )
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            cable_sim.start()
+            time.sleep(2.0)
+
+            mj_data = cable_sim.multi_sim.simulator._mj_data
+            mj_model = cable_sim.multi_sim.simulator._mj_model
+            gripper_id = mujoco.mj_name2id(
+                mj_model, mujoco.mjtObj.mjOBJ_BODY, "test_gripper"
+            )
+            gripper_pos_before = mj_data.xpos[gripper_id].copy()
+
+            cable_sim.grasp("test_gripper", segment_index=0)
+            time.sleep(0.5)
+
+            positions = cable_sim.get_segment_positions()
+            seg0_pos = positions["cable_segment_0"]
+            assert numpy.isfinite(
+                seg0_pos
+            ).all(), f"Grasped segment has NaN/inf position: {seg0_pos}"
+
+            gripper_pos_after = mj_data.xpos[gripper_id].copy()
+            dist = numpy.linalg.norm(seg0_pos - gripper_pos_after)
+            assert dist < 0.2, (
+                f"Grasped segment {seg0_pos} is {dist:.3f}m from "
+                f"gripper {gripper_pos_after}"
+            )
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
 
 class TestKinematicAttachStrategy:
     """Tests for CableSimulationStrategy.KINEMATIC_ATTACH with state
@@ -1188,6 +1267,103 @@ class TestCompositeCableStrategy:
                 assert numpy.isfinite(
                     pos
                 ).all(), f"Segment {i} position should be finite after release"
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+    def test_composite_grasp_segment_follows_gripper(self):
+        """When a composite cable segment is grasped via POSITION_OVERRIDE
+        the grasped segment stays near the gripper and neighbouring
+        segments remain attached to it."""
+        self._requires_composite_api()
+        import mujoco
+        import logging
+        import time
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        root = Body(name=PrefixedName("world"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(root)
+
+        movable = Body(name=PrefixedName("gripper_root"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(movable)
+            conn = Connection6DoF.create_with_dofs(
+                world=world,
+                parent=root,
+                child=movable,
+                name=PrefixedName("gripper_root_joint"),
+            )
+            world.add_connection(conn)
+            world.state[conn.x.id].position = 0.5
+            world.state[conn.y.id].position = 0.0
+            world.state[conn.z.id].position = 0.5
+            world.state[conn.qw.id].position = 1.0
+
+        gripper = Body(name=PrefixedName("test_gripper"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(gripper)
+            world.add_connection(FixedConnection(parent=movable, child=gripper))
+
+        config = CableConfig(
+            segment_count=7,
+            segment_length=0.03,
+            radius=0.005,
+            mass_per_segment=0.005,
+            use_composite=True,
+        )
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            cable_sim.start()
+            time.sleep(2.0)
+
+            positions_before = cable_sim.get_segment_positions()
+            for i in range(config.segment_count):
+                assert f"cable_segment_{i}" in positions_before
+
+            cable_sim.grasp("test_gripper", segment_index=3)
+            time.sleep(0.5)
+
+            positions = cable_sim.get_segment_positions()
+            seg3_pos = positions["cable_segment_3"]
+            assert numpy.isfinite(
+                seg3_pos
+            ).all(), f"Grasped segment has NaN/inf position: {seg3_pos}"
+
+            mj_data = cable_sim.multi_sim.simulator._mj_data
+            mj_model = cable_sim.multi_sim.simulator._mj_model
+            gripper_id = mujoco.mj_name2id(
+                mj_model, mujoco.mjtObj.mjOBJ_BODY, "test_gripper"
+            )
+            gripper_pos = mj_data.xpos[gripper_id].copy()
+
+            dist_to_gripper = numpy.linalg.norm(seg3_pos - gripper_pos)
+            assert dist_to_gripper < 0.2, (
+                f"Grasped segment {seg3_pos} is {dist_to_gripper:.3f}m "
+                f"from gripper {gripper_pos}"
+            )
+
+            for i in [2, 4]:
+                neighbor_pos = positions[f"cable_segment_{i}"]
+                dist = numpy.linalg.norm(neighbor_pos - seg3_pos)
+                assert dist < 0.2, (
+                    f"Neighbour segment {i} is {dist:.3f}m from grasped "
+                    f"segment (detached). Neighbor: {neighbor_pos}, "
+                    f"grasped: {seg3_pos}"
+                )
+
+            cable_sim.release(segment_index=3)
+            time.sleep(1.0)
+
+            positions_released = cable_sim.get_segment_positions()
+            for i in range(config.segment_count):
+                assert f"cable_segment_{i}" in positions_released
+                assert numpy.isfinite(
+                    positions_released[f"cable_segment_{i}"]
+                ).all(), f"Segment {i} position not finite after release"
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)
