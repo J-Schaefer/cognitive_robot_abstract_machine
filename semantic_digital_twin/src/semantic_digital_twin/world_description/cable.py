@@ -512,10 +512,6 @@ class CableSimulation:
         )
 
         if self.config.use_composite:
-            import mujoco
-
-            if mujoco.mj_version() >= 30900 and self.strategy_override is None:
-                self.strategy_override = CableSimulationStrategy.KINEMATIC_ATTACH
             self.cable = self._build_world_model_cable_for_composite()
         else:
             self.cable = build_cable(
@@ -926,7 +922,10 @@ class CableSimulation:
                 f" [0, {len(self.cable.segments)})"
             )
         strategy = self._effective_strategy
-        if strategy == CableSimulationStrategy.POSITION_OVERRIDE:
+        if (
+            self.config.use_composite
+            or strategy == CableSimulationStrategy.POSITION_OVERRIDE
+        ):
             self._grasp_via_position_override(gripper_body_name, segment_index)
         else:
             self._grasp_via_kinematic_attach(gripper_body_name, segment_index)
@@ -1068,7 +1067,10 @@ class CableSimulation:
                 f" [0, {len(self.cable.segments)})"
             )
         strategy = self._effective_strategy
-        if strategy == CableSimulationStrategy.POSITION_OVERRIDE:
+        if (
+            self.config.use_composite
+            or strategy == CableSimulationStrategy.POSITION_OVERRIDE
+        ):
             self._release_via_position_override(segment_index)
         else:
             self._release_via_kinematic_detach(segment_index)
