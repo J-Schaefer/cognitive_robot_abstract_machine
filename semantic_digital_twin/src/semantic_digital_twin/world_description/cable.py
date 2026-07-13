@@ -70,6 +70,41 @@ def _matrix_to_mujoco_quat(m: numpy.ndarray) -> numpy.ndarray:
     return numpy.array([w, x, y, z])
 
 
+def _fill_rotation_matrix(rot: numpy.ndarray, quat: numpy.ndarray) -> None:
+    r"""Fill the 3×3 matrix *rot* from a MuJoCo quaternion ``[w,x,y,z]``."""
+    w, x, y, z = float(quat[0]), float(quat[1]), float(quat[2]), float(quat[3])
+    x2 = x * x
+    y2 = y * y
+    z2 = z * z
+    wx = w * x
+    wy = w * y
+    wz = w * z
+    xy = x * y
+    xz = x * z
+    yz = y * z
+    rot[0, 0] = 1.0 - 2.0 * (y2 + z2)
+    rot[0, 1] = 2.0 * (xy - wz)
+    rot[0, 2] = 2.0 * (xz + wy)
+    rot[1, 0] = 2.0 * (xy + wz)
+    rot[1, 1] = 1.0 - 2.0 * (x2 + z2)
+    rot[1, 2] = 2.0 * (yz - wx)
+    rot[2, 0] = 2.0 * (xz - wy)
+    rot[2, 1] = 2.0 * (yz + wx)
+    rot[2, 2] = 1.0 - 2.0 * (x2 + y2)
+
+
+def _multiply_quaternion(
+    result: numpy.ndarray, q1: numpy.ndarray, q2: numpy.ndarray
+) -> None:
+    r"""Multiply two MuJoCo quaternions: ``result = q1 * q2``."""
+    w1, x1, y1, z1 = float(q1[0]), float(q1[1]), float(q1[2]), float(q1[3])
+    w2, x2, y2, z2 = float(q2[0]), float(q2[1]), float(q2[2]), float(q2[3])
+    result[0] = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+    result[1] = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+    result[2] = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
+    result[3] = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
+
+
 class CableSimulationStrategy(enum.Enum):
     """
     Strategy for how cable segments are attached to grippers during grasping.
@@ -480,13 +515,15 @@ class CableSimulation:
     _started: bool = field(init=False, default=False)
     _is_paused: bool = field(init=False, default=False)
     _segment_ids: set = field(init=False, repr=False)
-    _grasped_segments: Dict[int, Tuple[str, numpy.ndarray, numpy.ndarray]] = field(
+    _grasped_segments: Dict[int, Tuple["Body", numpy.ndarray, numpy.ndarray]] = field(
         init=False, repr=False, default_factory=dict
     )
     """
     Maps ``segment_index`` →
-    ``(gripper_body_name, relative_position, relative_quaternion)``
+    ``(gripper_body, relative_position, relative_quaternion)``
     for segments grasped via the POSITION_OVERRIDE strategy.
+    ``gripper_body`` is the world-model :class:`Body` whose
+    ``global_transform`` yields the gripper's current world-frame pose.
     """
 
     _original_step_callback: Any = field(init=False, repr=False, default=None)
@@ -705,7 +742,7 @@ class CableSimulation:
         import mujoco
 
         if mujoco.mj_version() >= 30900:
-            logger.debug(
+            logger.warning(
                 "MuJoCo %s flex API changed; using rigid-body fallback.",
                 mujoco.__version__,
             )
@@ -865,6 +902,11 @@ class CableSimulation:
                 child = connection.child
                 if child.id not in self._segment_ids:
                     continue
+                if (
+                    self.world.root is not None
+                    and connection.parent.id == self.world.root.id
+                ):
+                    continue
                 segment_index = self.cable.segments.index(child)
                 parent_body_name = connection.parent.name.name
                 self.grasp(
@@ -945,12 +987,79 @@ class CableSimulation:
         else:
             self._grasp_via_kinematic_attach(gripper_body_name, segment_index)
 
+    def _compute_world_pose(self, body: Body) -> Tuple[numpy.ndarray, numpy.ndarray]:
+        r"""
+        Compute the world-frame position (3,) and MuJoCo-format
+        quaternion (4,  wxyz) of *body* by walking its parent chain
+        and reading world-state DOF values directly.
+
+        This avoids the FK manager whose internal DOF index mapping may
+        be stale after cable segments are added to the world model.
+        """
+        position = numpy.array([0.0, 0.0, 0.0])
+        quat = numpy.array([1.0, 0.0, 0.0, 0.0])
+
+        current: Optional[Body] = body
+        while current is not None and current.id != self.world.root.id:
+            connection = current.parent_connection
+            if connection is None:
+                break
+            if isinstance(connection, Connection6DoF):
+                x = self.world.state[connection.x.id].position
+                y = self.world.state[connection.y.id].position
+                z = self.world.state[connection.z.id].position
+                qw = self.world.state[connection.qw.id].position
+                qx = self.world.state[connection.qx.id].position
+                qy = self.world.state[connection.qy.id].position
+                qz = self.world.state[connection.qz.id].position
+
+                conn_quat = numpy.array([qw, qx, qy, qz])
+                conn_pos = numpy.array([x, y, z])
+
+                conn_rot_matrix = numpy.zeros((3, 3))
+                _fill_rotation_matrix(conn_rot_matrix, conn_quat)
+
+                world_conn_pos = conn_rot_matrix @ position + conn_pos
+                world_conn_quat = numpy.zeros(4)
+                _multiply_quaternion(world_conn_quat, conn_quat, quat)
+
+                position = world_conn_pos
+                quat = world_conn_quat
+
+                break
+            elif isinstance(connection, FixedConnection):
+                offset = connection.parent_T_connection_expression.evaluate()
+                conn_pos = numpy.array(
+                    [float(offset[0, 3]), float(offset[1, 3]), float(offset[2, 3])]
+                )
+                conn_rot_3x3 = offset[:3, :3]
+                conn_quat = _matrix_to_mujoco_quat(conn_rot_3x3)
+
+                world_conn_pos = conn_rot_3x3 @ position + conn_pos
+                world_conn_quat = numpy.zeros(4)
+                _multiply_quaternion(world_conn_quat, conn_quat, quat)
+
+                position = world_conn_pos
+                quat = world_conn_quat
+
+                current = connection.parent
+            else:
+                break
+
+        return position, quat
+
     def _grasp_via_kinematic_attach(
         self, gripper_body_name: str, segment_index: int
     ) -> None:
         r"""
         Attach the segment using the legacy kinematic reparenting,
-        preserving the entire simulation state across recompilation.
+        preserving as much simulation state as possible across
+        recompilation.
+
+        After reparenting, re-adds the inter-segment
+        ``mjEQ_CONNECT`` equality constraints that MuJoCo deletes
+        when the segment body is removed from its original
+        kinematic parent.
         """
         import mujoco
 
@@ -962,6 +1071,41 @@ class CableSimulation:
         self.multi_sim.simulator.callbacks["attach"](
             body_1_name=segment_name,
             body_2_name=gripper_body_name,
+        )
+
+        half = self.config.segment_length / 2.0
+        spec = self.multi_sim.simulator._mj_spec
+
+        neighbors: List[str] = []
+        if segment_index > 0:
+            neighbors.append(self._body_name_for_segment(segment_index - 1))
+        if segment_index < len(self.cable.segments) - 1:
+            neighbors.append(self._body_name_for_segment(segment_index + 1))
+
+        for neighbor_name in neighbors:
+            eq = spec.add_equality()
+            eq.type = mujoco.mjtEq.mjEQ_CONNECT
+            eq.objtype = mujoco.mjtObj.mjOBJ_BODY
+            eq.name1 = segment_name
+            eq.name2 = neighbor_name
+            eq.data = [
+                half,
+                0.0,
+                0.0,
+                -half,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ]
+
+        mj_model = self.multi_sim.simulator._mj_model
+        mj_data = self.multi_sim.simulator._mj_data
+        self.multi_sim.simulator._mj_model, self.multi_sim.simulator._mj_data = (
+            spec.recompile(mj_model, mj_data)
         )
 
         mj_model = self.multi_sim.simulator._mj_model
@@ -979,28 +1123,35 @@ class CableSimulation:
         self, gripper_body_name: str, segment_index: int
     ) -> None:
         r"""
-        Store the grasp relationship and install a post-step qpos
+        Store the grasp relationship and install a pre-step qpos
         correction so the segment follows the gripper without changing
         the kinematic tree.
+
+        The gripper pose is computed from world-state DOF values by
+        walking the parent chain, avoiding the FK manager whose internal
+        DOF index mapping may be stale after the cable segments are
+        added to the world model.
         """
         import mujoco
 
+        from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
+
+        gripper_body = self.world.get_body_by_name(PrefixedName(gripper_body_name))
+        if gripper_body is None:
+            raise ValueError(
+                f"Gripper body '{gripper_body_name}' not found in world model"
+            )
+
         mj_model = self.multi_sim.simulator._mj_model
         mj_data = self.multi_sim.simulator._mj_data
-
-        gripper_id = mujoco.mj_name2id(
-            mj_model, mujoco.mjtObj.mjOBJ_BODY, gripper_body_name
-        )
-        if gripper_id == -1:
-            raise ValueError(f"Gripper body '{gripper_body_name}' not found")
 
         segment_name = self._body_name_for_segment(segment_index)
         segment_id = mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_BODY, segment_name)
         if segment_id == -1:
             raise ValueError(f"Segment body '{segment_name}' not found")
 
-        gripper_xpos = mj_data.xpos[gripper_id].copy()
-        gripper_xquat = mj_data.xquat[gripper_id].copy()
+        gripper_xpos, gripper_xquat = self._compute_world_pose(gripper_body)
+
         segment_xpos = mj_data.xpos[segment_id].copy()
         segment_xquat = mj_data.xquat[segment_id].copy()
 
@@ -1012,7 +1163,7 @@ class CableSimulation:
         mujoco.mju_mulQuat(relative_quaternion, gripper_neg_quat, segment_xquat)
 
         self._grasped_segments[segment_index] = (
-            gripper_body_name,
+            gripper_body,
             relative_position,
             relative_quaternion,
         )
@@ -1061,6 +1212,9 @@ class CableSimulation:
         qpos_adr = mj_model.jnt_qposadr[joint_id]
         mj_data.qpos[qpos_adr : qpos_adr + 3] = segment_world_pos
         mj_data.qpos[qpos_adr + 3 : qpos_adr + 7] = segment_world_quat
+
+        qvel_adr = mj_model.jnt_dofadr[joint_id]
+        mj_data.qvel[qvel_adr : qvel_adr + 6] = 0.0
 
     def release(self, segment_index: int = 0) -> None:
         r"""
@@ -1128,7 +1282,6 @@ class CableSimulation:
         def step_with_override():
             self._apply_position_overrides()
             original_step()
-            self._apply_position_overrides()
 
         simulator.step_callback = step_with_override
         self._position_override_installed = True
@@ -1145,35 +1298,26 @@ class CableSimulation:
     def _apply_position_overrides(self) -> None:
         r"""
         For every grasped segment, correct its free-joint qpos to keep
-        it at the desired offset from the gripper.  Called before and
-        after every simulation step while a segment is grasped.
+        it at the desired offset from the gripper.  Called before every
+        simulation step while a segment is grasped.
+
+        The gripper pose is computed from world-state DOF values by
+        walking the parent chain, avoiding the FK manager whose internal
+        DOF index mapping may be stale after cable segments are added.
         """
         if not self._grasped_segments:
             return
-        # Snapshot to avoid "dict changed size during iteration" from
-        # concurrent grasp/release in model-change callbacks.
         items = list(self._grasped_segments.items())
         if not items:
             return
 
-        import mujoco
-
-        mj_model = self.multi_sim.simulator._mj_model
-        mj_data = self.multi_sim.simulator._mj_data
-
         for segment_index, (
-            gripper_name,
+            gripper_body,
             rel_pos,
             rel_quat,
         ) in items:
-            gripper_id = mujoco.mj_name2id(
-                mj_model, mujoco.mjtObj.mjOBJ_BODY, gripper_name
-            )
-            if gripper_id == -1:
-                continue
-
-            gripper_xpos = mj_data.xpos[gripper_id].copy()
-            gripper_xquat = mj_data.xquat[gripper_id].copy()
+            with self.world._world_lock:
+                gripper_xpos, gripper_xquat = self._compute_world_pose(gripper_body)
 
             self._set_segment_qpos(
                 segment_index, gripper_xpos, gripper_xquat, rel_pos, rel_quat

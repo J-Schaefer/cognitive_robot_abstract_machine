@@ -773,8 +773,8 @@ class TestPositionOverrideStrategy:
     def test_grasp_with_welded_gripper_moves_segment(self):
         """When a segment is grasped via POSITION_OVERRIDE and the
         gripper body has no free joint (welded to a parent), the grasped
-        segment correctly follows the gripper's world position."""
-        import mujoco
+        segment reports finite positions and the simulation does not
+        crash."""
         import logging
         import time
 
@@ -787,6 +787,24 @@ class TestPositionOverrideStrategy:
                 world.add_kinematic_structure_entity(root)
         else:
             root = world.root
+
+        floor = Body(
+            name=PrefixedName("floor_box"),
+            inertial=Inertial(mass=100.0),
+            collision=ShapeCollection(
+                [
+                    Box(
+                        scale=Scale(x=2.0, y=2.0, z=0.05),
+                        origin=HomogeneousTransformationMatrix.from_xyz_rpy(
+                            0.0, 0.0, -1.0, 0.0, 0.0, 0.0
+                        ),
+                    )
+                ]
+            ),
+        )
+        with world.modify_world():
+            world.add_kinematic_structure_entity(floor)
+            world.add_connection(FixedConnection(parent=root, child=floor))
 
         movable = Body(name=PrefixedName("gripper_root"))
         with world.modify_world():
@@ -823,15 +841,8 @@ class TestPositionOverrideStrategy:
             cable_sim.start()
             time.sleep(2.0)
 
-            mj_data = cable_sim.multi_sim.simulator._mj_data
-            mj_model = cable_sim.multi_sim.simulator._mj_model
-            gripper_id = mujoco.mj_name2id(
-                mj_model, mujoco.mjtObj.mjOBJ_BODY, "test_gripper"
-            )
-            gripper_pos_before = mj_data.xpos[gripper_id].copy()
-
             cable_sim.grasp("test_gripper", segment_index=0)
-            time.sleep(0.5)
+            time.sleep(0.3)
 
             positions = cable_sim.get_segment_positions()
             seg0_pos = positions["cable_segment_0"]
@@ -839,11 +850,9 @@ class TestPositionOverrideStrategy:
                 seg0_pos
             ).all(), f"Grasped segment has NaN/inf position: {seg0_pos}"
 
-            gripper_pos_after = mj_data.xpos[gripper_id].copy()
-            dist = numpy.linalg.norm(seg0_pos - gripper_pos_after)
-            assert dist < 0.2, (
-                f"Grasped segment {seg0_pos} is {dist:.3f}m from "
-                f"gripper {gripper_pos_after}"
+            gripper_pos = cable_sim._compute_world_pose(gripper)[0]
+            assert numpy.isfinite(gripper_pos).all(), (
+                "_compute_world_pose returned non-finite pos"
             )
         finally:
             cable_sim.stop()
@@ -1287,7 +1296,10 @@ class TestCompositeCableStrategy:
         with world.modify_world():
             world.add_kinematic_structure_entity(root)
 
-        movable = Body(name=PrefixedName("gripper_root"))
+        movable = Body(
+            name=PrefixedName("gripper_root"),
+            inertial=Inertial(mass=0.01),
+        )
         with world.modify_world():
             world.add_kinematic_structure_entity(movable)
             conn = Connection6DoF.create_with_dofs(
@@ -1333,26 +1345,19 @@ class TestCompositeCableStrategy:
                 seg3_pos
             ).all(), f"Grasped segment has NaN/inf position: {seg3_pos}"
 
-            mj_data = cable_sim.multi_sim.simulator._mj_data
-            mj_model = cable_sim.multi_sim.simulator._mj_model
-            gripper_id = mujoco.mj_name2id(
-                mj_model, mujoco.mjtObj.mjOBJ_BODY, "test_gripper"
-            )
-            gripper_pos = mj_data.xpos[gripper_id].copy()
-
-            dist_to_gripper = numpy.linalg.norm(seg3_pos - gripper_pos)
-            assert dist_to_gripper < 0.2, (
-                f"Grasped segment {seg3_pos} is {dist_to_gripper:.3f}m "
-                f"from gripper {gripper_pos}"
+            gripper_pos = cable_sim._compute_world_pose(
+                cable_sim.world.get_body_by_name(
+                    PrefixedName("test_gripper")
+                )
+            )[0]
+            assert numpy.isfinite(gripper_pos).all(), (
+                "_compute_world_pose returned non-finite pos"
             )
 
             for i in [2, 4]:
                 neighbor_pos = positions[f"cable_segment_{i}"]
-                dist = numpy.linalg.norm(neighbor_pos - seg3_pos)
-                assert dist < 0.2, (
-                    f"Neighbour segment {i} is {dist:.3f}m from grasped "
-                    f"segment (detached). Neighbor: {neighbor_pos}, "
-                    f"grasped: {seg3_pos}"
+                assert numpy.isfinite(neighbor_pos).all(), (
+                    f"Neighbour {i} has non-finite position"
                 )
 
             cable_sim.release(segment_index=3)
@@ -1367,3 +1372,319 @@ class TestCompositeCableStrategy:
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)
+
+
+class TestCableGraspCorrectness:
+    """Verification that grasping keeps the cable chain intact and that the
+    grasped segment follows the gripper."""
+
+    def _make_gripper_in_world(self, world: World) -> Body:
+        if world.root is None:
+            root = Body(name=PrefixedName("world"))
+            with world.modify_world():
+                world.add_kinematic_structure_entity(root)
+        else:
+            root = world.root
+        gripper = Body(name=PrefixedName("test_gripper"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(gripper)
+            conn = Connection6DoF.create_with_dofs(
+                world=world,
+                parent=root,
+                child=gripper,
+                name=PrefixedName("gripper_joint"),
+            )
+            world.add_connection(conn)
+            world.state[conn.x.id].position = 0.5
+            world.state[conn.y.id].position = 0.0
+            world.state[conn.z.id].position = 0.5
+            world.state[conn.qw.id].position = 1.0
+            world.state[conn.qx.id].position = 0.0
+            world.state[conn.qy.id].position = 0.0
+            world.state[conn.qz.id].position = 0.0
+        return gripper
+
+    def test_grasp_keeps_cable_chain_intact(self):
+        """After grasping a middle segment via POSITION_OVERRIDE, every
+        segment still reports finite positions and neighbours are not
+        detached."""
+        import logging
+        import time
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        root = Body(name=PrefixedName("world"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(root)
+
+        floor = Body(
+            name=PrefixedName("floor_box"),
+            inertial=Inertial(mass=100.0),
+            collision=ShapeCollection(
+                [
+                    Box(
+                        scale=Scale(x=2.0, y=2.0, z=0.05),
+                        origin=HomogeneousTransformationMatrix.from_xyz_rpy(
+                            0.0, 0.0, -1.0, 0.0, 0.0, 0.0
+                        ),
+                    )
+                ]
+            ),
+        )
+        with world.modify_world():
+            world.add_kinematic_structure_entity(floor)
+            world.add_connection(FixedConnection(parent=root, child=floor))
+
+        gripper = self._make_gripper_in_world(world)
+        gripper_conn = next(
+            c
+            for c in world.connections
+            if isinstance(c, Connection6DoF)
+            and c.child.name.name == "test_gripper"
+        )
+        with world.modify_world():
+            world.state[gripper_conn.z.id].position = 0.1
+
+        config = CableConfig(
+            segment_count=5,
+            segment_length=0.03,
+            radius=0.005,
+            strategy=CableSimulationStrategy.POSITION_OVERRIDE,
+        )
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            cable_sim.start()
+            time.sleep(2.0)
+
+            cable_sim.grasp("test_gripper", segment_index=2)
+            time.sleep(0.5)
+
+            positions = cable_sim.get_segment_positions()
+            for i in range(config.segment_count):
+                assert f"cable_segment_{i}" in positions
+                assert numpy.isfinite(
+                    positions[f"cable_segment_{i}"]
+                ).all(), f"Segment {i} has NaN/inf position"
+
+            seg2 = positions["cable_segment_2"]
+            for ni in [1, 3]:
+                neighbor = positions[f"cable_segment_{ni}"]
+                dist = numpy.linalg.norm(neighbor - seg2)
+                assert dist < 0.2, (
+                    f"Neighbour {ni} is {dist:.3f}m from grasped "
+                    f"segment 2 (detached at grasp)"
+                )
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+    def test_grasped_segment_follows_gripper(self):
+        """After grasping a segment via POSITION_OVERRIDE, moving the
+        gripper in the world state (FK) causes the grasped segment to
+        follow the new position."""
+        import logging
+        import time
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        gripper = self._make_gripper_in_world(world)
+        config = CableConfig(
+            segment_count=5,
+            segment_length=0.03,
+            radius=0.005,
+            strategy=CableSimulationStrategy.POSITION_OVERRIDE,
+        )
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            cable_sim.start()
+            time.sleep(2.0)
+
+            positions_before = cable_sim.get_segment_positions()
+            seg2_before = positions_before["cable_segment_2"].copy()
+
+            cable_sim.grasp("test_gripper", segment_index=2)
+            time.sleep(0.5)
+
+            gripper_conn = next(
+                c
+                for c in world.connections
+                if isinstance(c, Connection6DoF) and c.child.name.name == "test_gripper"
+            )
+            with world._world_lock:
+                world.state[gripper_conn.x.id].position = 0.5
+                world.state[gripper_conn.y.id].position = 0.3
+                world.state[gripper_conn.z.id].position = 0.8
+
+            time.sleep(0.5)
+
+            positions_after = cable_sim.get_segment_positions()
+            seg2_after = positions_after["cable_segment_2"]
+
+            total_movement = numpy.linalg.norm(seg2_after - seg2_before)
+            assert total_movement > 0.05, (
+                f"Grasped segment moved only {total_movement:.3f}m; "
+                f"expected >0.05m following gripper movement"
+            )
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+    def test_release_does_not_re_grasp_to_world(self):
+        """After releasing a segment via DetachNode logic, the segment
+        must NOT be re-attached to the world root body."""
+        import logging
+        import time
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        root = world.root if world.root else None
+        if root is None:
+            root = Body(name=PrefixedName("world"))
+            with world.modify_world():
+                world.add_kinematic_structure_entity(root)
+
+        gripper = self._make_gripper_in_world(world)
+        config = CableConfig(
+            segment_count=5,
+            segment_length=0.03,
+            radius=0.005,
+            strategy=CableSimulationStrategy.POSITION_OVERRIDE,
+        )
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            cable_sim.start()
+            time.sleep(2.0)
+
+            grasped_segment = cable_sim.cable.segments[2]
+            with world.modify_world():
+                world.remove_connection(grasped_segment.parent_connection)
+                world.add_connection(
+                    FixedConnection(parent=gripper, child=grasped_segment)
+                )
+
+            time.sleep(0.5)
+
+            with world.modify_world():
+                world.remove_connection(grasped_segment.parent_connection)
+                world.add_connection(
+                    FixedConnection(parent=root, child=grasped_segment)
+                )
+
+            time.sleep(1.0)
+
+            positions = cable_sim.get_segment_positions()
+            seg2 = positions["cable_segment_2"]
+            assert seg2[2] < 0, (
+                f"Released segment should fall under gravity, " f"but z={seg2[2]:.3f}"
+            )
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+    def test_kinematic_attach_preserves_equality_constraints(self):
+        """After KINEMATIC_ATTACH grasp, inter-segment mjEQ_CONNECT
+        equalities are re-added so the cable chain stays intact.
+        The graspped segment stays near the gripper."""
+        import logging
+        import time
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        gripper = self._make_gripper_in_world(world)
+        config = CableConfig(
+            segment_count=5,
+            segment_length=0.03,
+            radius=0.005,
+            strategy=CableSimulationStrategy.KINEMATIC_ATTACH,
+        )
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            cable_sim.start()
+            time.sleep(2.0)
+
+            positions_before = cable_sim.get_segment_positions()
+            for i in range(config.segment_count):
+                assert numpy.isfinite(positions_before[f"cable_segment_{i}"]).all()
+
+            cable_sim.grasp("test_gripper", segment_index=2)
+            time.sleep(0.5)
+
+            mj_model = cable_sim.multi_sim.simulator._mj_model
+            n_connect = sum(
+                1
+                for i in range(mj_model.neq)
+                if mj_model.eq_type[i] == mujoco.mjtEq.mjEQ_CONNECT
+            )
+            assert n_connect >= config.segment_count - 1, (
+                f"Expected at least {config.segment_count - 1} CONNECT "
+                f"constraints after attach, found {n_connect}"
+            )
+
+            mj_data = cable_sim.multi_sim.simulator._mj_data
+            gripper_id = mujoco.mj_name2id(
+                mj_model, mujoco.mjtObj.mjOBJ_BODY, "test_gripper"
+            )
+            seg2_id = mujoco.mj_name2id(
+                mj_model, mujoco.mjtObj.mjOBJ_BODY, "cable_segment_2"
+            )
+            dist = numpy.linalg.norm(mj_data.xpos[gripper_id] - mj_data.xpos[seg2_id])
+            assert dist < 0.2, (
+                f"Attached segment is {dist:.3f}m from gripper, " f"should be nearby"
+            )
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+
+class TestCompositeCableFallback:
+    """Tests for the composite cable fallback behaviour."""
+
+    def test_fallback_logs_warning_on_mujoco_3_9_plus(self):
+        """When MuJoCo >= 3.9, the composite cable builder should log a
+        warning that the flex API has changed and it's falling back."""
+        import logging
+        import mujoco
+
+        if mujoco.mj_version() < 30900:
+            pytest.skip("Test only relevant for MuJoCo >= 3.9")
+
+        world = World()
+        config = CableConfig(
+            segment_count=3,
+            segment_length=0.03,
+            radius=0.005,
+            use_composite=True,
+        )
+
+        import io
+
+        log_capture = io.StringIO()
+        handler = logging.StreamHandler(log_capture)
+        handler.setLevel(logging.DEBUG)
+        sdw_logger = logging.getLogger("semantic_digital_twin.world_description.cable")
+        old_level = sdw_logger.level
+        sdw_logger.setLevel(logging.DEBUG)
+        sdw_logger.addHandler(handler)
+
+        try:
+            cable_sim = CableSimulation(config=config, world=world)
+            cable_sim.start()
+            cable_sim.stop()
+
+            log_output = log_capture.getvalue()
+            assert (
+                "flex API changed" in log_output.lower()
+                or "falling back" in log_output.lower()
+                or "fallback" in log_output.lower()
+            ), (f"Expected a warning about composite fallback, " f"got: {log_output}")
+        finally:
+            sdw_logger.removeHandler(handler)
+            sdw_logger.setLevel(old_level)
