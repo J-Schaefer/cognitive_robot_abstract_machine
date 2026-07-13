@@ -17,7 +17,10 @@ from semantic_digital_twin.world_description.cable import (
     CableSimulationStrategy,
     build_cable,
 )
-from semantic_digital_twin.world_description.connections import Connection6DoF, FixedConnection
+from semantic_digital_twin.world_description.connections import (
+    Connection6DoF,
+    FixedConnection,
+)
 from semantic_digital_twin.world_description.geometry import (
     Box,
     Color,
@@ -1001,12 +1004,12 @@ class TestCompositeCableStrategy:
             positions = cable_sim.get_segment_positions()
             for i in range(config.segment_count):
                 pos = positions[f"cable_segment_{i}"]
-                assert pos[2] > -2.0, (
-                    f"Composite segment {i} z={pos[2]:.3f} fell through box"
-                )
-                assert pos[2] < 0.1, (
-                    f"Composite segment {i} z={pos[2]:.3f} should be below start"
-                )
+                assert (
+                    pos[2] > -2.0
+                ), f"Composite segment {i} z={pos[2]:.3f} fell through box"
+                assert (
+                    pos[2] < 0.1
+                ), f"Composite segment {i} z={pos[2]:.3f} should be below start"
                 assert abs(pos[0]) < 2.0
                 assert abs(pos[1]) < 2.0
         finally:
@@ -1063,12 +1066,10 @@ class TestCompositeCableStrategy:
         cable_sim = CableSimulation(config=config, world=world)
 
         try:
-            box_shapes = [
-                s for s in mesh_body.collision.shapes if isinstance(s, Box)
-            ]
-            assert len(box_shapes) >= 1, (
-                "Expected at least one Box collision proxy on mesh_body"
-            )
+            box_shapes = [s for s in mesh_body.collision.shapes if isinstance(s, Box)]
+            assert (
+                len(box_shapes) >= 1
+            ), "Expected at least one Box collision proxy on mesh_body"
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)
@@ -1085,9 +1086,9 @@ class TestCompositeCableStrategy:
         cable = build_cable(config=config, world=world)
         for segment in cable.segments:
             assert segment.inertial is not None
-            assert segment.inertial.mass == pytest.approx(0.002), (
-                f"Segment {segment.name} has mass {segment.inertial.mass}, expected 0.002"
-            )
+            assert segment.inertial.mass == pytest.approx(
+                0.002
+            ), f"Segment {segment.name} has mass {segment.inertial.mass}, expected 0.002"
 
     def test_mass_per_segment_applied_composite(self):
         """_build_world_model_cable_for_composite applies mass_per_segment."""
@@ -1108,9 +1109,9 @@ class TestCompositeCableStrategy:
         try:
             for segment in cable_sim.cable.segments:
                 assert segment.inertial is not None
-                assert segment.inertial.mass == pytest.approx(0.003), (
-                    f"Segment {segment.name} has mass {segment.inertial.mass}, expected 0.003"
-                )
+                assert segment.inertial.mass == pytest.approx(
+                    0.003
+                ), f"Segment {segment.name} has mass {segment.inertial.mass}, expected 0.003"
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)
@@ -1167,26 +1168,26 @@ class TestCompositeCableStrategy:
             time.sleep(0.5)
 
             positions_during = cable_sim.get_segment_positions()
-            assert "cable_segment_0" in positions_during, (
-                "Grasped segment should be in positions during grasp"
-            )
+            assert (
+                "cable_segment_0" in positions_during
+            ), "Grasped segment should be in positions during grasp"
             for i in range(1, config.segment_count):
-                assert f"cable_segment_{i}" in positions_during, (
-                    f"Neighbour segment {i} should still be present"
-                )
+                assert (
+                    f"cable_segment_{i}" in positions_during
+                ), f"Neighbour segment {i} should still be present"
 
             cable_sim.release(segment_index=0)
             time.sleep(1.0)
 
             positions_released = cable_sim.get_segment_positions()
             for i in range(config.segment_count):
-                assert f"cable_segment_{i}" in positions_released, (
-                    f"Segment {i} should be present after release"
-                )
+                assert (
+                    f"cable_segment_{i}" in positions_released
+                ), f"Segment {i} should be present after release"
                 pos = positions_released[f"cable_segment_{i}"]
-                assert numpy.isfinite(pos).all(), (
-                    f"Segment {i} position should be finite after release"
-                )
+                assert numpy.isfinite(
+                    pos
+                ).all(), f"Segment {i} position should be finite after release"
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)

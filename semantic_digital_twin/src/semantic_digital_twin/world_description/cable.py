@@ -17,7 +17,13 @@ from semantic_digital_twin.world_description.connections import (
     Connection6DoF,
     FixedConnection,
 )
-from semantic_digital_twin.world_description.geometry import Box, Color, Cylinder, Mesh, Scale
+from semantic_digital_twin.world_description.geometry import (
+    Box,
+    Color,
+    Cylinder,
+    Mesh,
+    Scale,
+)
 from semantic_digital_twin.world_description.inertial_properties import Inertial
 from semantic_digital_twin.world_description.shape_collection import ShapeCollection
 from semantic_digital_twin.world_description.world_entity import Body
@@ -661,9 +667,17 @@ class CableSimulation:
                     name_1=f"cable_segment_{i}",
                     name_2=f"cable_segment_{i + 1}",
                     data=[
-                        half, 0.0, 0.0,
-                        -half, 0.0, 0.0,
-                        0.0, 0.0, 0.0, 1.0, 0.0,
+                        half,
+                        0.0,
+                        0.0,
+                        -half,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        1.0,
+                        0.0,
                     ],
                 )
                 world.simulator_additional_properties.append(constraint)
@@ -696,8 +710,7 @@ class CableSimulation:
                 mujoco.__version__,
             )
             self._composite_body_names = {
-                i: f"cable_segment_{i}"
-                for i in range(self.config.segment_count)
+                i: f"cable_segment_{i}" for i in range(self.config.segment_count)
             }
             return
 
@@ -707,8 +720,7 @@ class CableSimulation:
                 mujoco.__version__,
             )
             self._composite_body_names = {
-                i: f"cable_segment_{i}"
-                for i in range(self.config.segment_count)
+                i: f"cable_segment_{i}" for i in range(self.config.segment_count)
             }
             return
 
@@ -753,9 +765,7 @@ class CableSimulation:
 
         step_vec = direction_rotated * segment_length
         base_shift = (
-            half * direction_rotated
-            if self.config.anchor_to_parent
-            else numpy.zeros(3)
+            half * direction_rotated if self.config.anchor_to_parent else numpy.zeros(3)
         )
 
         if self.parent_body is not None:
@@ -813,9 +823,7 @@ class CableSimulation:
             try:
                 spec.recompile(mj_model, mj_data)
             except Exception as e:
-                logger.warning(
-                    "Flex cable recompilation failed (%s). Falling back.", e
-                )
+                logger.warning("Flex cable recompilation failed (%s). Falling back.", e)
                 self._composite_body_names = {
                     i: f"cable_segment_{i}" for i in range(segment_count)
                 }
@@ -926,6 +934,13 @@ class CableSimulation:
             self.config.use_composite
             or strategy == CableSimulationStrategy.POSITION_OVERRIDE
         ):
+            if (
+                self.config.use_composite
+                and strategy == CableSimulationStrategy.KINEMATIC_ATTACH
+            ):
+                print(
+                    "Overwriting KINEMATIC_ATTACH for composite mode. Grasping in POSITION_OVERRIDE"
+                )
             self._grasp_via_position_override(gripper_body_name, segment_index)
         else:
             self._grasp_via_kinematic_attach(gripper_body_name, segment_index)
