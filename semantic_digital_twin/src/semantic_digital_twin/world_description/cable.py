@@ -908,9 +908,8 @@ class CableSimulation:
                 ):
                     continue
                 segment_index = self.cable.segments.index(child)
-                parent_body_name = connection.parent.name.name
                 self.grasp(
-                    gripper_body_name=parent_body_name,
+                    gripper_body_name=str(connection.parent.name),
                     segment_index=segment_index,
                 )
             elif isinstance(modification, RemoveConnectionModification):
@@ -1068,9 +1067,14 @@ class CableSimulation:
         saved_qvel = mj_data.qvel.copy()
 
         segment_name = self._body_name_for_segment(segment_index)
+        mujoco_gripper_name = (
+            gripper_body_name.split("/", 1)[1]
+            if "/" in gripper_body_name
+            else gripper_body_name
+        )
         self.multi_sim.simulator.callbacks["attach"](
             body_1_name=segment_name,
-            body_2_name=gripper_body_name,
+            body_2_name=mujoco_gripper_name,
         )
 
         half = self.config.segment_length / 2.0
@@ -1136,7 +1140,12 @@ class CableSimulation:
 
         from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 
-        gripper_body = self.world.get_body_by_name(PrefixedName(gripper_body_name))
+        if "/" in gripper_body_name:
+            prefix, local_name = gripper_body_name.split("/", 1)
+            gripper_prefixed_name = PrefixedName(name=local_name, prefix=prefix)
+        else:
+            gripper_prefixed_name = PrefixedName(name=gripper_body_name)
+        gripper_body = self.world.get_body_by_name(gripper_prefixed_name)
         if gripper_body is None:
             raise ValueError(
                 f"Gripper body '{gripper_body_name}' not found in world model"
