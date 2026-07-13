@@ -945,9 +945,11 @@ class TestCompositeCableStrategy:
             time.sleep(2.0)
             cable_sim.grasp("test_gripper", segment_index=0)
             time.sleep(0.5)
+            cable_sim.release(segment_index=0)
+            time.sleep(0.5)
             positions = cable_sim.get_segment_positions()
             assert "cable_segment_0" in positions
-            cable_sim.release(segment_index=0)
+            assert numpy.isfinite(positions["cable_segment_0"]).all()
         finally:
             cable_sim.stop()
             logging.disable(logging.NOTSET)
@@ -1110,6 +1112,90 @@ class TestCompositeCableStrategy:
                 assert segment.inertial is not None
                 assert segment.inertial.mass == pytest.approx(0.003), (
                     f"Segment {segment.name} has mass {segment.inertial.mass}, expected 0.003"
+                )
+        finally:
+            cable_sim.stop()
+            logging.disable(logging.NOTSET)
+
+    def test_composite_cable_grasp_keeps_chain_intact(self):
+        """Grasping a composite cable segment and releasing it keeps the
+        chain intact.  After release all segments report positions again,
+        and while grasped the neighbouring segments are pulled along via
+        the equality constraints."""
+        self._requires_composite_api()
+        import logging
+        import time
+
+        logging.disable(logging.CRITICAL)
+
+        world = World()
+        root = Body(name=PrefixedName("world"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(root)
+
+        gripper = Body(name=PrefixedName("test_gripper"))
+        with world.modify_world():
+            world.add_kinematic_structure_entity(gripper)
+            conn = Connection6DoF.create_with_dofs(
+                world=world,
+                parent=root,
+                child=gripper,
+                name=PrefixedName("gripper_joint"),
+            )
+            world.add_connection(conn)
+            world.state[conn.x.id].position = 0.5
+            world.state[conn.y.id].position = 0.0
+            world.state[conn.z.id].position = 0.5
+            world.state[conn.qw.id].position = 1.0
+
+        config = CableConfig(
+            segment_count=5,
+            segment_length=0.03,
+            radius=0.005,
+            mass_per_segment=0.005,
+            use_composite=True,
+        )
+        cable_sim = CableSimulation(config=config, world=world)
+
+        try:
+            cable_sim.start()
+            time.sleep(2.0)
+
+            positions_before = cable_sim.get_segment_positions()
+            for i in range(config.segment_count):
+                assert f"cable_segment_{i}" in positions_before
+
+            cable_sim.grasp("test_gripper", segment_index=0)
+
+            time.sleep(0.5)
+
+            positions_during = cable_sim.get_segment_positions()
+            for i in range(1, config.segment_count):
+                assert f"cable_segment_{i}" in positions_during, (
+                    f"Segment {i} should still be present during grasp"
+                )
+                pos = positions_during[f"cable_segment_{i}"]
+                assert numpy.isfinite(pos).all(), (
+                    f"Segment {i} position should be finite during grasp"
+                )
+                assert abs(pos[0]) < 5.0, (
+                    f"Segment {i} x should not fly off during grasp"
+                )
+
+            cable_sim.release(segment_index=0)
+            time.sleep(1.0)
+
+            positions_released = cable_sim.get_segment_positions()
+            for i in range(config.segment_count):
+                assert f"cable_segment_{i}" in positions_released, (
+                    f"Segment {i} should be present after release"
+                )
+                pos = positions_released[f"cable_segment_{i}"]
+                assert numpy.isfinite(pos).all(), (
+                    f"Segment {i} position should be finite after release"
+                )
+                assert abs(pos[0]) < 5.0, (
+                    f"Segment {i} x should not fly off after release"
                 )
         finally:
             cable_sim.stop()

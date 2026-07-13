@@ -512,6 +512,10 @@ class CableSimulation:
         )
 
         if self.config.use_composite:
+            import mujoco
+
+            if mujoco.mj_version() >= 30900 and self.strategy_override is None:
+                self.strategy_override = CableSimulationStrategy.KINEMATIC_ATTACH
             self.cable = self._build_world_model_cable_for_composite()
         else:
             self.cable = build_cable(
@@ -690,9 +694,7 @@ class CableSimulation:
         """
         import mujoco
 
-        major_version = int(mujoco.__version__.split(".")[0])
-        minor_version = int(mujoco.__version__.split(".")[1])
-        if major_version > 3 or (major_version == 3 and minor_version >= 9):
+        if mujoco.mj_version() >= 30900:
             logger.debug(
                 "MuJoCo %s flex API changed; using rigid-body fallback.",
                 mujoco.__version__,
@@ -924,10 +926,7 @@ class CableSimulation:
                 f" [0, {len(self.cable.segments)})"
             )
         strategy = self._effective_strategy
-        if (
-            self.config.use_composite
-            or strategy == CableSimulationStrategy.POSITION_OVERRIDE
-        ):
+        if strategy == CableSimulationStrategy.POSITION_OVERRIDE:
             self._grasp_via_position_override(gripper_body_name, segment_index)
         else:
             self._grasp_via_kinematic_attach(gripper_body_name, segment_index)
@@ -1069,10 +1068,7 @@ class CableSimulation:
                 f" [0, {len(self.cable.segments)})"
             )
         strategy = self._effective_strategy
-        if (
-            self.config.use_composite
-            or strategy == CableSimulationStrategy.POSITION_OVERRIDE
-        ):
+        if strategy == CableSimulationStrategy.POSITION_OVERRIDE:
             self._release_via_position_override(segment_index)
         else:
             self._release_via_kinematic_detach(segment_index)
