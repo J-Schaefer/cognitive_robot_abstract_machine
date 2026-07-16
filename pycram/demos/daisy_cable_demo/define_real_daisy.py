@@ -3,6 +3,7 @@ import time
 from dataclasses import dataclass
 
 import logging
+
 # from suturo_resources.suturo_map import load_environment
 from typing_extensions import Tuple, Any
 
@@ -10,9 +11,11 @@ import semantic_digital_twin.exceptions
 from coraplex.datastructures import dataclasses
 from coraplex.datastructures.dataclasses import Context
 from coraplex.datastructures.enums import Arms
+
 # from coraplex.language import SequentialPlan
-from coraplex.motion_executor import real_robot
+from coraplex.execution_environment import real_robot
 from giskardpy.middleware.ros2 import rospy
+
 # from coraplex.robot_plans import ParkArmsActionDescription
 from semantic_digital_twin.adapters.ros.messages import LoadModel
 from semantic_digital_twin.adapters.ros.tf_publisher import TFPublisher
@@ -39,6 +42,7 @@ from test.krrood_test.dataset.example_classes import Node
 
 logger = logging.getLogger(__name__)
 
+
 def setup_daisy_context(
     node_name: str = "coraplex_node",
 ) -> Tuple[Any, World, DAiSy, Context]:
@@ -53,7 +57,6 @@ def setup_daisy_context(
             - robot_view
             - context
     """
-
     rospy.init_node("demo_node")
 
     # Fetch world
@@ -76,10 +79,6 @@ def setup_daisy_context(
     robot_view = world.get_semantic_annotations_by_type(DAiSy)[0]
 
     # Context
-    context = Context(
-        world,
-        robot_view,
-        ros_node=rospy.node
-    )
+    context = Context(world, robot_view, ros_node=rospy.node)
 
     return rospy.node, world, robot_view, context
