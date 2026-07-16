@@ -72,6 +72,9 @@ def cable_hanger_world(daisy_world):
             root=cable_body,
             hanging_from=hanger_body,
             length=0.3,
+            mount_offset_x=0.0,
+            mount_offset_y=0.0,
+            height_offset=-0.1,
         )
         world.add_semantic_annotation(cable_annotation)
 
@@ -167,8 +170,7 @@ def test_cable_grasp_chooses_closer_arm_for_scooping(
     left_arm = ViewManager.get_arm_view(Arms.LEFT, view)
     right_arm = ViewManager.get_arm_view(Arms.RIGHT, view)
 
-    hanging_point = cable_annotation.hanging_from
-    hanger_pos = hanging_point.global_transform.to_position().to_np()
+    hanger_pos = action._hanging_point_position().to_np()
 
     left_tip_pos = (
         left_arm.end_effector.tool_frame.global_transform.to_position().to_np()

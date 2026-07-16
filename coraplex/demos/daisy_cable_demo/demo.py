@@ -119,8 +119,8 @@ cable_body = Body(
 )
 
 with world.modify_world():
-    world.merge_world(
-        cable_body,
+    world.add_body(cable_body)
+    world.add_connection(
         FixedConnection(
             hanger_body,
             cable_body,
@@ -134,6 +134,9 @@ with world.modify_world():
         root=cable_body,
         hanging_from=hanger_body,
         length=0.3,
+        mount_offset_x=0.0,
+        mount_offset_y=0.0,
+        height_offset=-0.15,
     )
     world.add_semantic_annotation(cable_annotation)
 
