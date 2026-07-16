@@ -2,6 +2,8 @@ import os
 import time
 from math import pi
 
+from coraplex.datastructures.enums import ApproachDirection, Arms, VerticalAlignment
+from coraplex.datastructures.grasp import GraspDescription
 from coraplex.datastructures.enums import Arms
 from coraplex.execution_environment import real_robot, simulated_robot
 from coraplex.plans.factories import sequential
@@ -18,7 +20,7 @@ from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.semantic_annotations.cable import Cable
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import FixedConnection
-from semantic_digital_twin.world_description.geometry import Box, Scale
+from semantic_digital_twin.world_description.geometry import Box, Cylinder, Scale, Color
 from semantic_digital_twin.world_description.shape_collection import ShapeCollection
 from semantic_digital_twin.world_description.world_entity import Body
 
@@ -77,8 +79,8 @@ with world.modify_world():
             world.get_semantic_annotations_by_type(DAiSy)[0].root,
             cable_post_root,
             parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                x=0.02,
-                y=-0.02,
+                x=-0.02,
+                y=0.025,
                 z=0.8,
                 roll=pi / 2,
                 reference_frame=world.get_semantic_annotations_by_type(DAiSy)[0].root,
@@ -105,11 +107,11 @@ with world.modify_world():
             cable_post_root,
             cable_hanger_root,
             parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                x=-0.02,
+                x=0.0,
                 y=0.310,  # 720/2 - 50
-                z=0.0,
+                z=0.02,
                 roll=-pi / 2,
-                pitch=-pi / 2,
+                # pitch=-pi / 2,
                 reference_frame=cable_post_root,
             ),
         ),
@@ -119,8 +121,8 @@ hanger_body = world.get_body_by_name(PrefixedName("cable_hanger_2.stl"))
 
 cable_body = Body(
     name=PrefixedName("cable"),
-    collision=ShapeCollection([Box(scale=Scale(0.01, 0.01, 0.3))]),
-    visual=ShapeCollection([Box(scale=Scale(0.01, 0.01, 0.3))]),
+    collision=ShapeCollection([Cylinder(width=0.01, height=0.3)]),
+    visual=ShapeCollection([Cylinder(width=0.01, height=0.3, color=Color(1, 0, 0, 1))]),
 )
 
 with world.modify_world():
@@ -132,7 +134,7 @@ with world.modify_world():
             parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
                 z=-0.15, reference_frame=hanger_body
             ),
-        ),
+        )
     )
     cable_annotation = Cable(
         name=PrefixedName("cable_annotation"),
@@ -158,7 +160,7 @@ plan = sequential(
         ParkArmsAction(arm=Arms.BOTH),
         SetGripperAction(gripper=Arms.BOTH, motion=GripperState.OPEN),
         # PickUpAction(
-        #     object_designator=cup_root, arm=Arms.LEFT, grasp_description=pick_up_grasp
+        #     object_designator=cup_root, arm=Arms.RIGHT, grasp_description=pick_up_grasp
         # ),
         CableGraspAction(
             cable_annotation=cable_annotation,
