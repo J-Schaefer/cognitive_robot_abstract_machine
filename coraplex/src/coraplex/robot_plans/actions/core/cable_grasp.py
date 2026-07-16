@@ -64,6 +64,14 @@ class CableGraspAction(ActionDescription):
     Distance in metres to approach the hanging point along the world Y axis.
     """
 
+    approach_direction: int = 0
+    """
+    Approach direction from which the arm approaches the cable or cable hanger.
+
+    The axis index describes the perpendicular axis to the front view of the cable
+    hanger.
+    """
+
     @property
     def _action_plan(self) -> PlanNode:
         scoop_arm = self._choose_scoop_arm()
