@@ -161,6 +161,7 @@ plan = sequential(
             cable_annotation=cable_annotation,
             grasp_offset=0.1,
             approach_offset=0.1,
+            approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
         ),
         ParkArmsAction(arm=Arms.BOTH),
     ],
