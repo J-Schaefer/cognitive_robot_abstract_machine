@@ -238,19 +238,40 @@ class HasLeftRightArm(
         ), f"Must have exactly two arms to specify left and right arm, but found {len(self.arms)}."
         pov = self.root.global_transform
         [first_arm, second_arm] = self.arms
-        # the arms may share a root, but the first body after the root should be different
         world_P_first_body = first_arm.bodies[1].global_transform.to_position()
         world_P_second_body = second_arm.bodies[1].global_transform.to_position()
 
-        return (
-            first_arm
-            if relation(
-                world_P_first_body,
-                world_P_second_body,
-                pov,
-            )()
-            else second_arm
-        )
+        def _signed_distance_along_axis(axis_index: int) -> float:
+            import numpy as np
+
+            ref_np = pov.to_np()
+            front_world = ref_np[:3, axis_index]
+            front_norm = front_world / (np.linalg.norm(front_world) + 1e-12)
+            s_first = (
+                world_P_first_body.x * front_norm[0]
+                + world_P_first_body.y * front_norm[1]
+                + world_P_first_body.z * front_norm[2]
+            )
+            s_second = (
+                world_P_second_body.x * front_norm[0]
+                + world_P_second_body.y * front_norm[1]
+                + world_P_second_body.z * front_norm[2]
+            )
+            return (s_first - s_second).compile()()
+
+        if relation(world_P_first_body, world_P_second_body, pov)():
+            return first_arm
+
+        diff_y = _signed_distance_along_axis(1)
+
+        if abs(diff_y) < 1e-12:
+            diff_x = _signed_distance_along_axis(0)
+            if diff_x < -1e-12:
+                return first_arm if relation == LeftOf else second_arm
+            elif diff_x > 1e-12:
+                return first_arm if relation == RightOf else second_arm
+
+        return second_arm
 
 
 @dataclass(eq=False)
