@@ -28,7 +28,11 @@ from coraplex.querying.predicates import GripperIsFree
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
 from semantic_digital_twin.semantic_annotations.cable import Cable
-from semantic_digital_twin.spatial_types.spatial_types import Pose, Point3
+from semantic_digital_twin.spatial_types.spatial_types import (
+    HomogeneousTransformationMatrix,
+    Point3,
+    Pose,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,13 +72,12 @@ class CableGraspAction(ActionDescription):
         scoop_end_effector = ViewManager.get_end_effector_view(scoop_arm, self.robot)
         grasp_end_effector = ViewManager.get_end_effector_view(grasp_arm, self.robot)
 
-        hanging_point = self.cable_annotation.hanging_from
-        hanger_position = hanging_point.global_transform.to_position()
+        hanging_position = self._hanging_point_position()
 
         scoop_position = Point3(
-            x=hanger_position.x,
-            y=hanger_position.y - self.approach_offset,
-            z=hanger_position.z,
+            x=hanging_position.x,
+            y=hanging_position.y - self.approach_offset,
+            z=hanging_position.z,
             reference_frame=self.world.root,
         )
         scoop_pose = Pose(
@@ -84,9 +87,9 @@ class CableGraspAction(ActionDescription):
         )
 
         grasp_position = Point3(
-            x=hanger_position.x,
-            y=hanger_position.y - self.approach_offset,
-            z=hanger_position.z - self.grasp_offset,
+            x=hanging_position.x,
+            y=hanging_position.y - self.approach_offset,
+            z=hanging_position.z - self.grasp_offset,
             reference_frame=self.world.root,
         )
         grasp_pose = Pose(
@@ -117,12 +120,24 @@ class CableGraspAction(ActionDescription):
             ],
         )
 
+    def _hanging_point_position(self) -> Point3:
+        """
+        Compute the world-frame position of the hanging point from the parent body's
+        pose and the mount offsets defined on the cable annotation.
+        """
+        parent_global = self.cable_annotation.hanging_from.global_transform
+        local_offset = HomogeneousTransformationMatrix.from_xyz_rpy(
+            x=self.cable_annotation.mount_offset_x,
+            y=self.cable_annotation.mount_offset_y,
+            z=self.cable_annotation.height_offset,
+        )
+        return (parent_global @ local_offset).to_position()
+
     def _choose_scoop_arm(self) -> Arms:
         left_arm = ViewManager.get_arm_view(Arms.LEFT, self.robot)
         right_arm = ViewManager.get_arm_view(Arms.RIGHT, self.robot)
 
-        hanging_point = self.cable_annotation.hanging_from
-        hanger_pos = hanging_point.global_transform.to_position().to_np()
+        hanger_pos = self._hanging_point_position().to_np()
 
         left_tip_pos = (
             left_arm.end_effector.tool_frame.global_transform.to_position().to_np()
