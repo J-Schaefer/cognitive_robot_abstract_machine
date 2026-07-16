@@ -2,11 +2,11 @@ import os
 import time
 from math import pi
 
-from coraplex.datastructures.enums import ApproachDirection, Arms, VerticalAlignment
-from coraplex.datastructures.grasp import GraspDescription
+from coraplex.datastructures.enums import Arms
 from coraplex.execution_environment import real_robot, simulated_robot
 from coraplex.plans.factories import sequential
 from coraplex.robot_plans.actions.core.pick_up import PickUpAction
+from coraplex.robot_plans.actions.core.cable_grasp import CableGraspAction
 from coraplex.robot_plans.actions.core.robot_body import (
     ParkArmsAction,
     SetGripperAction,
@@ -15,8 +15,12 @@ from semantic_digital_twin.adapters.mesh import STLParser
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.daisy import DAiSy
-from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix, Point3
+from semantic_digital_twin.semantic_annotations.cable import Cable
+from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import FixedConnection
+from semantic_digital_twin.world_description.geometry import Box, Scale
+from semantic_digital_twin.world_description.shape_collection import ShapeCollection
+from semantic_digital_twin.world_description.world_entity import Body
 
 from define_real_daisy import setup_daisy_context
 from define_sim_daisy import setup_sim_daisy
@@ -108,6 +112,31 @@ with world.modify_world():
 
 hanger_body = world.get_body_by_name(PrefixedName("cable_hanger_2.stl"))
 
+cable_body = Body(
+    name=PrefixedName("cable"),
+    collision=ShapeCollection([Box(scale=Scale(0.01, 0.01, 0.3))]),
+    visual=ShapeCollection([Box(scale=Scale(0.01, 0.01, 0.3))]),
+)
+
+with world.modify_world():
+    world.merge_world(
+        cable_body,
+        FixedConnection(
+            hanger_body,
+            cable_body,
+            parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
+                z=-0.15, reference_frame=hanger_body
+            ),
+        ),
+    )
+    cable_annotation = Cable(
+        name=PrefixedName("cable_annotation"),
+        root=cable_body,
+        hanging_from=hanger_body,
+        length=0.3,
+    )
+    world.add_semantic_annotation(cable_annotation)
+
 # %% Demo Plan
 pick_up_grasp = GraspDescription(
     approach_direction=ApproachDirection.LEFT,
@@ -123,7 +152,12 @@ plan = sequential(
         # PickUpAction(
         #     object_designator=cup_root, arm=Arms.LEFT, grasp_description=pick_up_grasp
         # ),
-        ParkArmsAction(arm=Arms.RIGHT),
+        CableGraspAction(
+            cable_annotation=cable_annotation,
+            grasp_offset=0.1,
+            approach_offset=0.1,
+        ),
+        ParkArmsAction(arm=Arms.BOTH),
     ],
     context,
 )
