@@ -69,7 +69,7 @@ class CableGraspAction(ActionDescription):
     Approach direction from which the arm approaches the cable or cable hanger.
 
     The axis index describes the perpendicular axis to the front view of the cable
-    hanger.
+    hanger. 0 is x axis of the parent item, 1 is y axis, 2 is z axis.
     """
 
     @property
