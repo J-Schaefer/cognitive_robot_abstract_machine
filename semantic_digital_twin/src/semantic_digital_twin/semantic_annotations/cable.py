@@ -1,15 +1,32 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Self
 
+from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.semantic_annotations.mixins import HasRootBody
+from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
+from semantic_digital_twin.world_description.connections import FixedConnection
+from semantic_digital_twin.world_description.geometry import Scale
+from semantic_digital_twin.world_description.shape_collection import (
+    BoundingBoxCollection,
+)
 from semantic_digital_twin.world_description.world_entity import Body
+
+if TYPE_CHECKING:
+    from semantic_digital_twin.world import World
 
 
 @dataclass(eq=False)
 class Cable(HasRootBody):
     """
     A cable hanging from a fixture such as a cable hanger.
+
+    .. note::
+        Use :meth:`create_with_new_body_in_world` to construct a cable. That
+        method uses ``mount_offset_x``, ``mount_offset_y``, and ``height_offset``
+        as the single source of truth for both the kinematic connection and the
+        hanging point queried by action designators.
     """
 
     hanging_from: Body
@@ -34,6 +51,73 @@ class Cable(HasRootBody):
 
     height_offset: float = field(default=0.0)
     """
-    Offset in metres along the parent body's local Z axis from the parent origin down to
-    the hanging point.
+    Offset in metres along the parent body's local Z axis from the parent origin to the
+    hanging point.
+
+    A negative value means the cable hangs below the parent origin.
     """
+
+    @classmethod
+    def create_with_new_body_in_world(
+        cls,
+        name: PrefixedName,
+        world: World,
+        hanging_from: Body,
+        length: float,
+        mount_offset_x: float = 0.0,
+        mount_offset_y: float = 0.0,
+        height_offset: float = 0.0,
+        cable_thickness: float = 0.01,
+    ) -> Self:
+        """
+        Create a Cable annotation with a new box-shaped body.
+
+        The hanging point is at ``(mount_offset_x, mount_offset_y, height_offset)`` in
+        the ``hanging_from`` frame. The cable body extends downward from the hanging
+        point by ``length``.
+
+        :param name: Name for the cable body and annotation.
+        :param world: The world to register the body, connection, and annotation in.
+        :param hanging_from: The body the cable is attached to.
+        :param length: Overall length of the cable in metres.
+        :param mount_offset_x: X offset of the hanging point in the parent frame.
+        :param mount_offset_y: Y offset of the hanging point in the parent frame.
+        :param height_offset: Z offset of the hanging point in the parent frame.
+        :param cable_thickness: X and Y dimensions of the cable cross-section.
+        """
+        cable_body = Body(name=name)
+        scale = Scale(cable_thickness, cable_thickness, length)
+        geometry_event = scale.to_simple_event().as_composite_set()
+        collision = BoundingBoxCollection.from_event(
+            cable_body, geometry_event
+        ).as_shapes()
+        cable_body.collision = collision
+        cable_body.visual = collision
+
+        connection_transform = HomogeneousTransformationMatrix.from_xyz_rpy(
+            x=mount_offset_x,
+            y=mount_offset_y,
+            z=height_offset - length / 2,
+            reference_frame=hanging_from,
+        )
+        connection = FixedConnection(
+            parent=hanging_from,
+            child=cable_body,
+            parent_T_connection_expression=connection_transform,
+        )
+
+        world.add_body(cable_body)
+        world.add_connection(connection)
+
+        annotation = cls(
+            name=name,
+            root=cable_body,
+            hanging_from=hanging_from,
+            length=length,
+            mount_offset_x=mount_offset_x,
+            mount_offset_y=mount_offset_y,
+            height_offset=height_offset,
+        )
+        world.add_semantic_annotation(annotation)
+
+        return annotation

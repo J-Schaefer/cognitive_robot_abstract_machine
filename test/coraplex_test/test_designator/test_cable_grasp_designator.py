@@ -15,11 +15,8 @@ from coraplex.view_manager import ViewManager
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.semantic_annotations.cable import Cable
-from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix, Point3
-from semantic_digital_twin.world_description.connections import (
-    Connection6DoF,
-    FixedConnection,
-)
+from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
+from semantic_digital_twin.world_description.connections import Connection6DoF
 from semantic_digital_twin.world_description.geometry import Box, Scale
 from semantic_digital_twin.world_description.shape_collection import ShapeCollection
 from semantic_digital_twin.world_description.world_entity import Body
@@ -32,12 +29,6 @@ def cable_hanger_world(daisy_world):
         name=PrefixedName("hanger"),
         collision=ShapeCollection([Box(scale=Scale(0.05, 0.05, 0.05))]),
         visual=ShapeCollection([Box(scale=Scale(0.05, 0.05, 0.05))]),
-    )
-
-    cable_body = Body(
-        name=PrefixedName("cable"),
-        collision=ShapeCollection([Box(scale=Scale(0.01, 0.01, 0.2))]),
-        visual=ShapeCollection([Box(scale=Scale(0.01, 0.01, 0.2))]),
     )
 
     daisy = world.get_semantic_annotations_by_type(DAiSy)[0]
@@ -58,25 +49,15 @@ def cable_hanger_world(daisy_world):
         )
         world.add_connection(hanger_connection)
 
-        cable_connection = FixedConnection(
-            parent=hanger_body,
-            child=cable_body,
-            parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                z=-0.1, reference_frame=hanger_body
-            ),
-        )
-        world.add_connection(cable_connection)
-
-        cable_annotation = Cable(
-            name=PrefixedName("cable_annotation"),
-            root=cable_body,
+        cable_annotation = Cable.create_with_new_body_in_world(
+            name=PrefixedName("cable"),
+            world=world,
             hanging_from=hanger_body,
             length=0.3,
             mount_offset_x=0.0,
             mount_offset_y=0.0,
-            height_offset=-0.1,
+            height_offset=0.0,
         )
-        world.add_semantic_annotation(cable_annotation)
 
     return world
 
