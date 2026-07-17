@@ -119,6 +119,7 @@ with world.modify_world():
 
 hanger_body = world.get_body_by_name(PrefixedName("cable_hanger_2.stl"))
 
+# %% Cable Definition
 cable_body = Body(
     name=PrefixedName("cable"),
     collision=ShapeCollection([Cylinder(width=0.01, height=0.3)]),
@@ -132,7 +133,7 @@ with world.modify_world():
             hanger_body,
             cable_body,
             parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                z=-0.15, reference_frame=hanger_body
+                x=0.078, y=-0.05, z=-0.15, reference_frame=hanger_body
             ),
         )
     )
@@ -141,8 +142,8 @@ with world.modify_world():
         root=cable_body,
         hanging_from=hanger_body,
         length=0.3,
-        mount_offset_x=0.0,
-        mount_offset_y=0.0,
+        mount_offset_x=0.078,
+        mount_offset_y=-0.050,
         height_offset=-0.15,
     )
     world.add_semantic_annotation(cable_annotation)
