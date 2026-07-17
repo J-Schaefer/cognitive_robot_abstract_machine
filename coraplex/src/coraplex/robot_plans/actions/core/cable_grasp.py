@@ -32,9 +32,29 @@ from semantic_digital_twin.spatial_types.spatial_types import (
     HomogeneousTransformationMatrix,
     Point3,
     Pose,
+    Quaternion,
+    RotationMatrix,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _cross(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    return np.cross(a[:3], b[:3])
+
+
+def _normalized(v: np.ndarray) -> np.ndarray:
+    return v / np.linalg.norm(v)
+
+
+def _rotation_matrix_from_axes(
+    x_axis: np.ndarray, y_axis: np.ndarray, z_axis: np.ndarray
+) -> RotationMatrix:
+    data = np.eye(4)
+    data[:3, 0] = x_axis
+    data[:3, 1] = y_axis
+    data[:3, 2] = z_axis
+    return RotationMatrix(data=data)
 
 
 @dataclass
@@ -59,17 +79,27 @@ class CableGraspAction(ActionDescription):
     gripper position along the world Z axis.
     """
 
-    approach_offset: float = field(default=0.1)
+    side_offset: float = field(default=0.1)
     """
-    Distance in metres to approach the hanging point along the world Y axis.
+    Distance in metres to offset the scoop arm to the side of the hanging point.
+    """
+
+    front_offset: float = field(default=0.05)
+    """
+    Distance in metres to offset the scoop arm in front of the hanging point.
+    """
+
+    down_offset: float = field(default=0.12)
+    """
+    Distance in metres to offset the scoop arm below the cable hanger.
     """
 
     approach_direction: int = 0
     """
-    Approach direction from which the arm approaches the cable or cable hanger.
+    Index of the hanger's local axis that is the front-facing axis.
 
-    The axis index describes the perpendicular axis to the front view of the cable
-    hanger. 0 is x axis of the parent item, 1 is y axis, 2 is z axis.
+    0 is the X axis, 1 is the Y axis, 2 is the Z axis. The other two axes form a right-
+    handed frame with the front axis.
     """
 
     @property
@@ -80,23 +110,14 @@ class CableGraspAction(ActionDescription):
         scoop_end_effector = ViewManager.get_end_effector_view(scoop_arm, self.robot)
         grasp_end_effector = ViewManager.get_end_effector_view(grasp_arm, self.robot)
 
+        pre_scoop_pose, scoop_end_pose = self._calculate_scoop_poses(
+            scoop_arm, scoop_end_effector
+        )
+
         hanging_position = self._hanging_point_position()
-
-        scoop_position = Point3(
-            x=hanging_position.x,
-            y=hanging_position.y - self.approach_offset,
-            z=hanging_position.z,
-            reference_frame=self.world.root,
-        )
-        scoop_pose = Pose(
-            position=scoop_position,
-            orientation=scoop_end_effector.front_facing_orientation,
-            reference_frame=self.world.root,
-        )
-
         grasp_position = Point3(
             x=hanging_position.x,
-            y=hanging_position.y - self.approach_offset,
+            y=hanging_position.y,
             z=hanging_position.z - self.grasp_offset,
             reference_frame=self.world.root,
         )
@@ -111,7 +132,12 @@ class CableGraspAction(ActionDescription):
                 MoveGripperMotion(motion=GripperState.OPEN, gripper=scoop_arm),
                 MoveGripperMotion(motion=GripperState.OPEN, gripper=grasp_arm),
                 MoveToolCenterPointMotion(
-                    scoop_pose,
+                    pre_scoop_pose,
+                    scoop_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
+                MoveToolCenterPointMotion(
+                    scoop_end_pose,
                     scoop_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
@@ -128,11 +154,102 @@ class CableGraspAction(ActionDescription):
             ],
         )
 
+    def _hanger_axes(self):
+        """
+        Return the world-frame unit vectors for the hanger's front, side, and up axes.
+
+        The mapping uses ``approach_direction`` as the front axis index (0=X, 1=Y,
+        2=Z). The side axis is the next index modulo 3 and the up axis is the third
+        index, forming a right-handed frame where front × side = up.
+        """
+        hanger_rot = self.cable_annotation.hanging_from.global_transform
+        rot_np = np.array(hanger_rot.to_np()[:3, :3], dtype=float)
+
+        front_idx = self.approach_direction
+        side_idx = (front_idx + 1) % 3
+        up_idx = (front_idx + 2) % 3
+
+        return (rot_np[:, front_idx], rot_np[:, side_idx], rot_np[:, up_idx])
+
+    def _calculate_scoop_poses(self, scoop_arm, scoop_end_effector):
+        """
+        Calculate the pre-scoop and scoop-end poses for the scooping arm.
+
+        The pre-scoop pose positions the gripper to the side of the cable, in front of
+        it, and below the hanger, oriented such that the gripper faces the cable. The
+        scoop-end pose moves toward and across the hanging point so the cable is
+        captured between the fingers.
+        """
+        front_world, side_world, up_world = self._hanger_axes()
+        side_sign = 1.0 if scoop_arm == Arms.RIGHT else -1.0
+
+        hanging_pos = self._hanging_point_position().to_np()
+
+        pre_scoop_pos = (
+            hanging_pos
+            + front_world * (-self.front_offset)
+            + side_world * (self.side_offset * side_sign)
+            - up_world * self.down_offset
+        )
+        scoop_orientation = self._scoop_gripper_orientation(
+            side_world * side_sign, front_world
+        )
+
+        pre_scoop_pose = Pose(
+            position=Point3(
+                x=pre_scoop_pos[0],
+                y=pre_scoop_pos[1],
+                z=pre_scoop_pos[2],
+                reference_frame=self.world.root,
+            ),
+            orientation=scoop_orientation,
+            reference_frame=self.world.root,
+        )
+
+        scoop_end_pos = (
+            hanging_pos
+            + front_world * (-self.front_offset)
+            - up_world * self.down_offset
+        )
+        scoop_end_pose = Pose(
+            position=Point3(
+                x=scoop_end_pos[0],
+                y=scoop_end_pos[1],
+                z=scoop_end_pos[2],
+                reference_frame=self.world.root,
+            ),
+            orientation=scoop_orientation,
+            reference_frame=self.world.root,
+        )
+
+        return pre_scoop_pose, scoop_end_pose
+
+    def _scoop_gripper_orientation(
+        self,
+        side_direction: np.ndarray,
+        front_direction: np.ndarray,
+    ) -> Quaternion:
+        """
+        Compute the gripper orientation quaternion for the scoop arm.
+
+        The gripper's Z axis (front) faces toward the cable (along ``-side_direction``).
+        The Y axis (up) is computed to stay in the plane containing ``front_direction``
+        and world Z.
+        """
+        gripper_z = _normalized(-side_direction)
+        world_up = np.array([0, 0, 1])
+
+        cross_xz = _cross(world_up, gripper_z)
+        if np.linalg.norm(cross_xz) < 1e-6:
+            gripper_x = _normalized(_cross(world_up, front_direction))
+        else:
+            gripper_x = _normalized(cross_xz)
+        gripper_y = _normalized(_cross(gripper_z, gripper_x))
+
+        rotation_matrix = _rotation_matrix_from_axes(gripper_x, gripper_y, gripper_z)
+        return Quaternion.from_rotation_matrix(rotation_matrix)
+
     def _hanging_point_position(self) -> Point3:
-        """
-        Compute the world-frame position of the hanging point from the parent body's
-        pose and the mount offsets defined on the cable annotation.
-        """
         parent_global = self.cable_annotation.hanging_from.global_transform
         local_offset = HomogeneousTransformationMatrix.from_xyz_rpy(
             x=self.cable_annotation.mount_offset_x,
@@ -163,9 +280,6 @@ class CableGraspAction(ActionDescription):
     def pre_condition(
         variables: Dict[str, Variable], context: Context, kwargs: Dict[str, Any]
     ) -> ConditionType:
-        """
-        Both grippers must be free.
-        """
         left_end_effector = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
         right_end_effector = ViewManager.get_end_effector_view(
             Arms.RIGHT, context.robot
@@ -179,9 +293,6 @@ class CableGraspAction(ActionDescription):
     def post_condition(
         variables: Dict[str, Variable], context: Context, kwargs: Dict[str, Any]
     ) -> ConditionType:
-        """
-        The cable must be attached to one of the end effectors.
-        """
         left_end_effector = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
         right_end_effector = ViewManager.get_end_effector_view(
             Arms.RIGHT, context.robot
