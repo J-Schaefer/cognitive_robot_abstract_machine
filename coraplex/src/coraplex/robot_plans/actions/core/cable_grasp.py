@@ -102,6 +102,14 @@ class CableGraspAction(ActionDescription):
     handed frame with the front axis.
     """
 
+    approach_sign: int = 1  # TODO redefine type hint to only allow -1 or +1
+    """
+    Direction the approach axis is pointing.
+    
+    If the axis is pointing towards the approach direction the approach_sign is +1, if
+    the axis is pointing to the back the approach_sign is -1.
+    """
+
     @property
     def _action_plan(self) -> PlanNode:
         scoop_arm = self._choose_scoop_arm()
@@ -156,20 +164,21 @@ class CableGraspAction(ActionDescription):
 
     def _hanger_axes(self):
         """
-        Return the world-frame unit vectors for the hanger's front, side, and up axes.
+        Return world-frame unit vectors (front, side, up) for the hanger.
 
-        The mapping uses ``approach_direction`` as the front axis index (0=X, 1=Y,
-        2=Z). The side axis is the next index modulo 3 and the up axis is the third
-        index, forming a right-handed frame where front × side = up.
+        ``approach_direction`` is the frame axis index the hanger faces along
+        (0=X, 1=Y, 2=Z); ``approach_sign`` is +1/-1 if the front points along
+        the positive/negative axis. Up is the frame's +Z. The frame is
+        right-handed: front × side = up, i.e. side = up × front.
         """
         hanger_rot = self.cable_annotation.hanging_from.global_transform
         rot_np = np.array(hanger_rot.to_np()[:3, :3], dtype=float)
 
-        front_idx = self.approach_direction
-        side_idx = (front_idx + 1) % 3
-        up_idx = (front_idx + 2) % 3
+        front = self.approach_sign * rot_np[:, self.approach_direction]
+        up = rot_np[:, 2]  # frame's Z is up
+        side = np.cross(up, front)  # guarantees front × side = up
 
-        return (rot_np[:, front_idx], rot_np[:, side_idx], rot_np[:, up_idx])
+        return front, side, up
 
     def _calculate_scoop_poses(self, scoop_arm, scoop_end_effector):
         """
@@ -186,13 +195,13 @@ class CableGraspAction(ActionDescription):
         hanging_pos = self._hanging_point_position().to_np()
 
         pre_scoop_pos = (
-            hanging_pos
+            hanging_pos[:3]
             + front_world * (-self.front_offset)
             + side_world * (self.side_offset * side_sign)
             - up_world * self.down_offset
         )
         scoop_orientation = self._scoop_gripper_orientation(
-            side_world * side_sign, front_world
+            front_world, side_world * side_sign
         )
 
         pre_scoop_pose = Pose(
@@ -207,7 +216,7 @@ class CableGraspAction(ActionDescription):
         )
 
         scoop_end_pos = (
-            hanging_pos
+            hanging_pos[:3]
             + front_world * (-self.front_offset)
             - up_world * self.down_offset
         )
