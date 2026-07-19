@@ -149,6 +149,7 @@ plan = sequential(
             front_offset=0.05,
             down_offset=0.12,
             approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
+            approach_sign=-1,  # y-axis pointing to the back
         ),
         ParkArmsAction(arm=Arms.BOTH),
     ],
