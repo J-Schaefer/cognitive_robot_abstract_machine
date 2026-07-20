@@ -70,7 +70,7 @@ with world.modify_world():
             world.get_semantic_annotations_by_type(DAiSy)[0].root,
             cable_post_root,
             parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                x=-0.02,
+                x=-0.32,
                 y=0.025,
                 z=0.8,
                 roll=pi / 2,
