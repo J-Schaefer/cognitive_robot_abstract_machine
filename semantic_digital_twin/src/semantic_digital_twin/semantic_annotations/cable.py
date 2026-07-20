@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Self
@@ -123,9 +124,7 @@ class Cable(HasRootBody):
             cable_body, cable_thickness, length, cable_shape
         )
         cable_body.collision = collision
-        visual = ShapeCollection(
-            [shape.copy_for_world(world) for shape in collision.shapes]
-        )
+        visual = ShapeCollection([deepcopy(shape) for shape in collision.shapes])
         visual.reference_frame = collision.reference_frame
         visual.dye_shapes(cable_color)
         cable_body.visual = visual
