@@ -2071,6 +2071,12 @@ class Pose(sm.SymbolicMathType, SpatialType, SubclassJSONSerializer):
             )
         return super().__hash__()
 
+    def __matmul__(self, other: HomogeneousTransformationMatrix | Pose) -> Pose:
+        # Catch the case of the other being a Pose
+        if isinstance(other, Pose):
+            other = other.to_homogeneous_matrix()
+        return self.to_homogeneous_matrix().dot(other).to_pose()
+
 
 @dataclass(eq=False, init=False, repr=False)
 class Pose2D(sm.SymbolicMathType, SpatialType, SubclassJSONSerializer):
