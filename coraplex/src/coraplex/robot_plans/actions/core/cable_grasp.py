@@ -123,7 +123,7 @@ class CableGraspAction(ActionDescription):
         scoop_end_effector = ViewManager.get_end_effector_view(scoop_arm, self.robot)
         grasp_end_effector = ViewManager.get_end_effector_view(grasp_arm, self.robot)
 
-        pre_scoop_pose, scoop_end_pose, post_scoop_pose = self._calculate_scoop_poses(
+        pre_scoop_pose, scoop_pose, post_scoop_pose = self._calculate_scoop_poses(
             scoop_arm, scoop_end_effector
         )
 
@@ -131,21 +131,23 @@ class CableGraspAction(ActionDescription):
             grasp_arm, post_scoop_pose
         )
 
-        # hanging_position = self._hanging_point_position()
-        # grasp_position = Point3(
-        #     x=hanging_position.x,
-        #     y=hanging_position.y,
-        #     z=hanging_position.z - self.grasp_offset,
-        #     reference_frame=self.world.root,
-        # )
-        # grasp_pose = Pose(
-        #     position=grasp_position,
-        #     orientation=grasp_end_effector.front_facing_orientation,
-        #     reference_frame=self.world.root,
-        # )
+        front_world, side_world, up_world = self._hanger_axes()
 
+        approach_offset = pre_scoop_pose.to_position().to_np()[:3] + front_world * (0.2)
+        approach_pose = Pose(
+            position=Point3(
+                x=approach_offset[0],
+                y=approach_offset[1],
+                z=approach_offset[2],
+                reference_frame=self.world.root,
+            ),
+            orientation=pre_scoop_pose.orientation,
+            reference_frame=self.world.root,
+        )
+
+        print(f"Approach pose: {approach_pose.to_position()}")
         print(f"Pre-scoop pose: {pre_scoop_pose.to_position()}")
-        print(f"Scoop-end pose: {scoop_end_pose.to_position()}")
+        print(f"Scoop pose: {scoop_pose.to_position()}")
         print(f"Post-scoop pose: {post_scoop_pose.to_position()}")
         print(f"Pre-grasp pose: {pre_grasp_pose.to_position()}")
         print(f"Grasp pose: {grasp_pose.to_position()}")
@@ -157,8 +159,7 @@ class CableGraspAction(ActionDescription):
                 MoveGripperMotion(motion=GripperState.OPEN, gripper=grasp_arm),
                 # TODO: Add approach position in front of the hanging point with about 10 cm distance before approaching
                 MoveToolCenterPointMotion(
-                    pre_scoop_pose
-                    @ HomogeneousTransformationMatrix.from_xyz_rpy(y=-0.2),
+                    approach_pose,
                     scoop_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
@@ -170,7 +171,7 @@ class CableGraspAction(ActionDescription):
                 ),
                 # Move the scoop arm to the scoop-end position
                 MoveToolCenterPointMotion(
-                    scoop_end_pose,
+                    scoop_pose,
                     scoop_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
@@ -245,7 +246,7 @@ class CableGraspAction(ActionDescription):
         pre_scoop_pos = (
             hanging_pos[:3]
             + front_world * (-self.front_offset)
-            + side_world * (self.side_offset * side_sign)
+            # + side_world * (self.side_offset * side_sign)
             - up_world * self.down_offset
         )
         scoop_orientation = self._scoop_gripper_orientation(
@@ -263,23 +264,28 @@ class CableGraspAction(ActionDescription):
             reference_frame=self.world.root,
         )
 
-        scoop_end_pos = (
+        scoop_pos = (
             hanging_pos[:3]
             + front_world * (-self.front_offset)
             - up_world * self.down_offset
         )
-        scoop_end_pose = Pose(
+        scoop_pose = Pose(
             position=Point3(
-                x=scoop_end_pos[0],
-                y=scoop_end_pos[1],
-                z=scoop_end_pos[2],
+                x=scoop_pos[0],
+                y=scoop_pos[1],
+                z=scoop_pos[2],
                 reference_frame=self.world.root,
             ),
             orientation=scoop_orientation,
             reference_frame=self.world.root,
         )
 
-        post_scoop_pos = hanging_pos[:3] - side_world * (0.2 * side_sign)
+        post_scoop_pos = (
+            hanging_pos[:3]
+            + front_world * (-self.front_offset)
+            - side_world * (0.2 * side_sign)
+            - up_world * self.down_offset
+        )
 
         post_scoop_pose = Pose(
             position=Point3(
@@ -292,7 +298,7 @@ class CableGraspAction(ActionDescription):
             reference_frame=self.world.root,
         )
 
-        return pre_scoop_pose, scoop_end_pose, post_scoop_pose
+        return pre_scoop_pose, scoop_pose, post_scoop_pose
 
     def _calculate_pre_grasp_pose(self, grasp_arm: Arms, post_scoop_pose: Pose):
         front_world, side_world, up_world = self._hanger_axes()
