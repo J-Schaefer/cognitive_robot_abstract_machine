@@ -1265,6 +1265,27 @@ class BoundingBox:
         )
         return Box(origin=origin, scale=scale)
 
+    def as_cylinder(self) -> Cylinder:
+        """
+        Convert this bounding box into a cylinder whose diameter equals the larger of
+        its x and y extent and whose height equals its z extent.
+
+        The cylinder is centered at the bounding box center and aligned with the z axis.
+        """
+        scale = Scale(
+            x=self.max_x - self.min_x,
+            y=self.max_y - self.min_y,
+            z=self.max_z - self.min_z,
+        )
+        x = (self.max_x + self.min_x) / 2 + float(self.origin.x)
+        y = (self.max_y + self.min_y) / 2 + float(self.origin.y)
+        z = (self.max_z + self.min_z) / 2 + float(self.origin.z)
+        origin = HomogeneousTransformationMatrix.from_xyz_rpy(
+            x, y, z, 0, 0, 0, self.origin.reference_frame
+        )
+        diameter = max(scale.x, scale.y)
+        return Cylinder(origin=origin, width=diameter, height=scale.z)
+
     def transform_to_origin(
         self, reference_T_new_origin: HomogeneousTransformationMatrix
     ) -> Self:
