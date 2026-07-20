@@ -1785,6 +1785,77 @@ class VolumetricBoundingBox(AxisAlignedBox[Point3]):
         )
         return Box(origin=origin, scale=scale)
 
+    def as_cylinder(self) -> Cylinder:
+        """
+        Convert this bounding box into a cylinder whose diameter equals the larger of
+        its x and y extent and whose height equals its z extent.
+
+        The cylinder is centered at the bounding box center and aligned with the z axis.
+        """
+        scale = Scale(
+            x=self.max_x - self.min_x,
+            y=self.max_y - self.min_y,
+            z=self.max_z - self.min_z,
+        )
+        x = (self.max_x + self.min_x) / 2 + float(self.origin.x)
+        y = (self.max_y + self.min_y) / 2 + float(self.origin.y)
+        z = (self.max_z + self.min_z) / 2 + float(self.origin.z)
+        origin = HomogeneousTransformationMatrix.from_xyz_rpy(
+            x, y, z, 0, 0, 0, self.origin.reference_frame
+        )
+        diameter = max(scale.x, scale.y)
+        return Cylinder(origin=origin, width=diameter, height=scale.z)
+
+    def transform_to_origin(
+        self, reference_T_new_origin: HomogeneousTransformationMatrix
+    ) -> Self:
+        """
+        Transform the bounding box to a different reference frame.
+        """
+        reference_T_new_origin = HomogeneousTransformationMatrix(
+            data=reference_T_new_origin.to_np(),
+            reference_frame=reference_T_new_origin.reference_frame,
+        )
+
+        new_origin_reference_T_self = self.origin.reference_frame._world.transform(
+            self.origin, reference_T_new_origin.reference_frame
+        )
+
+        self_T_new_pose = reference_T_new_origin.inverse() @ new_origin_reference_T_self
+
+        # Get all 8 corners of the BB in link-local space
+        list_self_T_corner = [
+            HomogeneousTransformationMatrix.from_point_rotation_matrix(
+                self_T_corner
+            ).to_np()
+            for self_T_corner in self.get_points()
+        ]  # shape (8, 3)
+
+        list_reference_T_corner = [
+            self_T_new_pose.to_np() @ self_T_corner
+            for self_T_corner in list_self_T_corner
+        ]
+
+        list_reference_P_corner = [
+            reference_T_corner[:3, 3:] for reference_T_corner in list_reference_T_corner
+        ]
+
+        # Compute new corner points
+        min_corner = np.min(list_reference_P_corner, axis=0)
+        max_corner = np.max(list_reference_P_corner, axis=0)
+
+        world_bb = VolumetricBoundingBox.from_min_max(
+            Point3.from_iterable(
+                min_corner, reference_frame=reference_T_new_origin.reference_frame
+            ),
+            Point3.from_iterable(
+                max_corner, reference_frame=reference_T_new_origin.reference_frame
+            ),
+            reference_T_new_origin,
+        )
+
+        return world_bb
+
     def __eq__(self, other: VolumetricBoundingBox) -> bool:
         return (
             np.isclose(self.min_x, other.min_x)
