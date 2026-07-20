@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
+from numpy import dtype, ndarray
 from typing_extensions import Any, Dict
 
 from coraplex.datastructures.dataclasses import Context
@@ -113,48 +115,86 @@ class CableGraspAction(ActionDescription):
     @property
     def _action_plan(self) -> PlanNode:
         scoop_arm = self._choose_scoop_arm()
+        # TODO: fix the arm selection, or check the distances, sometimes with smaller
+        #  difference as if it's choosing the wrong arm
         grasp_arm = Arms.RIGHT if scoop_arm == Arms.LEFT else Arms.LEFT
+        print(f"Scooping with {scoop_arm.name}, Grasping with {grasp_arm.name}")
 
         scoop_end_effector = ViewManager.get_end_effector_view(scoop_arm, self.robot)
         grasp_end_effector = ViewManager.get_end_effector_view(grasp_arm, self.robot)
 
-        pre_scoop_pose, scoop_end_pose = self._calculate_scoop_poses(
+        pre_scoop_pose, scoop_end_pose, post_scoop_pose = self._calculate_scoop_poses(
             scoop_arm, scoop_end_effector
         )
 
-        hanging_position = self._hanging_point_position()
-        grasp_position = Point3(
-            x=hanging_position.x,
-            y=hanging_position.y,
-            z=hanging_position.z - self.grasp_offset,
-            reference_frame=self.world.root,
+        pre_grasp_pose, grasp_pose = self._calculate_pre_grasp_pose(
+            grasp_arm, post_scoop_pose
         )
-        grasp_pose = Pose(
-            position=grasp_position,
-            orientation=grasp_end_effector.front_facing_orientation,
-            reference_frame=self.world.root,
-        )
+
+        # hanging_position = self._hanging_point_position()
+        # grasp_position = Point3(
+        #     x=hanging_position.x,
+        #     y=hanging_position.y,
+        #     z=hanging_position.z - self.grasp_offset,
+        #     reference_frame=self.world.root,
+        # )
+        # grasp_pose = Pose(
+        #     position=grasp_position,
+        #     orientation=grasp_end_effector.front_facing_orientation,
+        #     reference_frame=self.world.root,
+        # )
+
+        print(f"Pre-scoop pose: {pre_scoop_pose.to_position()}")
+        print(f"Scoop-end pose: {scoop_end_pose.to_position()}")
+        print(f"Post-scoop pose: {post_scoop_pose.to_position()}")
+        print(f"Pre-grasp pose: {pre_grasp_pose.to_position()}")
+        print(f"Grasp pose: {grasp_pose.to_position()}")
 
         return sequential(
             children=[
+                # Open both grippers
                 MoveGripperMotion(motion=GripperState.OPEN, gripper=scoop_arm),
                 MoveGripperMotion(motion=GripperState.OPEN, gripper=grasp_arm),
+                # TODO: Add approach position in front of the hanging point with about 10 cm distance before approaching
+                MoveToolCenterPointMotion(
+                    pre_scoop_pose
+                    @ HomogeneousTransformationMatrix.from_xyz_rpy(y=-0.2),
+                    scoop_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
+                # Move the scoop arm to the pre-scoop position
                 MoveToolCenterPointMotion(
                     pre_scoop_pose,
                     scoop_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
+                # Move the scoop arm to the scoop-end position
                 MoveToolCenterPointMotion(
                     scoop_end_pose,
                     scoop_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
+                # Move the scoop arm to the post-scoop position, actually scoop cable
+                MoveToolCenterPointMotion(
+                    post_scoop_pose,
+                    scoop_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
+                # Move grasp arm the pre-grasp position
+                MoveToolCenterPointMotion(
+                    pre_grasp_pose,
+                    grasp_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
+                # Move the grasp arm to the grasp position
                 MoveToolCenterPointMotion(
                     grasp_pose,
                     grasp_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
+                # Close gripper of grasp arm to grasp the cable
                 MoveGripperMotion(motion=GripperState.CLOSE, gripper=grasp_arm),
+                # Attach the cable to the grasp arm
                 AttachNode(
                     body=self.cable_annotation.root,
                     new_parent=grasp_end_effector.tool_frame,
@@ -162,14 +202,20 @@ class CableGraspAction(ActionDescription):
             ],
         )
 
-    def _hanger_axes(self):
+    def _hanger_axes(
+        self,
+    ) -> tuple[
+        ndarray[tuple[int, ...], dtype[Any]],
+        ndarray[tuple[int, ...], dtype[Any]],
+        ndarray[tuple[int, ...], dtype[Any]],
+    ]:
         """
         Return world-frame unit vectors (front, side, up) for the hanger.
 
-        ``approach_direction`` is the frame axis index the hanger faces along
-        (0=X, 1=Y, 2=Z); ``approach_sign`` is +1/-1 if the front points along
+        `approach_direction` is the frame axis index the hanger faces along
+        (0=X, 1=Y, 2=Z); `approach_sign` is +1/-1 if the front points along
         the positive/negative axis. Up is the frame's +Z. The frame is
-        right-handed: front × side = up, i.e. side = up × front.
+        right-handed: front × side = up, i.e., side = up × front.
         """
         hanger_rot = self.cable_annotation.hanging_from.global_transform
         rot_np = np.array(hanger_rot.to_np()[:3, :3], dtype=float)
@@ -180,14 +226,16 @@ class CableGraspAction(ActionDescription):
 
         return front, side, up
 
-    def _calculate_scoop_poses(self, scoop_arm, scoop_end_effector):
+    def _calculate_scoop_poses(
+        self, scoop_arm: Arms, scoop_end_effector
+    ) -> tuple[Pose, Pose, Pose]:
         """
-        Calculate the pre-scoop and scoop-end poses for the scooping arm.
+        Calculate the pre-scoop, scoop-end and post-scoop poses for the scooping arm.
 
-        The pre-scoop pose positions the gripper to the side of the cable, in front of
-        it, and below the hanger, oriented such that the gripper faces the cable. The
-        scoop-end pose moves toward and across the hanging point so the cable is
-        captured between the fingers.
+        The pre-scoop pose positions the gripper in front of of the cable and below
+        the hanger, oriented such that the gripper faces the cable. The scoop-end pose
+        moves toward the hanging point so the cable is captured between the fingers.
+        The post-scoop pose moves the gripper sideways to scoop the cable.
         """
         front_world, side_world, up_world = self._hanger_axes()
         side_sign = 1.0 if scoop_arm == Arms.RIGHT else -1.0
@@ -201,7 +249,7 @@ class CableGraspAction(ActionDescription):
             - up_world * self.down_offset
         )
         scoop_orientation = self._scoop_gripper_orientation(
-            front_world, side_world * side_sign
+            side_world * side_sign, front_world
         )
 
         pre_scoop_pose = Pose(
@@ -231,7 +279,60 @@ class CableGraspAction(ActionDescription):
             reference_frame=self.world.root,
         )
 
-        return pre_scoop_pose, scoop_end_pose
+        post_scoop_pos = hanging_pos[:3] - side_world * (0.2 * side_sign)
+
+        post_scoop_pose = Pose(
+            position=Point3(
+                x=post_scoop_pos[0],
+                y=post_scoop_pos[1],
+                z=post_scoop_pos[2],
+                reference_frame=self.world.root,
+            ),
+            orientation=scoop_orientation,
+            reference_frame=self.world.root,
+        )
+
+        return pre_scoop_pose, scoop_end_pose, post_scoop_pose
+
+    def _calculate_pre_grasp_pose(self, grasp_arm: Arms, post_scoop_pose: Pose):
+        front_world, side_world, up_world = self._hanger_axes()
+        side_sign = 1.0 if grasp_arm == Arms.LEFT else -1.0
+
+        # Pre-grasp position is the post-scoop position with a small offset to the side and below the scoop gripper
+        pre_grasp_pos = (
+            post_scoop_pose.to_position().to_np()[:3]
+            - side_world * (0.1 * side_sign)
+            - up_world * (0.1)
+        )
+        grasp_orientation = self._grasp_gripper_orientation(
+            side_world * side_sign, front_world
+        )
+
+        pre_grasp_pose = Pose(
+            position=Point3(
+                x=pre_grasp_pos[0],
+                y=pre_grasp_pos[1],
+                z=pre_grasp_pos[2],
+                reference_frame=self.world.root,
+            ),
+            orientation=grasp_orientation,
+            reference_frame=self.world.root,
+        )
+
+        grasp_pos = post_scoop_pose.to_position().to_np()[:3] - up_world * (0.1)
+
+        grasp_pose = Pose(
+            position=Point3(
+                x=grasp_pos[0],
+                y=grasp_pos[1],
+                z=grasp_pos[2],
+                reference_frame=self.world.root,
+            ),
+            orientation=grasp_orientation,
+            reference_frame=self.world.root,
+        )
+
+        return pre_grasp_pose, grasp_pose
 
     def _scoop_gripper_orientation(
         self,
@@ -241,16 +342,58 @@ class CableGraspAction(ActionDescription):
         """
         Compute the gripper orientation quaternion for the scoop arm.
 
-        The gripper's Z axis (front) faces toward the cable (along ``-side_direction``).
+        The gripper's Z axis (front) faces toward the cable (along ``-front_direction``).
         The Y axis (up) is computed to stay in the plane containing ``front_direction``
         and world Z.
         """
-        gripper_z = _normalized(-side_direction)
+        gripper_z = _normalized(-front_direction)
         world_up = np.array([0, 0, 1])
 
         cross_xz = _cross(world_up, gripper_z)
         if np.linalg.norm(cross_xz) < 1e-6:
-            gripper_x = _normalized(_cross(world_up, front_direction))
+            # gripper_z is parallel to world_up (front_direction is vertical);
+            # fall back to side_direction to disambiguate the roll axis.
+            fallback = _cross(world_up, side_direction)
+            if np.linalg.norm(fallback) < 1e-6:
+                # Both front and side are vertical — pick an arbitrary horizontal axis.
+                gripper_x = np.array([1.0, 0.0, 0.0])
+            else:
+                gripper_x = _normalized(fallback)
+        else:
+            gripper_x = _normalized(cross_xz)
+        gripper_y = _normalized(_cross(gripper_z, gripper_x))
+
+        rotation_matrix = _rotation_matrix_from_axes(gripper_x, gripper_y, gripper_z)
+        return Quaternion.from_rotation_matrix(rotation_matrix)
+
+    def _grasp_gripper_orientation(
+        self,
+        side_direction: np.ndarray,
+        front_direction: np.ndarray,
+    ) -> Quaternion:
+        """
+        Compute the gripper orientation quaternion for the grasp arm.
+
+        The gripper's Z axis faces toward the scoop gripper (along ``-side_direction``):
+        when the left gripper grasps, Z points right; when the right gripper grasps,
+        Z points left.
+
+        The Y axis (up) is computed to stay in the plane containing ``side_direction``
+        and world Z.
+        """
+        gripper_z = _normalized(side_direction)
+        world_up = np.array([0, 0, 1])
+
+        cross_xz = _cross(world_up, gripper_z)
+        if np.linalg.norm(cross_xz) < 1e-6:
+            # gripper_z is parallel to world_up (side_direction is vertical);
+            # fall back to front_direction to disambiguate the roll axis.
+            fallback = _cross(world_up, front_direction)
+            if np.linalg.norm(fallback) < 1e-6:
+                # Both side and front are vertical — pick an arbitrary horizontal axis.
+                gripper_x = np.array([1.0, 0.0, 0.0])
+            else:
+                gripper_x = _normalized(fallback)
         else:
             gripper_x = _normalized(cross_xz)
         gripper_y = _normalized(_cross(gripper_z, gripper_x))
