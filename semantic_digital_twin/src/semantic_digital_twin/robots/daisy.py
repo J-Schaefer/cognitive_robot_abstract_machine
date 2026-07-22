@@ -40,17 +40,22 @@ from semantic_digital_twin.world_description.world_entity import (
 # Left gripper fingers
 # ---------------------------------------------------------------------------
 
+
 @dataclass(eq=False)
-class DaisyLeftGripperLeftFinger(Finger):
+class DAiSyLeftGripperLeftFinger(Finger):
     """
     The left finger (thumb) of the left WPG-300 parallel gripper.
     """
 
     def setup_hardware_interfaces(self):
-        """No separate hardware interface for the finger."""
+        """
+        No separate hardware interface for the finger.
+        """
 
     def setup_joint_states(self) -> List[JointState]:
-        """No separate joint states for the finger."""
+        """
+        No separate joint states for the finger.
+        """
         return []
 
     @classmethod
@@ -68,16 +73,20 @@ class DaisyLeftGripperLeftFinger(Finger):
 
 
 @dataclass(eq=False)
-class DaisyLeftGripperRightFinger(Finger):
+class DAiSyLeftGripperRightFinger(Finger):
     """
     The right finger of the left WPG-300 parallel gripper.
     """
 
     def setup_hardware_interfaces(self):
-        """No separate hardware interface for the finger."""
+        """
+        No separate hardware interface for the finger.
+        """
 
     def setup_joint_states(self) -> List[JointState]:
-        """No separate joint states for the finger."""
+        """
+        No separate joint states for the finger.
+        """
         return []
 
     @classmethod
@@ -98,17 +107,22 @@ class DaisyLeftGripperRightFinger(Finger):
 # Right gripper fingers
 # ---------------------------------------------------------------------------
 
+
 @dataclass(eq=False)
-class DaisyRightGripperLeftFinger(Finger):
+class DAiSyRightGripperLeftFinger(Finger):
     """
     The left finger (thumb) of the right WPG-300 parallel gripper.
     """
 
     def setup_hardware_interfaces(self):
-        """No separate hardware interface for the finger."""
+        """
+        No separate hardware interface for the finger.
+        """
 
     def setup_joint_states(self) -> List[JointState]:
-        """No separate joint states for the finger."""
+        """
+        No separate joint states for the finger.
+        """
         return []
 
     @classmethod
@@ -126,16 +140,20 @@ class DaisyRightGripperLeftFinger(Finger):
 
 
 @dataclass(eq=False)
-class DaisyRightGripperRightFinger(Finger):
+class DAiSyRightGripperRightFinger(Finger):
     """
     The right finger of the right WPG-300 parallel gripper.
     """
 
     def setup_hardware_interfaces(self):
-        """No separate hardware interface for the finger."""
+        """
+        No separate hardware interface for the finger.
+        """
 
     def setup_joint_states(self) -> List[JointState]:
-        """No separate joint states for the finger."""
+        """
+        No separate joint states for the finger.
+        """
         return []
 
     @classmethod
@@ -156,17 +174,20 @@ class DaisyRightGripperRightFinger(Finger):
 # Left gripper
 # ---------------------------------------------------------------------------
 
+
 @dataclass(eq=False)
-class DaisyLeftGripper(
+class DAiSyLeftGripper(
     EndEffector,
-    HasTwoFingers[DaisyLeftGripperLeftFinger, DaisyLeftGripperRightFinger],
+    HasTwoFingers[DAiSyLeftGripperLeftFinger, DAiSyLeftGripperRightFinger],
 ):
     """
     The left WPG-300 parallel gripper.
     """
 
     def setup_hardware_interfaces(self):
-        """Sets up hardware interfaces for the gripper's finger joints."""
+        """
+        Sets up hardware interfaces for the gripper's finger joints.
+        """
         for joint_name in (
             "left_gripper_finger_joint",
             "left_gripper_right_finger_joint",
@@ -174,7 +195,9 @@ class DaisyLeftGripper(
             self._world.get_connection_by_name(joint_name).has_hardware_interface = True
 
     def setup_joint_states(self) -> List[JointState]:
-        """Sets up open and close states for the gripper."""
+        """
+        Sets up open and close states for the gripper.
+        """
         gripper_joints = sorted(self.active_connections, key=lambda c: c.name.name)
         gripper_open = JointState.from_mapping(
             name=PrefixedName("gripper_open", prefix=self.name.name),
@@ -207,17 +230,20 @@ class DaisyLeftGripper(
 # Right gripper
 # ---------------------------------------------------------------------------
 
+
 @dataclass(eq=False)
-class DaisyRightGripper(
+class DAiSyRightGripper(
     EndEffector,
-    HasTwoFingers[DaisyRightGripperLeftFinger, DaisyRightGripperRightFinger],
+    HasTwoFingers[DAiSyRightGripperLeftFinger, DAiSyRightGripperRightFinger],
 ):
     """
     The right WPG-300 parallel gripper.
     """
 
     def setup_hardware_interfaces(self):
-        """Sets up hardware interfaces for the gripper's finger joints."""
+        """
+        Sets up hardware interfaces for the gripper's finger joints.
+        """
         for joint_name in (
             "right_gripper_finger_joint",
             "right_gripper_right_finger_joint",
@@ -225,7 +251,9 @@ class DaisyRightGripper(
             self._world.get_connection_by_name(joint_name).has_hardware_interface = True
 
     def setup_joint_states(self) -> List[JointState]:
-        """Sets up open and close states for the gripper."""
+        """
+        Sets up open and close states for the gripper.
+        """
         gripper_joints = sorted(self.active_connections, key=lambda c: c.name.name)
         gripper_open = JointState.from_mapping(
             name=PrefixedName("gripper_open", prefix=self.name.name),
@@ -258,8 +286,9 @@ class DaisyRightGripper(
 # Left arm
 # ---------------------------------------------------------------------------
 
+
 @dataclass(eq=False)
-class DaisyLeftArm(Arm[DaisyLeftGripper]):
+class DAiSyLeftArm(Arm[DAiSyLeftGripper]):
     """
     The left UR5 arm.
     """
@@ -274,7 +303,9 @@ class DaisyLeftArm(Arm[DaisyLeftGripper]):
     }
 
     def setup_hardware_interfaces(self):
-        """Sets up hardware interfaces for the arm joints."""
+        """
+        Sets up hardware interfaces for the arm joints.
+        """
         for joint_name in (
             "left_shoulder_pan_joint",
             "left_shoulder_lift_joint",
@@ -286,7 +317,9 @@ class DaisyLeftArm(Arm[DaisyLeftGripper]):
             self._world.get_connection_by_name(joint_name).has_hardware_interface = True
 
     def setup_joint_states(self) -> List[JointState]:
-        """Sets up the park configuration for the arm."""
+        """
+        Sets up the park configuration for the arm.
+        """
         arm_park = JointState.from_mapping(
             name=PrefixedName("park", prefix=self.name.name),
             mapping={
@@ -318,8 +351,9 @@ class DaisyLeftArm(Arm[DaisyLeftGripper]):
 # Right arm
 # ---------------------------------------------------------------------------
 
+
 @dataclass(eq=False)
-class DaisyRightArm(Arm[DaisyRightGripper]):
+class DAiSyRightArm(Arm[DAiSyRightGripper]):
     """
     The right UR5 arm.
     """
@@ -334,7 +368,9 @@ class DaisyRightArm(Arm[DaisyRightGripper]):
     }
 
     def setup_hardware_interfaces(self):
-        """Sets up hardware interfaces for the arm joints."""
+        """
+        Sets up hardware interfaces for the arm joints.
+        """
         for joint_name in (
             "right_shoulder_pan_joint",
             "right_shoulder_lift_joint",
@@ -346,7 +382,9 @@ class DaisyRightArm(Arm[DaisyRightGripper]):
             self._world.get_connection_by_name(joint_name).has_hardware_interface = True
 
     def setup_joint_states(self) -> List[JointState]:
-        """Sets up the park configuration for the arm."""
+        """
+        Sets up the park configuration for the arm.
+        """
         arm_park = JointState.from_mapping(
             name=PrefixedName("park", prefix=self.name.name),
             mapping={
@@ -378,12 +416,14 @@ class DaisyRightArm(Arm[DaisyRightGripper]):
 # DAiSy robot
 # ---------------------------------------------------------------------------
 
+
 @dataclass(eq=False)
-class DAiSy(AbstractRobot, HasLeftRightArm[DaisyLeftArm, DaisyRightArm]):
+class DAiSy(AbstractRobot, HasLeftRightArm[DAiSyLeftArm, DAiSyRightArm]):
     """
     Represents two UR5 arms mounted on a table.
-    The left arm is equipped with a WPG-300 parallel gripper.
-    The right arm carries a WPG-300 parallel gripper.
+
+    The left arm is equipped with a WPG-300 parallel gripper. The right arm carries a
+    WPG-300 parallel gripper.
     """
 
     @classmethod
@@ -403,6 +443,7 @@ class DAiSy(AbstractRobot, HasLeftRightArm[DaisyLeftArm, DaisyRightArm]):
     def _setup_velocity_limits(self):
         """
         Sets up velocity limits for the robot's joints.
+
         All 1-DOF connections are limited to 0.2.
         """
         vel_limits = defaultdict(lambda: 0.2)
@@ -410,8 +451,8 @@ class DAiSy(AbstractRobot, HasLeftRightArm[DaisyLeftArm, DaisyRightArm]):
 
     def _setup_collision_rules(self):
         """
-        Sets up collision avoidance rules for the robot, including SRDF-based
-        self-collision ignore rules.
+        Sets up collision avoidance rules for the robot, including SRDF-based self-
+        collision ignore rules.
         """
         srdf_path = os.path.join(
             Path(files("semantic_digital_twin")).parent.parent,
