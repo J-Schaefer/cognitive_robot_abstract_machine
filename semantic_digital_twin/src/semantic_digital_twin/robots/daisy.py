@@ -71,6 +71,9 @@ class DAiSyLeftGripperLeftFinger(Finger):
         pass
 
     def setup_joint_states(self) -> List[JointState]:
+        """
+        No separate joint states for the finger.
+        """
         return []
 
     @classmethod
@@ -94,6 +97,9 @@ class DAiSyLeftGripperRightFinger(Finger):
         pass
 
     def setup_joint_states(self) -> List[JointState]:
+        """
+        No separate joint states for the finger.
+        """
         return []
 
     @classmethod
@@ -117,6 +123,9 @@ class DAiSyRightGripperLeftFinger(Finger):
         pass
 
     def setup_joint_states(self) -> List[JointState]:
+        """
+        No separate joint states for the finger.
+        """
         return []
 
     @classmethod
@@ -140,6 +149,9 @@ class DAiSyRightGripperRightFinger(Finger):
         pass
 
     def setup_joint_states(self) -> List[JointState]:
+        """
+        No separate joint states for the finger.
+        """
         return []
 
     @classmethod
@@ -168,7 +180,6 @@ class DAiSyLeftGripper(
         left_gripper_joints = [
             self._world.get_connection_by_name(DAiSyJoint.LEFT_GRIPPER_FINGER),
         ]
-
         gripper_open = JointState.from_mapping(
             name=PrefixedName("left_gripper_open", prefix=self.name.name),
             mapping=dict(zip(left_gripper_joints, [0.0])),
@@ -217,7 +228,6 @@ class DAiSyRightGripper(
         right_gripper_joints = [
             self._world.get_connection_by_name(DAiSyJoint.RIGHT_GRIPPER_FINGER),
         ]
-
         gripper_open = JointState.from_mapping(
             name=PrefixedName("right_gripper_open", prefix=self.name.name),
             mapping=dict(zip(right_gripper_joints, [0.0])),
@@ -249,6 +259,18 @@ class DAiSyRightGripper(
 
 @dataclass(eq=False)
 class DAiSyLeftArm(Arm[DAiSyLeftGripper]):
+    """
+    The left UR5 arm.
+    """
+
+    ARM_PARK_CONFIGURATION: ClassVar[dict[str, float]] = {
+        "shoulder_pan_joint": -0.26,
+        "shoulder_lift_joint": -2.02,
+        "elbow_joint": 1.78,
+        "wrist_1_joint": -1.28,
+        "wrist_2_joint": -1.55,
+        "wrist_3_joint": -1.83,
+    }
 
     def setup_hardware_interfaces(self):
         self._setup_hardware_interfaces_for_active_connections()
@@ -276,8 +298,25 @@ class DAiSyLeftArm(Arm[DAiSyLeftGripper]):
         )
 
 
+# ---------------------------------------------------------------------------
+# Right arm
+# ---------------------------------------------------------------------------
+
+
 @dataclass(eq=False)
 class DAiSyRightArm(Arm[DAiSyRightGripper]):
+    """
+    The right UR5 arm.
+    """
+
+    ARM_PARK_CONFIGURATION: ClassVar[dict[str, float]] = {
+        "shoulder_pan_joint": -0.41,
+        "shoulder_lift_joint": -1.08,
+        "elbow_joint": -1.78,
+        "wrist_1_joint": -1.86,
+        "wrist_2_joint": 1.57,
+        "wrist_3_joint": -1.18,
+    }
 
     def setup_hardware_interfaces(self):
         self._setup_hardware_interfaces_for_active_connections()
@@ -303,6 +342,11 @@ class DAiSyRightArm(Arm[DAiSyRightGripper]):
                 robot_root, "right_wrist_3_link"
             ),
         )
+
+
+# ---------------------------------------------------------------------------
+# DAiSy robot
+# ---------------------------------------------------------------------------
 
 
 @dataclass(eq=False)
