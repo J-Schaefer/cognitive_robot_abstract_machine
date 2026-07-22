@@ -25,9 +25,9 @@ from coraplex.robot_plans.motions.base import AlternativeMotion
 logger = logging.getLogger(__name__)
 
 
-class DAISYGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
+class DAiSyGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
     """
-    Uses the griplink action server to move the gripper of real DAiSy
+    Uses the griplink action server to move the gripper of real DAiSy.
     """
 
     execution_type = ExecutionType.REAL
@@ -71,7 +71,7 @@ class DAISYGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
         )
 
 
-class DaisyFlexGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
+class DAiSyFlexGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
     """
     Use flex grip and release motions for the WPG grippers.
     """
