@@ -3,7 +3,7 @@ from giskardpy.middleware.ros2.behavior_tree_config import ClosedLoopBTConfig
 from giskardpy.middleware.ros2.giskard import Giskard
 from giskardpy.middleware.ros2.scripts.iai_robots.daisy.configs import (
     DAiSyVelocityInterface,
-    WorldWithDaisyConfig,
+    WorldWithDAiSyConfig,
 )
 from giskardpy.middleware.ros2.utils.utils import load_xacro
 from giskardpy.qp.qp_controller_config import QPControllerConfig
@@ -23,7 +23,7 @@ def main():
             "package://iai_daisy_description/robots/daisy.urdf.xacro"
         )
     giskard = Giskard(
-        world_config=WorldWithDaisyConfig(urdf=robot_description),
+        world_config=WorldWithDAiSyConfig(urdf=robot_description),
         robot_interface_config=DAiSyVelocityInterface(),
         behavior_tree_config=ClosedLoopBTConfig(),
         qp_controller_config=QPControllerConfig(

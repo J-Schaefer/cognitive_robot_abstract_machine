@@ -4,8 +4,8 @@ from threading import Thread
 from giskardpy.middleware.ros2.behavior_tree_config import StandAloneBTConfig
 from giskardpy.middleware.ros2.giskard import Giskard
 from giskardpy.middleware.ros2.scripts.iai_robots.daisy.configs import (
-    WorldWithDaisyConfig,
-    DaisyStandAloneRobotInterfaceConfig,
+    WorldWithDAiSyConfig,
+    DAiSyStandAloneRobotInterfaceConfig,
 )
 from giskardpy.middleware.ros2 import rospy
 from giskardpy.middleware.ros2.utils.utils import load_xacro
@@ -18,7 +18,7 @@ from giskardpy.middleware.ros2.scripts.tools.interactive_marker import (
 
 
 def main():
-    parser = argparse.ArgumentParser(description="DAISY Giskard standalone controller.")
+    parser = argparse.ArgumentParser(description="DAiSy Giskard standalone controller.")
     parser.add_argument(
         "--interactive-marker",
         action="store_true",
@@ -38,8 +38,8 @@ def main():
     if robot_description is None:
         robot_description = default_robot_desc
     giskard = Giskard(
-        world_config=WorldWithDaisyConfig(urdf=robot_description),
-        robot_interface_config=DaisyStandAloneRobotInterfaceConfig(),
+        world_config=WorldWithDAiSyConfig(urdf=robot_description),
+        robot_interface_config=DAiSyStandAloneRobotInterfaceConfig(),
         behavior_tree_config=StandAloneBTConfig(debug_mode=True),
         qp_controller_config=QPControllerConfig(target_frequency=33),
     )
