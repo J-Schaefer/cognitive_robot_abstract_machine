@@ -7,8 +7,8 @@ from geometry_msgs.msg import PoseStamped, PointStamped
 from giskardpy.middleware.ros2.behavior_tree_config import StandAloneBTConfig
 from giskardpy.middleware.ros2.giskard import Giskard
 from giskardpy.middleware.ros2.scripts.iai_robots.daisy.configs import (
-    WorldWithDaisyConfig,
-    DaisyStandAloneRobotInterfaceConfig,
+    WorldWithDAiSyConfig,
+    DAiSyStandAloneRobotInterfaceConfig,
 )
 from giskardpy.middleware.ros2.scripts.iai_robots.hsr.configs import (
     WorldWithHSRConfig,
@@ -100,8 +100,8 @@ class DAiSyTester(GiskardTester):
             "package://iai_daisy_description/robots/daisy.urdf.xacro"
         )
         return Giskard(
-            world_config=WorldWithDaisyConfig(urdf=robot_desc),
-            robot_interface_config=DaisyStandAloneRobotInterfaceConfig(),
+            world_config=WorldWithDAiSyConfig(urdf=robot_desc),
+            robot_interface_config=DAiSyStandAloneRobotInterfaceConfig(),
             behavior_tree_config=StandAloneBTConfig(
                 debug_mode=True,
                 add_debug_marker_publisher=True,
