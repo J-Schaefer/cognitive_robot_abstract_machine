@@ -226,7 +226,19 @@ class DAiSyLeftArm(Arm[DAiSyLeftGripper]):
         connections = self.active_connections
         arm_park = JointState.from_mapping(
             name=PrefixedName("left_arm_park", prefix=self.name.name),
-            mapping=dict(zip(connections, [0, -1.57, 1, 0, 0, 0.785])),
+            mapping=dict(
+                zip(
+                    connections,
+                    [
+                        -1.47,  # left_shoulder_pan_joint
+                        -2.02,  # left_shoulder_lift_joint
+                        1.81,  # left_elbow_joint
+                        -1.35,  # left_wrist_1_joint
+                        -1.59,  # left_wrist_2_joint
+                        -2.98,  # left_wrist_3_joint
+                    ],
+                )
+            ),
             state_type=StaticJointState.PARK,
         )
         return [arm_park]
@@ -253,7 +265,19 @@ class DAiSyRightArm(Arm[DAiSyRightGripper]):
         connections = self.active_connections
         arm_park = JointState.from_mapping(
             name=PrefixedName("right_arm_park", prefix=self.name.name),
-            mapping=dict(zip(connections, [2.355, -1.57, 1, 0, 0, 0.785])),
+            mapping=dict(
+                zip(
+                    connections,
+                    [
+                        0.74,  # right_shoulder_pan_joint
+                        -0.94,  # right_shoulder_lift_joint
+                        1.89,  # right_elbow_joint
+                        -1.89,  # right_wrist_1_joint
+                        1.57,  # right_wrist_2_joint
+                        -0.02,  # right_wrist_3_joint
+                    ],
+                )
+            ),
             state_type=StaticJointState.PARK,
         )
         return [arm_park]
