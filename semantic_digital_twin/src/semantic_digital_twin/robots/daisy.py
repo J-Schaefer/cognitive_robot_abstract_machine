@@ -230,12 +230,12 @@ class DAiSyLeftArm(Arm[DAiSyLeftGripper]):
                 zip(
                     connections,
                     [
-                        -1.47,  # left_shoulder_pan_joint
-                        -2.02,  # left_shoulder_lift_joint
+                        -1.84,  # left_shoulder_pan_joint
+                        -1.94,  # left_shoulder_lift_joint
                         1.81,  # left_elbow_joint
-                        -1.35,  # left_wrist_1_joint
-                        -1.59,  # left_wrist_2_joint
-                        -2.98,  # left_wrist_3_joint
+                        -1.45,  # left_wrist_1_joint
+                        -1.60,  # left_wrist_2_joint
+                        -3.40,  # left_wrist_3_joint
                     ],
                 )
             ),
@@ -269,12 +269,12 @@ class DAiSyRightArm(Arm[DAiSyRightGripper]):
                 zip(
                     connections,
                     [
-                        0.74,  # right_shoulder_pan_joint
-                        -0.94,  # right_shoulder_lift_joint
-                        1.89,  # right_elbow_joint
-                        -1.89,  # right_wrist_1_joint
-                        1.57,  # right_wrist_2_joint
-                        -0.02,  # right_wrist_3_joint
+                        1.19,  # right_shoulder_pan_joint
+                        -1.00,  # right_shoulder_lift_joint
+                        -1.90,  # right_elbow_joint
+                        -1.81,  # right_wrist_1_joint
+                        1.56,  # right_wrist_2_joint
+                        0.40,  # right_wrist_3_joint
                     ],
                 )
             ),
