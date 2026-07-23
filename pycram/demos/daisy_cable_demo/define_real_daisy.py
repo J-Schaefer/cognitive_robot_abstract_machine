@@ -43,7 +43,7 @@ from test.krrood_test.dataset.example_classes import Node
 logger = logging.getLogger(__name__)
 
 
-def setup_daisy_context(
+def setup_real_daisy(
     node_name: str = "coraplex_node",
 ) -> Tuple[Any, World, DAiSy, Context]:
     """
@@ -64,6 +64,7 @@ def setup_daisy_context(
 
     # Synchronizer
     world_sync = WorldSynchronizer(_world=world, node=rospy.node)
+    ModelReloadSynchronizer(_world=world, node=rospy.node)
 
     # Optional TF publisher
     # TFPublisher(world=world, node=rospy.node)
