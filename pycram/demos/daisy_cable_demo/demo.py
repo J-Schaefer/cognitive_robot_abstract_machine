@@ -20,20 +20,25 @@ from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.semantic_annotations.cable import Cable
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import FixedConnection
+from semantic_digital_twin.exceptions import WorldEntityNotFoundError
 
-from define_real_daisy import setup_daisy_context
+from define_real_daisy import setup_real_daisy
 from define_sim_daisy import setup_sim_daisy
 
-real = False
+verbose = True
+real = True
 
 # %% Robot and World Setup
 if real:
-    node, world, robot_view, context = setup_daisy_context()
+    node, world, robot_view, context = setup_real_daisy()
 else:
     node, world, robot_view, context = setup_sim_daisy()
 
 # %% Define Additional Objects
-cup = STLParser(
+
+try:
+    cup = world.get_bodies_by_name(PrefixedName("jeroen_cup.stl"))[0]
+except (WorldEntityNotFoundError, IndexError):cup = STLParser(
     os.path.join(
         os.path.dirname(__file__),
         "..",
@@ -41,78 +46,88 @@ cup = STLParser(
         "resources",
         "objects",
         "jeroen_cup.stl",
-    )
-).parse()
-cup_root = cup.root
+        )
+    ).parse()
+    cup_root = cup.root
 
-with world.modify_world():
-    world.merge_world(
-        cup,
-        FixedConnection(
-            world.root,
-            cup_root,
-            parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_quaternion(
-                -0.6, -0.1, 0.605, reference_frame=world.root
+    with world.modify_world():
+        world.merge_world(
+            cup,
+            FixedConnection(
+                world.root,
+                cup_root,
+                parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_quaternion(
+                    -0.6, -0.1, 0.605, reference_frame=world.root
+                ),
             ),
-        ),
-    )
+        )
 
-cable_post = STLParser(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "..",
-        "resources",
-        "objects",
-        "item_profile_8_40x40_720.stl",
-    )
-).parse()
-cable_post_root = cable_post.root
+try:
+    cable_post = world.get_bodies_by_name(PrefixedName("item_profile_8_40x40_720.stl"))[
+        0
+    ]
+except (WorldEntityNotFoundError, IndexError):
+    cable_post = STLParser(
+        os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "resources",
+            "objects",
+            "item_profile_8_40x40_720.stl",
+        )
+    ).parse()
+    cable_post_root = cable_post.root
 
-with world.modify_world():
-    world.merge_world(
-        cable_post,
-        FixedConnection(
-            world.get_semantic_annotations_by_type(DAiSy)[0].root,
-            cable_post_root,
-            parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                x=-0.32,
-                y=0.025,
-                z=0.8,
-                roll=pi / 2,
-                reference_frame=world.get_semantic_annotations_by_type(DAiSy)[0].root,
+    with world.modify_world():
+        world.merge_world(
+            cable_post,
+            FixedConnection(
+                world.get_semantic_annotations_by_type(DAiSy)[0].root,
+                cable_post_root,
+                parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
+                    x=-0.568,
+                    y=0.025,
+                    z=0.8,
+                    roll=pi / 2,
+                    reference_frame=world.get_semantic_annotations_by_type(DAiSy)[
+                        0
+                    ].root,
+                ),
             ),
-        ),
-    )
+        )
 
-cable_hanger = STLParser(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "..",
-        "resources",
-        "objects",
-        "cable_hanger_2.stl",
-    )
-).parse()
-cable_hanger_root = cable_hanger.root
+try:
+    cable_hanger = world.get_bodies_by_name(PrefixedName("cable_hanger_2.stl"))[0]
+except (WorldEntityNotFoundError, IndexError):
+    cable_hanger = STLParser(
+        os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "resources",
+            "objects",
+            "cable_hanger_2.stl",
+        )
+    ).parse()
+    cable_hanger_root = cable_hanger.root
 
-with world.modify_world():
-    world.merge_world(
-        cable_hanger,
-        FixedConnection(
-            cable_post_root,
-            cable_hanger_root,
-            parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                x=0.0,
-                y=0.310,  # 720/2 - 50
-                z=0.02,
-                roll=-pi / 2,
-                # pitch=-pi / 2,
-                reference_frame=cable_post_root,
+    with world.modify_world():
+        world.merge_world(
+            cable_hanger,
+            FixedConnection(
+                cable_post_root,
+                cable_hanger_root,
+                parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
+                    x=0.0,
+                    y=0.310,  # 720/2 - 50
+                    z=0.02,
+                    roll=-pi / 2,
+                    # pitch=-pi / 2,
+                    reference_frame=cable_post_root,
+                ),
             ),
-        ),
-    )
+        )
 
 hanger_body = world.get_body_by_name(PrefixedName("cable_hanger_2.stl"))
 
@@ -127,6 +142,14 @@ with world.modify_world():
         mount_offset_y=-0.05,
         height_offset=0.0,
     )
+
+# %% Debug Prints
+if verbose:
+    print(world.root.name)
+
+    # Print joint states
+    for dof in context.robot.degrees_of_freedom_with_hardware_interface:
+        print(f"{dof.name}: {dof.variables.position.resolve():.2f}")
 
 # %% Demo Plan
 pick_up_grasp = GraspDescription(
@@ -152,9 +175,9 @@ plan = sequential(
             approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
             approach_sign=-1,  # y-axis pointing to the back
         ),
-        CableRegraspAction(
-            cable_annotation=cable_annotation,
-        ),
+        # CableRegraspAction(
+        #     cable_annotation=cable_annotation,
+        # ),
         ParkArmsAction(arm=Arms.BOTH),
     ],
     context,
