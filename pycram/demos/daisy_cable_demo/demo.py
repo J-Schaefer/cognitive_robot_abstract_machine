@@ -57,7 +57,7 @@ except (WorldEntityNotFoundError, IndexError):cup = STLParser(
                 world.root,
                 cup_root,
                 parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_quaternion(
-                    -0.6, -0.1, 0.605, reference_frame=world.root
+                    -0.6, -0.1, 0.61, reference_frame=world.root
                 ),
             ),
         )
@@ -151,6 +151,22 @@ if verbose:
     for dof in context.robot.degrees_of_freedom_with_hardware_interface:
         print(f"{dof.name}: {dof.variables.position.resolve():.2f}")
 
+# %% Home Robot
+
+plan_home = sequential(
+    [
+        ParkArmsAction(arm=Arms.BOTH),
+    ],
+    context,
+)
+
+if real:
+    with real_robot:
+        plan_home.perform()
+else:
+    with simulated_robot:
+        plan_home.perform()
+
 # %% Demo Plan
 pick_up_grasp = GraspDescription(
     approach_direction=ApproachDirection.LEFT,
@@ -178,7 +194,7 @@ plan = sequential(
         # CableRegraspAction(
         #     cable_annotation=cable_annotation,
         # ),
-        ParkArmsAction(arm=Arms.BOTH),
+        # ParkArmsAction(arm=Arms.BOTH),
     ],
     context,
 )
