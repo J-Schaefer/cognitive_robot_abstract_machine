@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from typing import Any
+from math import pi
 
 import numpy as np
 from numpy import dtype, ndarray
@@ -300,7 +301,10 @@ class CableGraspAction(ActionDescription):
                 z=post_scoop_pos[2],
                 reference_frame=self.world.root,
             ),
-            orientation=scoop_orientation,
+            # Roll turn gripper up/down
+            # Pitch turns the gripper in the finger plane
+            # Yaw rotates the gripper around z (forward pointing axis)
+            orientation=scoop_orientation.multiply(Quaternion.from_rpy(0, 0, 0)),
             reference_frame=self.world.root,
         )
 
@@ -316,7 +320,7 @@ class CableGraspAction(ActionDescription):
         current_grasp_arm_transform = grasp_end_effector.tool_frame.global_transform
         current_grasp_arm_position = current_grasp_arm_transform.to_position()
         grasp_arm_scoop_pos = current_grasp_arm_position.to_np()[:3] - side_world * (
-            0.3 * side_sign
+            0.15 * side_sign
         )
         current_grasp_arm_orientation = current_grasp_arm_transform.to_quaternion()
         grasp_arm_scoop_pose = Pose(
