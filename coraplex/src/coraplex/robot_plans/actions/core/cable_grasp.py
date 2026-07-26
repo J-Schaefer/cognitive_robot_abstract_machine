@@ -154,6 +154,10 @@ class CableGraspAction(ActionDescription):
         print(f"Pre-grasp pose: {pre_grasp_pose.to_position()}")
         print(f"Grasp pose: {grasp_pose.to_position()}")
 
+        gripper_offset_pos = (
+            post_scoop_pose.to_position().to_np()[:3] + front_world * 0.2
+        )
+
         return sequential(
             children=[
                 # Open both grippers
@@ -206,6 +210,22 @@ class CableGraspAction(ActionDescription):
                 AttachNode(
                     body=self.cable_annotation.root,
                     new_parent=grasp_end_effector.tool_frame,
+                ),
+                # Move scoop gripper out of the way before moving the grasp arm
+                MoveToolCenterPointMotion(
+                    # (gripper_offset @ post_scoop_pose),
+                    Pose(
+                        position=Point3(
+                            x=gripper_offset_pos[0],
+                            y=gripper_offset_pos[1],
+                            z=gripper_offset_pos[2],
+                            reference_frame=self.world.root,
+                        ),
+                        orientation=pre_scoop_pose.orientation,
+                        reference_frame=self.world.root,
+                    ),
+                    scoop_arm,
+                    movement_type=MovementType.CARTESIAN,
                 ),
             ],
         )
