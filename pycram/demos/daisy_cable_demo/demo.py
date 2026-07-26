@@ -132,6 +132,7 @@ except (WorldEntityNotFoundError, IndexError):
 hanger_body = world.get_body_by_name(PrefixedName("cable_hanger_2.stl"))
 
 # %% Cable Definition
+# TODO: Figure out how to respawn the cable at a new position
 with world.modify_world():
     cable_annotation = Cable.create_with_new_body_in_world(
         name=PrefixedName("cable"),
@@ -191,10 +192,6 @@ plan = sequential(
             approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
             approach_sign=-1,  # y-axis pointing to the back
         ),
-        # CableRegraspAction(
-        #     cable_annotation=cable_annotation,
-        # ),
-        # ParkArmsAction(arm=Arms.BOTH),
     ],
     context,
 )
@@ -205,5 +202,22 @@ if real:
 else:
     with simulated_robot:
         plan.perform()
+
+plan_regrasp = sequential(
+    [
+        CableRegraspAction(
+            cable_annotation=cable_annotation,
+        ),
+        # ParkArmsAction(arm=Arms.BOTH),
+    ],
+    context,
+)
+
+if real:
+    with real_robot:
+        plan_regrasp.perform()
+else:
+    with simulated_robot:
+        plan_regrasp.perform()
 
 print("Plan finished.")
