@@ -116,12 +116,16 @@ class CableRegraspAction(ActionDescription):
         target_tool_T = target_cable_T @ cable_T_tool
         target_tool_pose = target_tool_T.to_pose()
 
-        target_cable_after = (
+        target_cable_after: Pose = (
             target_tool_pose.to_homogeneous_matrix() @ tool_T_cable
         ).to_pose()
 
-        cable_top_after = target_cable_after @ cable_top_local.to_pose()
-        cable_bottom_after = target_cable_after @ cable_bottom_local.to_pose()
+        cable_top_after = (
+            target_cable_after.to_homogeneous_matrix() @ cable_top_local.to_pose()
+        )
+        cable_bottom_after = (
+            target_cable_after.to_homogeneous_matrix() @ cable_bottom_local.to_pose()
+        )
 
         tool_after_pos = target_tool_pose.to_position().to_np()[:3]
         top_after_pos = cable_top_after.to_position().to_np()[:3]
