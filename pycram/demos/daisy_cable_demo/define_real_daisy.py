@@ -4,41 +4,17 @@ from dataclasses import dataclass
 
 import logging
 
-# from suturo_resources.suturo_map import load_environment
 from typing_extensions import Tuple, Any
 
-import semantic_digital_twin.exceptions
-from coraplex.datastructures import dataclasses
 from coraplex.datastructures.dataclasses import Context
-from coraplex.datastructures.enums import Arms
-
-# from coraplex.language import SequentialPlan
-from coraplex.execution_environment import real_robot
 from giskardpy.middleware.ros2 import rospy
-
-# from coraplex.robot_plans import ParkArmsActionDescription
-from semantic_digital_twin.adapters.ros.messages import LoadModel
-from semantic_digital_twin.adapters.ros.tf_publisher import TFPublisher
-from semantic_digital_twin.adapters.ros.visualization.viz_marker import (
-    VizMarkerPublisher,
-)
 from semantic_digital_twin.adapters.ros.world_fetcher import fetch_world_from_service
 from semantic_digital_twin.adapters.ros.world_synchronizer import (
     WorldSynchronizer,
     ModelReloadSynchronizer,
 )
-from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
-from semantic_digital_twin.robots.robot_parts import AbstractRobot
 from semantic_digital_twin.robots.daisy import DAiSy
-from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world import World
-from semantic_digital_twin.world_description.connections import FixedConnection
-import numpy as np
-
-from semantic_digital_twin.world_description.geometry import Box, Scale
-from semantic_digital_twin.world_description.shape_collection import ShapeCollection
-from semantic_digital_twin.world_description.world_entity import Body
-from test.krrood_test.dataset.example_classes import Node
 
 logger = logging.getLogger(__name__)
 
