@@ -6,6 +6,7 @@ from coraplex.datastructures.enums import ApproachDirection, Arms, VerticalAlign
 from coraplex.datastructures.grasp import GraspDescription
 from coraplex.execution_environment import real_robot, simulated_robot
 from coraplex.plans.factories import sequential
+from coraplex.robot_plans import MoveJointsMotion
 from coraplex.robot_plans.actions.core.cable_grasp import CableGraspAction
 from coraplex.robot_plans.actions.core.cable_regrasp import CableRegraspAction
 from coraplex.robot_plans.actions.core.pick_up import PickUpAction
@@ -36,32 +37,32 @@ else:
 
 # %% Define Additional Objects
 
-try:
-    cup = world.get_bodies_by_name(PrefixedName("jeroen_cup.stl"))[0]
-except (WorldEntityNotFoundError, IndexError):
-    cup = STLParser(
-        os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "..",
-            "resources",
-            "objects",
-            "jeroen_cup.stl",
-        )
-    ).parse()
-    cup_root = cup.root
-
-    with world.modify_world():
-        world.merge_world(
-            cup,
-            FixedConnection(
-                world.root,
-                cup_root,
-                parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_quaternion(
-                    -0.6, -0.1, 0.61, reference_frame=world.root
-                ),
-            ),
-        )
+# try:
+#     cup = world.get_bodies_by_name(PrefixedName("jeroen_cup.stl"))[0]
+# except (WorldEntityNotFoundError, IndexError):
+#     cup = STLParser(
+#         os.path.join(
+#             os.path.dirname(__file__),
+#             "..",
+#             "..",
+#             "resources",
+#             "objects",
+#             "jeroen_cup.stl",
+#         )
+#     ).parse()
+#     cup_root = cup.root
+#
+#     with world.modify_world():
+#         world.merge_world(
+#             cup,
+#             FixedConnection(
+#                 world.root,
+#                 cup_root,
+#                 parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_quaternion(
+#                     -0.6, -0.1, 0.61, reference_frame=world.root
+#                 ),
+#             ),
+#         )
 
 try:
     cable_post = world.get_bodies_by_name(PrefixedName("item_profile_8_40x40_720.stl"))[
@@ -155,9 +156,30 @@ if verbose:
 
 # %% Home Robot
 
+daisy_left_arm_names = [
+    "left_shoulder_pan_joint",
+    "left_shoulder_lift_joint",
+    "left_elbow_joint",
+    "left_wrist_1_joint",
+    "left_wrist_2_joint",
+    "left_wrist_3_joint",
+]
+
+daisy_left_arm_positions = [
+    -2.71,
+    -1.01,
+    -2.10,
+    -1.59,
+    1.53,
+    -4.23,
+]
+
 plan_home = sequential(
     [
-        ParkArmsAction(arm=Arms.BOTH),
+        ParkArmsAction(arm=Arms.RIGHT),
+        MoveJointsMotion(
+            names=daisy_left_arm_names, positions=daisy_left_arm_positions
+        ),
     ],
     context,
 )
@@ -179,16 +201,14 @@ pick_up_grasp = GraspDescription(
 
 plan = sequential(
     [
-        ParkArmsAction(arm=Arms.BOTH),
-        SetGripperAction(gripper=Arms.BOTH, motion=GripperState.OPEN),
         # PickUpAction(
         #     object_designator=cup_root, arm=Arms.RIGHT, grasp_description=pick_up_grasp
         # ),
         CableGraspAction(
             cable_annotation=cable_annotation,
             grasp_offset=0.1,
-            side_offset=0.1,
-            front_offset=-0.01,
+            side_offset=0.2,
+            front_offset=0.01,
             down_offset=0.12,
             approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
             approach_sign=-1,  # y-axis pointing to the back
