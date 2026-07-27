@@ -15,6 +15,7 @@ from coraplex.plans.attachment_nodes import AttachNode
 from coraplex.plans.factories import sequential
 from coraplex.plans.plan_node import PlanNode
 from coraplex.robot_plans.actions.base import ActionDescription
+from coraplex.robot_plans.actions.core.robot_body import ParkArmsAction
 from coraplex.robot_plans.motions.gripper import (
     MoveGripperMotion,
     MoveToolCenterPointMotion,
@@ -105,6 +106,13 @@ class CableGraspAction(ActionDescription):
     handed frame with the front axis.
     """
 
+    gripper_width: int = 0.1
+    """
+    Opening width of the gripper.
+
+    Used as side offset when grasping the scooped up cable.
+    """
+
     approach_sign: int = 1  # TODO redefine type hint to only allow -1 or +1
     """
     Direction the approach axis is pointing.
@@ -128,7 +136,7 @@ class CableGraspAction(ActionDescription):
             scoop_arm, scoop_end_effector
         )
 
-        grasp_arm_scoop_pose, pre_grasp_pose, grasp_pose = (
+        grasp_arm_scoop_pose, approach_grasp_pose, pre_grasp_pose, grasp_pose = (
             self._calculate_pre_grasp_pose(grasp_arm, post_scoop_pose)
         )
 
@@ -163,12 +171,14 @@ class CableGraspAction(ActionDescription):
                 # Open both grippers
                 MoveGripperMotion(motion=GripperState.OPEN, gripper=scoop_arm),
                 MoveGripperMotion(motion=GripperState.OPEN, gripper=grasp_arm),
-                # TODO: Add approach position in front of the hanging point with about 10 cm distance before approaching
-                MoveToolCenterPointMotion(
-                    grasp_arm_scoop_pose,
-                    grasp_arm,
-                    movement_type=MovementType.CARTESIAN,
-                ),
+                ParkArmsAction(arm=scoop_arm),
+                # # Move grasp arm out of the way
+                # MoveToolCenterPointMotion(
+                #     grasp_arm_scoop_pose,
+                #     grasp_arm,
+                #     movement_type=MovementType.CARTESIAN,
+                # ),
+                # Move scoop arm closer to hanger and rotate already
                 MoveToolCenterPointMotion(
                     approach_pose,
                     scoop_arm,
@@ -192,7 +202,13 @@ class CableGraspAction(ActionDescription):
                     scoop_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
-                # Move grasp arm the pre-grasp position
+                # Move grasp arm closer to hanger but keep previous orientation
+                MoveToolCenterPointMotion(
+                    approach_grasp_pose,
+                    grasp_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
+                # Move grasp arm in pre-grasp position
                 MoveToolCenterPointMotion(
                     pre_grasp_pose,
                     grasp_arm,
@@ -330,7 +346,9 @@ class CableGraspAction(ActionDescription):
 
         return pre_scoop_pose, scoop_pose, post_scoop_pose
 
-    def _calculate_pre_grasp_pose(self, grasp_arm: Arms, post_scoop_pose: Pose):
+    def _calculate_pre_grasp_pose(
+        self, grasp_arm: Arms, post_scoop_pose: Pose
+    ) -> tuple[Pose, Pose, Pose, Pose]:
         front_world, side_world, up_world = self._hanger_axes()
         side_sign = 1.0 if grasp_arm == Arms.LEFT else -1.0
 
@@ -354,6 +372,23 @@ class CableGraspAction(ActionDescription):
             reference_frame=self.world.root,
         )
 
+        # Approach pose of the grasp arm, same orientation as parked but closer to gripper already
+        approach_grasp_pos = (
+            post_scoop_pose.to_position().to_np()[:3]
+            - side_world * (0.4 * side_sign)
+            - up_world * (0.1)
+        )
+        approach_grasp_pose = Pose(
+            position=Point3(
+                x=approach_grasp_pos[0],
+                y=approach_grasp_pos[1],
+                z=approach_grasp_pos[2],
+                reference_frame=self.world.root,
+            ),
+            orientation=current_grasp_arm_orientation,
+            reference_frame=self.world.root,
+        )
+
         # Pre-grasp position is the post-scoop position with a small offset to the side and below the scoop gripper
         pre_grasp_pos = (
             post_scoop_pose.to_position().to_np()[:3]
@@ -363,7 +398,6 @@ class CableGraspAction(ActionDescription):
         grasp_orientation = self._grasp_gripper_orientation(
             side_world * side_sign, front_world
         )
-
         pre_grasp_pose = Pose(
             position=Point3(
                 x=pre_grasp_pos[0],
@@ -376,7 +410,6 @@ class CableGraspAction(ActionDescription):
         )
 
         grasp_pos = post_scoop_pose.to_position().to_np()[:3] - up_world * (0.1)
-
         grasp_pose = Pose(
             position=Point3(
                 x=grasp_pos[0],
@@ -388,7 +421,7 @@ class CableGraspAction(ActionDescription):
             reference_frame=self.world.root,
         )
 
-        return grasp_arm_scoop_pose, pre_grasp_pose, grasp_pose
+        return grasp_arm_scoop_pose, approach_grasp_pose, pre_grasp_pose, grasp_pose
 
     def _scoop_gripper_orientation(
         self,
