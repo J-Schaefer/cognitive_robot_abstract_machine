@@ -61,6 +61,47 @@ def _rotation_matrix_from_axes(
     return RotationMatrix(data=data)
 
 
+def _gripper_orientation_from_z_axis(
+    gripper_z_axis: np.ndarray,
+    fallback_direction: np.ndarray,
+    z_rotation: float = 0.0,
+) -> Quaternion:
+    """
+    Compute a gripper orientation quaternion from a desired Z axis.
+
+    The frame is built so that the Y axis stays in the plane containing the gripper Z
+    axis and world Z. The fallback direction disambiguates the X axis when the gripper Z
+    axis is parallel to world Z.
+
+    :param gripper_z_axis: Desired direction for the gripper's Z axis (forward).
+    :param fallback_direction: Used to determine the X axis when ``gripper_z_axis`` is
+        parallel to the world Z axis.
+    :param z_rotation: Optional rotation in radians around the gripper's Z axis applied
+        after the base orientation is computed.
+    """
+    gripper_z = _normalized(gripper_z_axis)
+    world_up = np.array([0, 0, 1])
+
+    cross_xz = _cross(world_up, gripper_z)
+    if np.linalg.norm(cross_xz) < 1e-6:
+        fallback = _cross(world_up, fallback_direction)
+        if np.linalg.norm(fallback) < 1e-6:
+            gripper_x = np.array([1.0, 0.0, 0.0])
+        else:
+            gripper_x = _normalized(fallback)
+    else:
+        gripper_x = _normalized(cross_xz)
+    gripper_y = _normalized(_cross(gripper_z, gripper_x))
+
+    rotation_matrix = _rotation_matrix_from_axes(gripper_x, gripper_y, gripper_z)
+    quaternion = Quaternion.from_rotation_matrix(rotation_matrix)
+
+    if z_rotation != 0.0:
+        quaternion = quaternion.multiply(Quaternion.from_rpy(0.0, 0.0, z_rotation))
+
+    return quaternion
+
+
 @dataclass
 class CableGraspAction(ActionDescription):
     """
@@ -293,7 +334,7 @@ class CableGraspAction(ActionDescription):
             - up_world * self.down_offset
         )
         scoop_orientation = self._scoop_gripper_orientation(
-            side_world * side_sign, front_world
+            side_world * side_sign, front_world, z_rotation=pi
         )
 
         pre_scoop_pose = Pose(
@@ -431,6 +472,7 @@ class CableGraspAction(ActionDescription):
         self,
         side_direction: np.ndarray,
         front_direction: np.ndarray,
+        z_rotation: float = 0.0,
     ) -> Quaternion:
         """
         Compute the gripper orientation quaternion for the scoop arm.
@@ -438,31 +480,23 @@ class CableGraspAction(ActionDescription):
         The gripper's Z axis (front) faces toward the cable (along
         ``-front_direction``). The Y axis (up) is computed to stay in the plane
         containing ``front_direction`` and world Z.
+
+        :param side_direction: Direction vector from the cable's hanging point toward
+            the side the scoop arm approaches from.
+        :param front_direction: Forward direction of the cable hanger, used to determine
+            which way the gripper faces.
+        :param z_rotation: Optional rotation in radians around the gripper's Z (forward)
+            axis applied after computing the base orientation.
         """
-        gripper_z = _normalized(-front_direction)
-        world_up = np.array([0, 0, 1])
-
-        cross_xz = _cross(world_up, gripper_z)
-        if np.linalg.norm(cross_xz) < 1e-6:
-            # gripper_z is parallel to world_up (front_direction is vertical);
-            # fall back to side_direction to disambiguate the roll axis.
-            fallback = _cross(world_up, side_direction)
-            if np.linalg.norm(fallback) < 1e-6:
-                # Both front and side are vertical — pick an arbitrary horizontal axis.
-                gripper_x = np.array([1.0, 0.0, 0.0])
-            else:
-                gripper_x = _normalized(fallback)
-        else:
-            gripper_x = _normalized(cross_xz)
-        gripper_y = _normalized(_cross(gripper_z, gripper_x))
-
-        rotation_matrix = _rotation_matrix_from_axes(gripper_x, gripper_y, gripper_z)
-        return Quaternion.from_rotation_matrix(rotation_matrix)
+        return _gripper_orientation_from_z_axis(
+            -front_direction, side_direction, z_rotation
+        )
 
     def _grasp_gripper_orientation(
         self,
         side_direction: np.ndarray,
         front_direction: np.ndarray,
+        z_rotation: float = 0.0,
     ) -> Quaternion:
         """
         Compute the gripper orientation quaternion for the grasp arm.
@@ -473,26 +507,17 @@ class CableGraspAction(ActionDescription):
 
         The Y axis (up) is computed to stay in the plane containing ``side_direction``
         and world Z.
+
+        :param side_direction: Direction vector from the cable's hanging point toward
+            the side of the approach.
+        :param front_direction: Forward direction of the cable hanger, used as fallback
+            to determine the X axis.
+        :param z_rotation: Optional rotation in radians around the gripper's Z (forward)
+            axis applied after computing the base orientation.
         """
-        gripper_z = _normalized(side_direction)
-        world_up = np.array([0, 0, 1])
-
-        cross_xz = _cross(world_up, gripper_z)
-        if np.linalg.norm(cross_xz) < 1e-6:
-            # gripper_z is parallel to world_up (side_direction is vertical);
-            # fall back to front_direction to disambiguate the roll axis.
-            fallback = _cross(world_up, front_direction)
-            if np.linalg.norm(fallback) < 1e-6:
-                # Both side and front are vertical — pick an arbitrary horizontal axis.
-                gripper_x = np.array([1.0, 0.0, 0.0])
-            else:
-                gripper_x = _normalized(fallback)
-        else:
-            gripper_x = _normalized(cross_xz)
-        gripper_y = _normalized(_cross(gripper_z, gripper_x))
-
-        rotation_matrix = _rotation_matrix_from_axes(gripper_x, gripper_y, gripper_z)
-        return Quaternion.from_rotation_matrix(rotation_matrix)
+        return _gripper_orientation_from_z_axis(
+            side_direction, front_direction, z_rotation
+        )
 
     def _hanging_point_position(self) -> Point3:
         parent_global = self.cable_annotation.hanging_from.global_transform
