@@ -472,6 +472,60 @@ def test_callback_pausing(rclpy_node):
     assert len(w2.connections) == 1
 
 
+def test_paused_messages_resolve_entities_from_preceding_messages(rclpy_node):
+    source_world = World(name="cross_message_source")
+    receiver_world = World(name="cross_message_receiver")
+    receiver_synchronizer = WorldSynchronizer(node=rclpy_node, _world=receiver_world)
+    receiver_synchronizer.pause()
+    source_meta_data = MetaData(node_name="source", process_id=os.getpid())
+
+    parent = Body(name=PrefixedName("parent"))
+    with source_world.modify_world():
+        source_world.add_body(parent)
+    parent_update = WorldUpdate(
+        meta_data=source_meta_data,
+        modification_block=ModificationBlock(
+            meta_data=source_meta_data,
+            modifications=source_world.get_world_model_manager().model_modification_blocks[
+                -1
+            ],
+        ),
+    )
+
+    child = Body(name=PrefixedName("child"))
+    with source_world.modify_world():
+        source_world.add_body(child)
+        source_world.add_connection(FixedConnection(parent=parent, child=child))
+    child_update = WorldUpdate(
+        meta_data=source_meta_data,
+        modification_block=ModificationBlock(
+            meta_data=source_meta_data,
+            modifications=source_world.get_world_model_manager().model_modification_blocks[
+                -1
+            ],
+        ),
+    )
+
+    receiver_synchronizer.subscription_callback(
+        std_msgs.msg.String(data=json.dumps(to_json(parent_update)))
+    )
+    receiver_synchronizer.subscription_callback(
+        std_msgs.msg.String(data=json.dumps(to_json(child_update)))
+    )
+
+    receiver_synchronizer.apply_missed_messages()
+
+    synchronized_parent = receiver_world.get_world_entity_with_id_by_id(parent.id)
+    synchronized_child = receiver_world.get_world_entity_with_id_by_id(child.id)
+    synchronized_connection = receiver_world.get_connection_between(
+        synchronized_parent, synchronized_child
+    )
+    assert synchronized_connection.parent is synchronized_parent
+    assert synchronized_connection.child is synchronized_child
+
+    receiver_synchronizer.close()
+
+
 def test_ChangeDifHasHardwareInterface(rclpy_node):
     w1 = World(name="w1")
     w2 = World(name="w2")
@@ -997,9 +1051,9 @@ def test_synchronous_publish_settles_promptly_with_multiple_real_subscribers(
     """
     Regression test against real ROS discovery (no fakes): with several concurrently
     created real subscribers and no graph churn, the highest-observed-count fallback in
-    :meth:`Synchronizer._snapshot_subscribers_after_discovery_settles` must settle on the
-    true, stable subscriber count, so synchronous publication returns promptly instead of
-    paying the ``wait_for_synchronization_timeout`` wait.
+    :meth:`Synchronizer._snapshot_subscribers_after_discovery_settles` must settle on
+    the true, stable subscriber count, so synchronous publication returns promptly
+    instead of paying the ``wait_for_synchronization_timeout`` wait.
     """
     w1 = create_dummy_world()
     synchronizer_1 = WorldSynchronizer(
@@ -1156,13 +1210,15 @@ def test_subscriber_disconnecting_during_discovery_grace_period_does_not_hang_fo
 ):
     """
     Exercises real ROS graph churn (no fakes): a subscriber that appears and then
-    disconnects again while :meth:`Synchronizer._snapshot_subscribers_after_discovery_settles`
-    is still polling can make the settled count reflect a subscriber that is no longer
-    actually there by the time :meth:`Synchronizer.publish` sends the message. Whether
-    this particular run manages to trigger an over-count depends on ROS discovery timing
-    and is intentionally not asserted directly; what must always hold is that publish is
-    bounded by ``wait_for_synchronization_timeout``, never blocks forever, and recovers
-    on the next publish once the graph has settled.
+    disconnects again while
+    :meth:`Synchronizer._snapshot_subscribers_after_discovery_settles` is still polling
+    can make the settled count reflect a subscriber that is no longer actually there by
+    the time :meth:`Synchronizer.publish` sends the message.
+
+    Whether this particular run manages to trigger an over-count depends on ROS
+    discovery timing and is intentionally not asserted directly; what must always hold
+    is that publish is bounded by ``wait_for_synchronization_timeout``, never blocks
+    forever, and recovers on the next publish once the graph has settled.
     """
     w1 = create_dummy_world()
     synchronizer_1 = WorldSynchronizer(
@@ -1186,7 +1242,9 @@ def test_subscriber_disconnecting_during_discovery_grace_period_does_not_hang_fo
         time.sleep(0.05)
         flapping_node.destroy_subscription(flapping_subscription)
 
-    flap_thread = threading.Thread(target=disconnect_shortly_after_appearing, daemon=True)
+    flap_thread = threading.Thread(
+        target=disconnect_shortly_after_appearing, daemon=True
+    )
     flap_thread.start()
 
     try:

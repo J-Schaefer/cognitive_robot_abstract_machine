@@ -484,11 +484,9 @@ class WorldSynchronizer(Synchronizer, ModelChangeCallback, StateChangeCallback):
     changes.
     """
 
-    missed_messages: List[WorldUpdate] = field(
-        default_factory=list, init=False, repr=False
-    )
+    missed_messages: List[str] = field(default_factory=list, init=False, repr=False)
     """
-    Buffer for messages received while the synchronizer is paused.
+    Serialized messages received while the synchronizer is paused.
 
     These messages can be applied later by calling ``apply_missed_messages()``.
     """
@@ -500,6 +498,33 @@ class WorldSynchronizer(Synchronizer, ModelChangeCallback, StateChangeCallback):
         if self.synchronize_state:
             self._world.state.state_change_callbacks.append(self)
         self.update_previous_world_state()
+
+    def subscription_callback(self, message: std_msgs.msg.String):
+        """
+        Receive a serialized world update and process or defer it.
+
+        :param message: The incoming ROS string containing a serialized world update.
+        """
+        with self._world._world_lock:
+            message_data = json.loads(message.data)
+            message_meta_data = from_json(message_data["meta_data"])
+            if message_meta_data == self.meta_data:
+                return
+            if self._is_paused:
+                self.missed_messages.append(message.data)
+                return
+            deserialized_message = self._deserialize_message(message_data)
+            self._subscription_callback(deserialized_message)
+
+    def _deserialize_message(self, message_data: Dict[str, object]) -> WorldUpdate:
+        """
+        Deserialize a world update against the current world entities.
+
+        :param message_data: The parsed JSON representation of the world update.
+        :return: The deserialized world update.
+        """
+        tracker = WorldEntityWithIDKwargsTracker.from_world(self._world)
+        return from_json(message_data, **tracker.create_kwargs())
 
     def on_model_change(self, **kwargs):
         publish_changes = kwargs.get("publish_changes")
@@ -586,11 +611,13 @@ class WorldSynchronizer(Synchronizer, ModelChangeCallback, StateChangeCallback):
         }
 
     def _subscription_callback(self, message: WorldUpdate):
-        if self._is_paused:
-            self.missed_messages.append(message)
-        else:
-            self.apply_message(message)
-            self.acknowledge_message(message)
+        """
+        Apply and acknowledge a deserialized world update.
+
+        :param message: The world update to apply.
+        """
+        self.apply_message(message)
+        self.acknowledge_message(message)
 
     def apply_message(self, message: WorldUpdate):
         """
@@ -644,28 +671,27 @@ class WorldSynchronizer(Synchronizer, ModelChangeCallback, StateChangeCallback):
 
     def apply_missed_messages(self):
         """
-        Apply buffered messages accumulated while the synchronizer was paused.
+        Deserialize and apply messages accumulated while the synchronizer was paused.
 
-        Each message is applied independently so that model-change notifications fire
-        between messages, which is required for state messages that follow model
-        messages (``compiled_all_fks`` must exist before ``notify_state_change`` is
-        called).
+        Each message is applied before the next message is deserialized so references to
+        entities introduced by preceding messages can be resolved.
 
         :raises ApplyMissedMessagesWhileWorldIsBeingModifiedError: If called while a
             ``modify_world`` context is active on this synchronizer's world.
         """
         if self._world.world_is_being_modified:
             raise ApplyMissedMessagesWhileWorldIsBeingModifiedError()
-        if not self.missed_messages:
-            return
-        pending_messages = self.missed_messages
-        self.missed_messages = []
-        # Hold the world lock across the whole batch so the buffered messages apply atomically: a
-        # concurrent modify_world on another thread serializes behind it instead of interleaving.
+        applied_messages = []
         with self._world._world_lock:
-            for message in pending_messages:
+            if not self.missed_messages:
+                return
+            pending_messages = self.missed_messages
+            self.missed_messages = []
+            for serialized_message in pending_messages:
+                message = self._deserialize_message(json.loads(serialized_message))
                 self.apply_message(message)
-        for message in pending_messages:
+                applied_messages.append(message)
+        for message in applied_messages:
             self.acknowledge_message(message)
 
     def resume(self):
