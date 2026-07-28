@@ -13,9 +13,7 @@ from coraplex.plans.plan_node import PlanNode
 from coraplex.querying.predicates import GripperIsFree, GripperIsNotFree
 from coraplex.robot_plans.actions.base import ActionDescription
 from coraplex.robot_plans.actions.core.cable_grasp import (
-    _cross,
-    _normalized,
-    _rotation_matrix_from_axes,
+    _gripper_orientation_from_z_axis,
 )
 from coraplex.robot_plans.motions.gripper import (
     MoveGripperMotion,
@@ -198,22 +196,7 @@ class CableRegraspAction(ActionDescription):
         side_direction: np.ndarray,
         front_direction: np.ndarray,
     ) -> Quaternion:
-        gripper_z = _normalized(side_direction)
-        world_up = np.array([0, 0, 1])
-
-        cross_xz = _cross(world_up, gripper_z)
-        if np.linalg.norm(cross_xz) < 1e-6:
-            fallback = _cross(world_up, front_direction)
-            if np.linalg.norm(fallback) < 1e-6:
-                gripper_x = np.array([1.0, 0.0, 0.0])
-            else:
-                gripper_x = _normalized(fallback)
-        else:
-            gripper_x = _normalized(cross_xz)
-        gripper_y = _normalized(_cross(gripper_z, gripper_x))
-
-        rotation_matrix = _rotation_matrix_from_axes(gripper_x, gripper_y, gripper_z)
-        return Quaternion.from_rotation_matrix(rotation_matrix)
+        return _gripper_orientation_from_z_axis(side_direction, front_direction)
 
     @staticmethod
     def pre_condition(
