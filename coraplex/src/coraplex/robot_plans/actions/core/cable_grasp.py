@@ -137,12 +137,12 @@ class CableGraspAction(ActionDescription):
         )
 
         grasp_arm_scoop_pose, approach_grasp_pose, pre_grasp_pose, grasp_pose = (
-            self._calculate_pre_grasp_pose(grasp_arm, post_scoop_pose)
+            self._calculate_grasp_poses(grasp_arm, post_scoop_pose)
         )
 
         front_world, side_world, up_world = self._hanger_axes()
 
-        approach_offset = pre_scoop_pose.to_position().to_np()[:3] + front_world * (0.2)
+        approach_offset = pre_scoop_pose.to_position().to_np()[:3] + front_world * (0.1)
         approach_pose = Pose(
             position=Point3(
                 x=approach_offset[0],
@@ -346,7 +346,7 @@ class CableGraspAction(ActionDescription):
 
         return pre_scoop_pose, scoop_pose, post_scoop_pose
 
-    def _calculate_pre_grasp_pose(
+    def _calculate_grasp_poses(
         self, grasp_arm: Arms, post_scoop_pose: Pose
     ) -> tuple[Pose, Pose, Pose, Pose]:
         front_world, side_world, up_world = self._hanger_axes()
@@ -409,7 +409,11 @@ class CableGraspAction(ActionDescription):
             reference_frame=self.world.root,
         )
 
-        grasp_pos = post_scoop_pose.to_position().to_np()[:3] - up_world * (0.1)
+        grasp_pos = (
+            post_scoop_pose.to_position().to_np()[:3]
+            - up_world * (0.1)
+            + side_world * (self.gripper_width / 2 * side_sign)
+        )
         grasp_pose = Pose(
             position=Point3(
                 x=grasp_pos[0],
