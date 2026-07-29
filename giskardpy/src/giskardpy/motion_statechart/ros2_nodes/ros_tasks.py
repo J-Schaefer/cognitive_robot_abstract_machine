@@ -295,28 +295,30 @@ class WPGGripperActionServerTask(
 
     def on_tick(self, context: MotionStatechartContext) -> ObservationStateValues:
         if self._result:
+            gripper_status = self._result.result.status
+            print(self._result)
             if self.message_type == Flexgrip:
                 return (
                     ObservationStateValues.TRUE
-                    if self._result.status == 0
+                    if gripper_status == 0
                     else ObservationStateValues.FALSE
                 )
             elif self.message_type == Flexrelease:
                 return (
                     ObservationStateValues.TRUE
-                    if self._result.status == 0
+                    if gripper_status == 0
                     else ObservationStateValues.FALSE
                 )
             elif self.message_type == Grip:
                 return (
                     ObservationStateValues.TRUE
-                    if self._result.status == 0
+                    if gripper_status == 0
                     else ObservationStateValues.FALSE
                 )
             elif self.message_type == Release:
                 return (
                     ObservationStateValues.TRUE
-                    if self._result.status == 0
+                    if gripper_status == 0
                     else ObservationStateValues.FALSE
                 )
             else:
