@@ -6,7 +6,7 @@ from abc import abstractmethod
 from dataclasses import dataclass, field
 from datetime import timedelta
 from functools import cached_property
-from typing import ClassVar, Optional, Set, Type, List, Dict
+from typing import ClassVar, Optional, Set, Type, List, Dict, Callable, Any
 from uuid import UUID
 
 import numpy as np
@@ -122,9 +122,23 @@ class Synchronizer(WorldEntityWithClassBasedID):
     The type of the message that is sent and received.
     """
 
+    missed_messages: List[str] = field(default_factory=list, init=False, repr=False)
+    """
+    Serialized messages received while the synchronizer is paused.
+
+    These messages can be applied later by calling ``apply_missed_messages()``.
+    """
+
     wait_for_synchronization_timeout: float = field(default=30.0)
     """
     Timeout in seconds for waiting for synchronization.
+    """
+
+    _deserialize_method: ClassVar[Callable[[str], Any]] = None
+    """
+    Abstract method to deserialize message data into message objects.
+
+    Must be implemented by subclasses.
     """
 
     _current_publication_event_id: Optional[UUID] = None
@@ -209,22 +223,20 @@ class Synchronizer(WorldEntityWithClassBasedID):
 
     def subscription_callback(self, message: std_msgs.msg.String):
         """
-        Wrap the origin subscription callback by self-skipping and disabling the next
-        world callback. Holds the world lock while deserializing to ensure no changes
-        happen while building the tracker and running from_json.
+        Receive a serialized synchronization message and process or defer it.
 
-        :param message: The incoming ROS string message containing a serialized
-            synchronization message.
+        :param message: The incoming ROS string containing a serialized synchronization
+            message.
         """
         with self._world._world_lock:
-            tracker = WorldEntityWithIDKwargsTracker.from_world(self._world)
-            deserialized_message = from_json(
-                json.loads(message.data), **tracker.create_kwargs()
-            )
-
-            if deserialized_message.meta_data == self.meta_data:
+            message_data = json.loads(message.data)
+            message_meta_data = from_json(message_data["meta_data"])
+            if message_meta_data == self.meta_data:
                 return
-
+            if self._is_paused:
+                self.missed_messages.append(message.data)
+                return
+            deserialized_message = self._deserialize_message(message_data)
             self._subscription_callback(deserialized_message)
 
     def acknowledge_message(self, message: message_type):
@@ -434,6 +446,15 @@ class ModelReloadSynchronizer(Synchronizer):
         self._replace_world(new_world)
         self._world._notify_model_change(publish_changes=False)
 
+    def _deserialize_message(self, message_data: Dict[str, object]) -> LoadModel:
+        """
+        Deserialize a load model message.
+
+        :param message_data: The parsed JSON representation of the load model message.
+        :return: The deserialized LoadModel message.
+        """
+        return from_json(message_data)
+
     def _replace_world(self, new_world: World):
         """
         Replaces the current world with a new one, updating all relevant attributes.
@@ -484,13 +505,6 @@ class WorldSynchronizer(Synchronizer, ModelChangeCallback, StateChangeCallback):
     changes.
     """
 
-    missed_messages: List[str] = field(default_factory=list, init=False, repr=False)
-    """
-    Serialized messages received while the synchronizer is paused.
-
-    These messages can be applied later by calling ``apply_missed_messages()``.
-    """
-
     def __post_init__(self):
         Synchronizer.__post_init__(self)
         if self.synchronize_model:
@@ -498,23 +512,6 @@ class WorldSynchronizer(Synchronizer, ModelChangeCallback, StateChangeCallback):
         if self.synchronize_state:
             self._world.state.state_change_callbacks.append(self)
         self.update_previous_world_state()
-
-    def subscription_callback(self, message: std_msgs.msg.String):
-        """
-        Receive a serialized world update and process or defer it.
-
-        :param message: The incoming ROS string containing a serialized world update.
-        """
-        with self._world._world_lock:
-            message_data = json.loads(message.data)
-            message_meta_data = from_json(message_data["meta_data"])
-            if message_meta_data == self.meta_data:
-                return
-            if self._is_paused:
-                self.missed_messages.append(message.data)
-                return
-            deserialized_message = self._deserialize_message(message_data)
-            self._subscription_callback(deserialized_message)
 
     def _deserialize_message(self, message_data: Dict[str, object]) -> WorldUpdate:
         """
