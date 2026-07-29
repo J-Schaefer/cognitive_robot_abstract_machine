@@ -517,9 +517,8 @@ def test_paused_messages_resolve_entities_from_preceding_messages(rclpy_node):
 
     synchronized_parent = receiver_world.get_world_entity_with_id_by_id(parent.id)
     synchronized_child = receiver_world.get_world_entity_with_id_by_id(child.id)
-    synchronized_connection = receiver_world.get_connection_between(
-        synchronized_parent, synchronized_child
-    )
+    assert len(receiver_world.connections) == 1
+    synchronized_connection = receiver_world.connections[0]
     assert synchronized_connection.parent is synchronized_parent
     assert synchronized_connection.child is synchronized_child
 
