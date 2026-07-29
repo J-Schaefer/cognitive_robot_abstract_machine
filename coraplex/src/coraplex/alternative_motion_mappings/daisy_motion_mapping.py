@@ -82,23 +82,23 @@ class DAiSyGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
             if self.motion == GripperState.OPEN:
                 tasks.append(
                     WPGGripperActionServerTask(
-                        action_topic="/left_grippers/release", message_type=Release
+                        action_topic="/left_gripper/release", message_type=Release
                     )
                 )
                 tasks.append(
                     WPGGripperActionServerTask(
-                        action_topic="/right_grippers/release", message_type=Release
+                        action_topic="/right_gripper/release", message_type=Release
                     )
                 )
             elif self.motion == GripperState.CLOSE:
                 tasks.append(
                     WPGGripperActionServerTask(
-                        action_topic="/left_grippers/grip", message_type=Grip
+                        action_topic="/left_gripper/grip", message_type=Grip
                     )
                 )
                 tasks.append(
                     WPGGripperActionServerTask(
-                        action_topic="/right_grippers/grip", message_type=Grip
+                        action_topic="/right_gripper/grip", message_type=Grip
                     )
                 )
         else:
