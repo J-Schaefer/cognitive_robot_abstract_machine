@@ -6,6 +6,7 @@ import logging
 
 from typing_extensions import Tuple, Any
 
+from coraplex.alternative_motion_mappings.daisy_motion_mapping import DAiSyGripMotion
 from coraplex.datastructures.dataclasses import Context
 from giskardpy.middleware.ros2 import rospy
 from semantic_digital_twin.adapters.ros.world_fetcher import fetch_world_from_service
@@ -56,6 +57,11 @@ def setup_real_daisy(
     robot_view = world.get_semantic_annotations_by_type(DAiSy)[0]
 
     # Context
-    context = Context(world, robot_view, ros_node=rospy.node)
+    context = Context(
+        world,
+        robot_view,
+        ros_node=rospy.node,
+        alternative_motion_mappings=[DAiSyGripMotion],
+    )
 
     return rospy.node, world, robot_view, context
