@@ -107,42 +107,84 @@ class DAiSyGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
         return Parallel(tasks)
 
 
-# class DAiSyFlexGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
-#     """
-#     Use flex grip and release motions for the WPG grippers.
-#     """
-#
-#     execution_type = ExecutionType.REAL
-#
-#     def perform(self):
-#         return
-#
-#     def _motion_chart(self) -> WPGGripperActionServerTask:
-#         if self.motion == GripperState.CLOSE or self.motion == GripperState.OPEN:
-#             raise ValueError(f"Gripper action {self.motion} not supported")
-#
-#         if self.gripper == Arms.LEFT:
-#             if self.motion == GripperState.FLEXCLOSE:
-#                 self.action_topic = "/left_gripper/flexgrip"
-#                 self.message_type = Flexgrip
-#             elif self.motion == GripperState.FLEXOPEN:
-#                 self.action_topic = "/left_gripper/flexrelease"
-#                 self.message_type = Flexrelease
-#             else:
-#                 raise ValueError(f"Gripper action {self.motion} not supported")
-#         elif self.gripper == Arms.RIGHT:
-#             if self.motion == GripperState.FLEXCLOSE:
-#                 self.action_topic = "/right_gripper/flexgrip"
-#                 self.message_type = Flexgrip
-#             elif self.motion == GripperState.FLEXOPEN:
-#                 self.action_topic = "/right_gripper/flexrelease"
-#                 self.message_type = Flexrelease
-#             else:
-#                 raise ValueError(f"Gripper action {self.motion} not supported")
-#         else:
-#             raise ValueError(f"Gripper {self.gripper} not supported")
-#
-#         return WPGGripperActionServerTask(
-#             action_topic=self.action_topic,
-#             message_type=self.message_type,
-#         )
+class DAiSyFlexGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
+    """
+    Use flex grip and release motions for the WPG grippers.
+    """
+
+    execution_type = ExecutionType.REAL
+
+    def perform(self):
+        logger.info(f"Performing action {self.__class__.__name__}")
+        return
+
+    @property
+    def _motion_chart(self) -> MotionStatechartNode:
+        if self.motion == GripperState.OPEN or self.motion == GripperState.CLOSE:
+            raise ValueError(f"Gripper action {self.motion} not supported")
+
+        tasks = []
+
+        if self.gripper == Arms.LEFT:
+            if self.motion == GripperState.FLEXCLOSE:
+                tasks.append(
+                    WPGGripperActionServerTask(
+                        action_topic="/left_gripper/flexgrip", message_type=Flexgrip
+                    )
+                )
+            elif self.motion == GripperState.FLEXOPEN:
+                tasks.append(
+                    WPGGripperActionServerTask(
+                        action_topic="/left_gripper/flexrelease",
+                        message_type=Flexrelease,
+                    )
+                )
+            else:
+                raise ValueError(f"Gripper action {self.motion} not supported")
+        elif self.gripper == Arms.RIGHT:
+            if self.motion == GripperState.FLEXCLOSE:
+                tasks.append(
+                    WPGGripperActionServerTask(
+                        action_topic="/right_gripper/flexgrip", message_type=Flexgrip
+                    )
+                )
+            elif self.motion == GripperState.FLEXOPEN:
+                tasks.append(
+                    WPGGripperActionServerTask(
+                        action_topic="/right_gripper/flexrelease",
+                        message_type=Flexrelease,
+                    )
+                )
+            else:
+                raise ValueError(f"Gripper action {self.motion} not supported")
+        elif self.gripper == Arms.BOTH:
+            if self.motion == GripperState.FLEXCLOSE:
+                tasks.append(
+                    WPGGripperActionServerTask(
+                        action_topic="/left_gripper/flexgrip", message_type=Flexgrip
+                    )
+                )
+                tasks.append(
+                    WPGGripperActionServerTask(
+                        action_topic="/right_gripper/flexgrip", message_type=Flexgrip
+                    )
+                )
+            elif self.motion == GripperState.FLEXOPEN:
+                tasks.append(
+                    WPGGripperActionServerTask(
+                        action_topic="/left_gripper/flexrelease",
+                        message_type=Flexrelease,
+                    )
+                )
+                tasks.append(
+                    WPGGripperActionServerTask(
+                        action_topic="/right_gripper/flexrelease",
+                        message_type=Flexrelease,
+                    )
+                )
+            else:
+                raise ValueError(f"Gripper action {self.motion} not supported")
+        else:
+            raise ValueError(f"Gripper {self.gripper} not supported")
+
+        return Parallel(tasks)
