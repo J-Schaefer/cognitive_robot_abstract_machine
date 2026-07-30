@@ -1,12 +1,13 @@
 import os
 import time
 from math import pi
+from time import sleep
 
 from coraplex.datastructures.enums import ApproachDirection, Arms, VerticalAlignment
 from coraplex.datastructures.grasp import GraspDescription
 from coraplex.execution_environment import real_robot, simulated_robot
 from coraplex.plans.factories import sequential
-from coraplex.robot_plans import MoveJointsMotion
+from coraplex.robot_plans import MoveJointsMotion, MoveGripperMotion
 from coraplex.robot_plans.actions.core.cable_grasp import CableGraspAction
 from coraplex.robot_plans.actions.core.cable_regrasp import CableRegraspAction
 from coraplex.robot_plans.actions.core.pick_up import PickUpAction
@@ -88,7 +89,7 @@ except (WorldEntityNotFoundError, IndexError):
                 world.get_semantic_annotations_by_type(DAiSy)[0].root,
                 cable_post_root,
                 parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                    x=-0.568,
+                    x=-0.42,
                     y=0.025,
                     z=0.8,
                     roll=pi / 2,
@@ -176,6 +177,8 @@ daisy_left_arm_positions = [
 
 plan_home = sequential(
     [
+        # MoveGripperMotion(motion=GripperState.CLOSE, gripper=Arms.BOTH),
+        MoveGripperMotion(motion=GripperState.OPEN, gripper=Arms.BOTH),
         ParkArmsAction(arm=Arms.RIGHT),
         MoveJointsMotion(
             names=daisy_left_arm_names, positions=daisy_left_arm_positions
@@ -185,11 +188,13 @@ plan_home = sequential(
 )
 
 if real:
-    with real_robot:
+    with real_robot(collision_avoidance=False):
         plan_home.perform()
 else:
     with simulated_robot:
         plan_home.perform()
+
+sleep(3)
 
 # %% Demo Plan
 pick_up_grasp = GraspDescription(
@@ -208,7 +213,7 @@ plan = sequential(
             cable_annotation=cable_annotation,
             grasp_offset=0.1,
             side_offset=0.2,
-            front_offset=0.01,
+            front_offset=-0.01,
             down_offset=0.12,
             approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
             approach_sign=-1,  # y-axis pointing to the back
@@ -218,7 +223,7 @@ plan = sequential(
 )
 
 if real:
-    with real_robot:
+    with real_robot(collision_avoidance=True):
         plan.perform()
 else:
     with simulated_robot:
@@ -235,7 +240,7 @@ plan_regrasp = sequential(
 )
 
 if real:
-    with real_robot:
+    with real_robot(collision_avoidance=True):
         plan_regrasp.perform()
 else:
     with simulated_robot:
