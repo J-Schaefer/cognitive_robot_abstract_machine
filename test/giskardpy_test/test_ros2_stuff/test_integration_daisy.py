@@ -19,7 +19,6 @@ from giskardpy.middleware.ros2.utils.utils_for_tests import compare_poses, Giska
 from giskardpy.motion_statechart.goals.collision_avoidance import SelfCollisionAvoidance
 from giskardpy.motion_statechart.goals.open_close import Open, Close
 from giskardpy.motion_statechart.goals.templates import Sequence, Parallel
-from giskardpy.motion_statechart.goals.test import Cutting
 from giskardpy.motion_statechart.graph_node import EndMotion
 from giskardpy.motion_statechart.monitors.overwrite_state_monitors import (
     SetOdometry,
