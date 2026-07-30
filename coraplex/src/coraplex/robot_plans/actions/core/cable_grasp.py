@@ -65,6 +65,7 @@ def _gripper_orientation_from_z_axis(
     gripper_z_axis: np.ndarray,
     fallback_direction: np.ndarray,
     z_rotation: float = 0.0,
+    pitch_angle: float = 0.0,
 ) -> Quaternion:
     """
     Compute a gripper orientation quaternion from a desired Z axis.
@@ -95,6 +96,10 @@ def _gripper_orientation_from_z_axis(
 
     rotation_matrix = _rotation_matrix_from_axes(gripper_x, gripper_y, gripper_z)
     quaternion = Quaternion.from_rotation_matrix(rotation_matrix)
+
+    if pitch_angle != 0.0:
+        # Axis are z to the front, x to the side of the gripper, so gripper pitch up/down is around the x-axis
+        quaternion = quaternion.multiply(Quaternion.from_rpy(pitch_angle, 0.0, 0.0))
 
     if z_rotation != 0.0:
         quaternion = quaternion.multiply(Quaternion.from_rpy(0.0, 0.0, z_rotation))
@@ -237,6 +242,7 @@ class CableGraspAction(ActionDescription):
                     scoop_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
+                MoveGripperMotion(motion=GripperState.CLOSE, gripper=scoop_arm),
                 # Move the scoop arm to the post-scoop position, actually scoop cable
                 MoveToolCenterPointMotion(
                     post_scoop_pose,
@@ -263,6 +269,7 @@ class CableGraspAction(ActionDescription):
                 ),
                 # Close gripper of grasp arm to grasp the cable
                 MoveGripperMotion(motion=GripperState.CLOSE, gripper=grasp_arm),
+                MoveGripperMotion(motion=GripperState.OPEN, gripper=scoop_arm),
                 # Attach the cable to the grasp arm
                 AttachNode(
                     body=self.cable_annotation.root,
@@ -381,7 +388,9 @@ class CableGraspAction(ActionDescription):
             # Roll turn gripper up/down
             # Pitch turns the gripper in the finger plane
             # Yaw rotates the gripper around z (forward pointing axis)
-            orientation=scoop_orientation.multiply(Quaternion.from_rpy(0, 0, 0)),
+            orientation=scoop_orientation.multiply(
+                Quaternion.from_rpy(0, 0, -(pi / 2))
+            ),
             reference_frame=self.world.root,
         )
 
@@ -433,11 +442,14 @@ class CableGraspAction(ActionDescription):
         # Pre-grasp position is the post-scoop position with a small offset to the side and below the scoop gripper
         pre_grasp_pos = (
             post_scoop_pose.to_position().to_np()[:3]
-            - side_world * (0.1 * side_sign)
-            - up_world * (0.1)
+            - side_world * (0.3 * side_sign)
+            + up_world * (0.2)
+        )
+        pre_grasp_orientation = self._grasp_gripper_orientation(
+            side_world * side_sign, front_world, pitch_angle=0.7854
         )
         grasp_orientation = self._grasp_gripper_orientation(
-            side_world * side_sign, front_world
+            side_world * side_sign, front_world, pitch_angle=0.7854
         )
         pre_grasp_pose = Pose(
             position=Point3(
@@ -446,14 +458,14 @@ class CableGraspAction(ActionDescription):
                 z=pre_grasp_pos[2],
                 reference_frame=self.world.root,
             ),
-            orientation=grasp_orientation,
+            orientation=pre_grasp_orientation,
             reference_frame=self.world.root,
         )
 
         grasp_pos = (
             post_scoop_pose.to_position().to_np()[:3]
-            - up_world * (0.1)
-            + side_world * (self.gripper_width / 2 * side_sign)
+            - side_world * (0.08 * side_sign)
+            + up_world * (0.1)
         )
         grasp_pose = Pose(
             position=Point3(
@@ -497,6 +509,7 @@ class CableGraspAction(ActionDescription):
         side_direction: np.ndarray,
         front_direction: np.ndarray,
         z_rotation: float = 0.0,
+        pitch_angle: float = 0.0,
     ) -> Quaternion:
         """
         Compute the gripper orientation quaternion for the grasp arm.
@@ -516,7 +529,10 @@ class CableGraspAction(ActionDescription):
             axis applied after computing the base orientation.
         """
         return _gripper_orientation_from_z_axis(
-            side_direction, front_direction, z_rotation
+            side_direction,
+            front_direction,
+            z_rotation,
+            pitch_angle=pitch_angle,
         )
 
     def _hanging_point_position(self) -> Point3:
@@ -533,6 +549,7 @@ class CableGraspAction(ActionDescription):
         right_arm = ViewManager.get_arm_view(Arms.RIGHT, self.robot)
 
         hanger_pos = self._hanging_point_position().to_np()
+        print(f"hanger_pos: {hanger_pos}")
 
         left_tip_pos = (
             left_arm.end_effector.tool_frame.global_transform.to_position().to_np()
@@ -541,8 +558,11 @@ class CableGraspAction(ActionDescription):
             right_arm.end_effector.tool_frame.global_transform.to_position().to_np()
         )
 
+        print(f"left_tip_pos: {left_tip_pos}, right_tip_pos: {right_tip_pos}")
+
         left_distance = float(np.linalg.norm(left_tip_pos - hanger_pos))
         right_distance = float(np.linalg.norm(right_tip_pos - hanger_pos))
+        print(f"left_distance: {left_distance}, right_distance: {right_distance}")
 
         return Arms.LEFT if left_distance <= right_distance else Arms.RIGHT
 
