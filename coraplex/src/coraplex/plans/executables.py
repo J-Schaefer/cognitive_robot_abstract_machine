@@ -15,6 +15,7 @@ from giskardpy.motion_statechart.data_types import (
 )
 from giskardpy.motion_statechart.goals.collision_avoidance import (
     ExternalCollisionAvoidance,
+    SelfCollisionAvoidance,
 )
 from giskardpy.motion_statechart.goals.templates import Sequence
 from giskardpy.motion_statechart.graph_node import EndMotion, Task
@@ -149,6 +150,9 @@ class GiskardExecutable(Executable):
           the motion if either condition is observed to be false.
         """
         self._current_motion_state_chart = MotionStatechart()
+        if GiskardExecutable.collision_avoidance:
+            self._current_motion_state_chart.add_node(ExternalCollisionAvoidance())
+            self._current_motion_state_chart.add_node(SelfCollisionAvoidance())
         if self.execution_type == ExecutionType.REAL:
             self._current_motion_state_chart.add_node(
                 seq := Sequence(list(self.motion_mappings.values()))
@@ -172,8 +176,6 @@ class GiskardExecutable(Executable):
                 end_trigger = trinary_logic_or(end_trigger, *skip_end_conditions)
 
             self._add_condition_monitors(first_task, end_trigger)
-        if GiskardExecutable.collision_avoidance:
-            self._current_motion_state_chart.add_node(ExternalCollisionAvoidance())
 
         end_motion = EndMotion()
         end_motion.start_condition = end_trigger
