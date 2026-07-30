@@ -10,6 +10,7 @@ from semantic_digital_twin.collision_checking.collision_rules import (
     SelfCollisionMatrixRule,
     AvoidExternalCollisions,
     AvoidSelfCollisions,
+    AvoidCollisionBetweenGroups,
 )
 from semantic_digital_twin.datastructures.definitions import (
     StaticJointState,
@@ -330,6 +331,42 @@ class DAiSy(AbstractRobot, HasLeftRightArm[DAiSyLeftArm, DAiSyRightArm]):
                     buffer_zone_distance=0.03,
                     violated_distance=0.0,
                     robot=self,
+                ),
+                AvoidCollisionBetweenGroups(
+                    buffer_zone_distance=0.015,
+                    violated_distance=0.0,
+                    body_group_a=[self._world.get_body_by_name("left_forearm_link")],
+                    body_group_b=[
+                        self._world.get_body_by_name(
+                            "left_gripper_wrist_collision_cylinder_link"
+                        )
+                    ],
+                ),
+                AvoidCollisionBetweenGroups(
+                    buffer_zone_distance=0.015,
+                    violated_distance=0.0,
+                    body_group_a=[self._world.get_body_by_name("right_forearm_link")],
+                    body_group_b=[
+                        self._world.get_body_by_name(
+                            "right_gripper_wrist_collision_cylinder_link"
+                        )
+                    ],
+                ),
+                AvoidCollisionBetweenGroups(
+                    buffer_zone_distance=0.015,
+                    violated_distance=0.0,
+                    body_group_a=[self._world.get_body_by_name("right_forearm_link")],
+                    body_group_b=[
+                        self._world.get_body_by_name("right_gripper_side_cylinder_link")
+                    ],
+                ),
+                AvoidCollisionBetweenGroups(
+                    buffer_zone_distance=0.015,
+                    violated_distance=0.0,
+                    body_group_a=[self._world.get_body_by_name("right_forearm_link")],
+                    body_group_b=[
+                        self._world.get_body_by_name("left_gripper_side_cylinder_link")
+                    ],
                 ),
             ]
         )
