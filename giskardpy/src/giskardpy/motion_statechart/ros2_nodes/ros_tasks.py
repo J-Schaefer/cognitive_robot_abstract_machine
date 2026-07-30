@@ -17,6 +17,8 @@ from coraplex.datastructures.enums import WPGGripPreset
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.robots.robot_parts import EndEffector
 
+from giskardpy.middleware.ros2 import rospy
+
 try:
     from nav2_msgs.action import NavigateToPose
 except ModuleNotFoundError:
@@ -33,7 +35,7 @@ from giskardpy.motion_statechart.ros_context import RosContextExtension
 from semantic_digital_twin.spatial_types.spatial_types import Pose
 from semantic_digital_twin.world_description.world_entity import Body
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("giskard")
 
 
 Action = TypeVar("Action")
@@ -93,7 +95,7 @@ class ActionServerTask(
             ros_context_extension.ros_node, self.message_type, self.action_topic
         )
         self.build_msg(context)
-        logger.info(f"Waiting for action server {self.action_topic}")
+        rospy.node.get_logger().info(f"Waiting for action server {self.action_topic}")
         self._action_client.wait_for_server()
         return NodeArtifacts()
 
