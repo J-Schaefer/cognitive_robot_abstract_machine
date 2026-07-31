@@ -16,8 +16,14 @@ from coraplex.robot_plans.actions.core.robot_body import (
     SetGripperAction,
 )
 from semantic_digital_twin.adapters.mesh import STLParser
+from semantic_digital_twin.collision_checking.collision_rules import (
+    AllowCollisionForBodies,
+)
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
+from semantic_digital_twin.orm.ormatic_interface import (
+    AllowCollisionForAdjacentPairsDAO,
+)
 from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.semantic_annotations.cable import Cable
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
@@ -145,6 +151,10 @@ with world.modify_world():
         mount_offset_x=0.078,
         mount_offset_y=-0.05,
         height_offset=0.0,
+    )
+
+    world.collision_manager.extend_default_rules(
+        [AllowCollisionForBodies(allowed_collision_bodies={cable_annotation.root})]
     )
 
 # %% Debug Prints
