@@ -38,7 +38,7 @@ def main():
         default=None,
     )
 
-    parse_known_args ignores ROS 2 arguments (--ros-args ...) that argparse does not know about.
+    # parse_known_args ignores ROS 2 arguments (--ros-args ...) that argparse does not know about.
     args, _ = parser.parse_known_args()
 
     rospy.init_node("giskard")
