@@ -442,14 +442,20 @@ class CableGraspAction(ActionDescription):
         # Pre-grasp position is the post-scoop position with a small offset to the side and below the scoop gripper
         pre_grasp_pos = (
             post_scoop_pose.to_position().to_np()[:3]
-            - side_world * (0.3 * side_sign)
-            + up_world * (0.2)
+            - side_world * (0.2 * side_sign)
+            + up_world * (0.1)
         )
         pre_grasp_orientation = self._grasp_gripper_orientation(
-            side_world * side_sign, front_world, pitch_angle=0.7854
+            side_world * side_sign,
+            front_world,
+            pitch_angle=0.7854,
+            z_rotation=pi,
         )
         grasp_orientation = self._grasp_gripper_orientation(
-            side_world * side_sign, front_world, pitch_angle=0.7854
+            side_world * side_sign,
+            front_world,
+            pitch_angle=0.7854,
+            z_rotation=pi,
         )
         pre_grasp_pose = Pose(
             position=Point3(
@@ -464,8 +470,8 @@ class CableGraspAction(ActionDescription):
 
         grasp_pos = (
             post_scoop_pose.to_position().to_np()[:3]
-            - side_world * (0.08 * side_sign)
-            + up_world * (0.1)
+            - side_world * (0.04 * side_sign)
+            + up_world * (0.06)
         )
         grasp_pose = Pose(
             position=Point3(
@@ -564,7 +570,8 @@ class CableGraspAction(ActionDescription):
         right_distance = float(np.linalg.norm(right_tip_pos - hanger_pos))
         print(f"left_distance: {left_distance}, right_distance: {right_distance}")
 
-        return Arms.LEFT if left_distance <= right_distance else Arms.RIGHT
+        # return Arms.LEFT if left_distance <= right_distance else Arms.RIGHT
+        return Arms.RIGHT
 
     @staticmethod
     def pre_condition(
