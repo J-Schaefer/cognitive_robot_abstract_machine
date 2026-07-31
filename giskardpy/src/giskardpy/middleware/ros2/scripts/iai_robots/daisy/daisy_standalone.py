@@ -1,4 +1,6 @@
 import argparse
+import os
+import sys
 from threading import Thread
 
 from giskardpy.middleware.ros2.behavior_tree_config import StandAloneBTConfig
@@ -22,17 +24,21 @@ from giskardpy.middleware.ros2.scripts.tools.interactive_marker import (
 
 def main():
     parser = argparse.ArgumentParser(description="DAiSy Giskard standalone controller.")
+
     parser.add_argument(
         "--interactive-marker",
         action="store_true",
         help="Also start the interactive marker server for Cartesian control via RViz.",
+        default=None,
     )
     parser.add_argument(
         "--fake-gripper",
         action="store_true",
         help="Also start fake gripper action servers for standalone operation.",
+        default=None,
     )
-    # parse_known_args ignores ROS 2 arguments (--ros-args ...) that argparse does not know about.
+
+    parse_known_args ignores ROS 2 arguments (--ros-args ...) that argparse does not know about.
     args, _ = parser.parse_known_args()
 
     rospy.init_node("giskard")
