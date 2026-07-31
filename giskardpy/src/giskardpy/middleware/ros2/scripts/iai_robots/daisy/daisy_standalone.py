@@ -9,6 +9,9 @@ from giskardpy.middleware.ros2.scripts.iai_robots.daisy.configs import (
 )
 from giskardpy.middleware.ros2 import rospy
 from giskardpy.middleware.ros2.utils.utils import load_xacro
+from giskardpy.middleware.ros2.scripts.tools.fake_gripper_action_server import (
+    WPGFakeGripperActionServer,
+)
 from rclpy import Parameter
 
 from giskardpy.qp.qp_controller_config import QPControllerConfig
@@ -23,6 +26,11 @@ def main():
         "--interactive-marker",
         action="store_true",
         help="Also start the interactive marker server for Cartesian control via RViz.",
+    )
+    parser.add_argument(
+        "--fake-gripper",
+        action="store_true",
+        help="Also start fake gripper action servers for standalone operation.",
     )
     # parse_known_args ignores ROS 2 arguments (--ros-args ...) that argparse does not know about.
     args, _ = parser.parse_known_args()
@@ -55,6 +63,18 @@ def main():
             ),
             daemon=True,
             name="interactive_marker",
+        ).start()
+
+    if args.fake_gripper:
+        Thread(
+            target=lambda: WPGFakeGripperActionServer("left").start(),
+            daemon=True,
+            name="fake_left_gripper",
+        ).start()
+        Thread(
+            target=lambda: WPGFakeGripperActionServer("right").start(),
+            daemon=True,
+            name="fake_right_gripper",
         ).start()
 
     giskard.live()
