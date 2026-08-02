@@ -399,6 +399,100 @@ class TestWPGFakeGripperActionServer:
         assert "right_gripper_finger_joint" in joint_names
         assert "right_gripper_right_finger_joint" in joint_names
 
+    def test_grip_result_includes_device_state_holding(
+        self, wpg_skip_condition, init_rospy
+    ):
+        """
+        Test that grip result includes device_state set to HOLDING.
+        """
+        server = WPGFakeGripperActionServer("left")
+        result = server._create_grip_result()
+
+        assert result.status == 0
+        assert result.device_state == 5
+
+    def test_release_result_includes_device_state_released(
+        self, wpg_skip_condition, init_rospy
+    ):
+        """
+        Test that release result includes device_state set to RELEASED.
+        """
+        server = WPGFakeGripperActionServer("left")
+        result = server._create_release_result()
+
+        assert result.status == 0
+        assert result.device_state == 3
+
+    def test_flexgrip_result_includes_device_state_holding(
+        self, wpg_skip_condition, init_rospy
+    ):
+        """
+        Test that flexgrip result includes device_state set to HOLDING.
+        """
+        server = WPGFakeGripperActionServer("left")
+        result = server._create_flexgrip_result()
+
+        assert result.status == 0
+        assert result.device_state == 5
+
+    def test_flexrelease_result_includes_device_state_released(
+        self, wpg_skip_condition, init_rospy
+    ):
+        """
+        Test that flexrelease result includes device_state set to RELEASED.
+        """
+        server = WPGFakeGripperActionServer("left")
+        result = server._create_flexrelease_result()
+
+        assert result.status == 0
+        assert result.device_state == 3
+
+    def test_internal_state_updated_after_grip(self, wpg_skip_condition, init_rospy):
+        """
+        Test that _current_device_state is updated after grip/release.
+        """
+        server = WPGFakeGripperActionServer("left")
+        assert server._current_device_state == 3
+
+        server._create_grip_result()
+        assert server._current_device_state == 5
+
+        server._create_release_result()
+        assert server._current_device_state == 3
+
+    def test_devstate_service_name_configured(self, wpg_skip_condition, init_rospy):
+        """
+        Test that devstate service name is configured correctly.
+        """
+        left_server = WPGFakeGripperActionServer("left")
+        assert left_server.config.devstate_service_name == "/left_gripper/devstate"
+
+        right_server = WPGFakeGripperActionServer("right")
+        assert right_server.config.devstate_service_name == "/right_gripper/devstate"
+
+    def test_part_detector_callback_when_set(self, wpg_skip_condition, init_rospy):
+        """
+        Test that part_detector callback affects grip device_state.
+        """
+        from coraplex.querying.gripper_verification import WPGGripperDeviceState
+
+        server = WPGFakeGripperActionServer("left")
+        server.config.part_detector = lambda: True
+        assert server._resolved_grip_device_state() == WPGGripperDeviceState.HOLDING
+
+        server.config.part_detector = lambda: False
+        assert server._resolved_grip_device_state() == WPGGripperDeviceState.NO_PART
+
+    def test_part_detector_none_always_holds(self, wpg_skip_condition, init_rospy):
+        """
+        Test that without part_detector, grip always assumes HOLDING.
+        """
+        from coraplex.querying.gripper_verification import WPGGripperDeviceState
+
+        server = WPGFakeGripperActionServer("left")
+        assert server.config.part_detector is None
+        assert server._resolved_grip_device_state() == WPGGripperDeviceState.HOLDING
+
 
 class TestFakeGripperIntegration:
     """

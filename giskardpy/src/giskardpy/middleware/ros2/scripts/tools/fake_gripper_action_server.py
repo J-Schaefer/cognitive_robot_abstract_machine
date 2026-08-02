@@ -9,6 +9,7 @@ from rclpy.action import ActionServer
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Header
 
+from coraplex.querying.gripper_verification import WPGGripperDeviceState
 from giskardpy.middleware.ros2 import rospy
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,13 @@ try:
 except ImportError:
     GIPLINK_AVAILABLE = False
     logger.warning("griplink_interfaces not available, WPG fake servers will not work")
+
+try:
+    from griplink_interfaces.srv import Devstate
+
+    GIPLINK_SRV_AVAILABLE = True
+except ImportError:
+    GIPLINK_SRV_AVAILABLE = False
 
 
 @dataclass
@@ -118,6 +126,41 @@ class FakeGripperConfig:
     Topic to publish joint states on.
     """
 
+    grip_device_state: int = field(
+        default=WPGGripperDeviceState.HOLDING,
+    )
+    """
+    Device state reported after grip and flexgrip actions.
+
+    Defaults to :attr:`~WPGGripperDeviceState.HOLDING` (5).
+    """
+
+    release_device_state: int = field(
+        default=WPGGripperDeviceState.RELEASED,
+    )
+    """
+    Device state reported after release and flexrelease actions.
+
+    Defaults to :attr:`~WPGGripperDeviceState.RELEASED` (3).
+    """
+
+    part_detector: Optional[Callable[[], bool]] = field(default=None)
+    """
+    Optional callable consulted before a grip result is created.
+
+    If set, grip actions call it to determine whether a part was encountered. Returns
+    ``True`` if a part is detected (→ ``HOLDING``), ``False`` if no part is found (→
+    ``NO_PART``). If ``None``, grip always assumes a part is present.
+    """
+
+    devstate_service_name: Optional[str] = field(default=None)
+    """
+    Name of the devstate ROS2 service.
+
+    If provided, a service server is created that returns the gripper's current device
+    state on demand (same interface as the real driver).
+    """
+
 
 class FakeGripperActionServer(ABC):
     """
@@ -139,6 +182,8 @@ class FakeGripperActionServer(ABC):
         self._action_servers: dict[str, ActionServer] = {}
         self._joint_state_pub = None
         self._shutdown_callback = None
+        self._current_device_state: int = config.release_device_state
+        self._devstate_server = None
 
     def start(self):
         """
@@ -149,6 +194,7 @@ class FakeGripperActionServer(ABC):
 
         self._create_joint_state_publisher()
         self._create_action_servers()
+        self._create_devstate_service()
 
     def stop(self):
         """
@@ -158,6 +204,12 @@ class FakeGripperActionServer(ABC):
         for topic, server in self._action_servers.items():
             server.destroy()
             logger.debug(f"Destroyed action server: {topic}")
+
+        if self._devstate_server is not None:
+            self._devstate_server.destroy()
+            logger.debug(
+                f"Destroyed devstate service: {self.config.devstate_service_name}"
+            )
 
         if self._joint_state_pub is not None:
             self._joint_state_pub.destroy()
@@ -258,6 +310,41 @@ class FakeGripperActionServer(ABC):
             f"Published joint states: {dict(zip(joint_state_msg.name, joint_state_msg.position))}"
         )
 
+    def _create_devstate_service(self):
+        """
+        Create a devstate service server if a service name is configured.
+
+        The service mimics the real GRIPLINK driver's devstate endpoint, returning the
+        gripper's current internal device state.
+        """
+        if self.config.devstate_service_name is None:
+            logger.info("No devstate service name configured, skipping")
+            return
+        if not GIPLINK_SRV_AVAILABLE:
+            logger.warning(
+                "griplink_interfaces srv not available; skipping devstate service"
+            )
+            return
+        self._devstate_server = rospy.node.create_service(
+            Devstate,
+            self.config.devstate_service_name,
+            self._handle_devstate_request,
+        )
+        logger.info(f"Created devstate service at {self.config.devstate_service_name}")
+
+    def _handle_devstate_request(self, request, response):
+        """
+        Handle a devstate service request.
+
+        :param request: The service request (port field is ignored).
+        :param response: The service response to populate.
+        :return: The populated response with the current device state.
+        """
+        response.status = 0
+        response.message = "Success"
+        response.state = self._current_device_state
+        return response
+
 
 class WPGFakeGripperActionServer(FakeGripperActionServer):
     """
@@ -327,48 +414,76 @@ class WPGFakeGripperActionServer(FakeGripperActionServer):
             gripper_connector=gripper_connector,
             action_servers=action_server_configs,
             joint_state_topic="/joint_states",
+            devstate_service_name=f"/{arm_name}_gripper/devstate",
         )
+
+    def _resolved_grip_device_state(self) -> int:
+        """
+        Determine the device state for a grip action.
+
+        Consults the :attr:`~FakeGripperConfig.part_detector` if configured, otherwise
+        defaults to :attr:`~FakeGripperConfig.grip_device_state`.
+
+        :return: The device state value.
+        """
+        if self.config.part_detector is not None:
+            return (
+                WPGGripperDeviceState.HOLDING
+                if self.config.part_detector()
+                else WPGGripperDeviceState.NO_PART
+            )
+        return WPGGripperDeviceState.HOLDING
 
     def _create_grip_result(self) -> Grip.Result:
         """
         Create a result message for the Grip action.
 
-        :return: Result with success status (0).
+        :return: Result with success status (0) and device_state set to HOLDING (or
+            NO_PART if :attr:`~FakeGripperConfig.part_detector` returns ``False``).
         """
         result = Grip.Result()
         result.status = 0
         result.message = "Success"
+        self._current_device_state = self._resolved_grip_device_state()
+        result.device_state = self._current_device_state
         return result
 
     def _create_release_result(self) -> Release.Result:
         """
         Create a result message for the Release action.
 
-        :return: Result with success status (0).
+        :return: Result with success status (0) and device_state set to RELEASED.
         """
         result = Release.Result()
         result.status = 0
         result.message = "Success"
+        self._current_device_state = self.config.release_device_state
+        result.device_state = self._current_device_state
         return result
 
     def _create_flexgrip_result(self) -> Flexgrip.Result:
         """
         Create a result message for the Flexgrip action.
 
-        :return: Result with success status (0).
+        :return: Result with success status (0) and device_state set to HOLDING (or
+            NO_PART if :attr:`~FakeGripperConfig.part_detector` returns ``False``).
         """
         result = Flexgrip.Result()
         result.status = 0
         result.message = "Success"
+        self._current_device_state = self._resolved_grip_device_state()
+        result.device_state = self._current_device_state
         return result
 
     def _create_flexrelease_result(self) -> Flexrelease.Result:
         """
         Create a result message for the Flexrelease action.
 
-        :return: Result with success status (0).
+        :return: Result with success status (0) and device_state set to RELEASED.
         """
         result = Flexrelease.Result()
         result.status = 0
         result.message = "Success"
+        self._current_device_state = self.config.release_device_state
+        result.device_state = self._current_device_state
         return result
