@@ -594,14 +594,18 @@ class _CancelBecauseSelfCollisionViolated(CancelMotion):
         collisions = []
         thresholds = []
         for task in violated_tasks:
-            collision = context.self_collision_manager.last_closest_contacts[
-                task.collision_group_a, task.collision_group_b
-            ][0]
+            try:
+                collision = context.self_collision_manager.last_closest_contacts[
+                    task.collision_group_a, task.collision_group_b
+                ][0]
+            except IndexError:
+                continue
             collisions.append(collision)
             thresholds.append(task.violated_distance.evaluate()[0])
-        raise CollisionViolatedError(
-            violated_collisions=collisions, thresholds=thresholds
-        )
+        if len(collisions) > 0:
+            raise CollisionViolatedError(
+                violated_collisions=collisions, thresholds=thresholds
+            )
 
 
 @dataclass(eq=False, repr=False)
