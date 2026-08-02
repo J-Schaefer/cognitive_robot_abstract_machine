@@ -150,8 +150,6 @@ class FakeGripperActionServer(ABC):
         self._create_joint_state_publisher()
         self._create_action_servers()
 
-        rospy.spin()
-
     def stop(self):
         """
         Stop the action servers and clean up resources.
