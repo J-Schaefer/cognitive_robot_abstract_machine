@@ -946,6 +946,121 @@ class MujocoSimulator(BaseSimulator):
         )
 
     @BaseSimulator.simulator_callback
+    def weld_bodies(
+        self,
+        body_1_name: str,
+        body_2_name: str,
+    ) -> SimulatorCallbackResult:
+        """
+        Add a weld equality constraint between two bodies without reparenting.
+
+        This keeps both bodies in their current kinematic locations while constraining
+        them to move together as if rigidly attached.
+
+        :param body_1_name: Name of the first body.
+        :param body_2_name: Name of the second body.
+        :return: The result of the operation.
+        """
+        if body_1_name == body_2_name:
+            return SimulatorCallbackResult(
+                type=SimulatorCallbackResult.ResultType.FAILURE_BEFORE_EXECUTION_ON_MODEL,
+                info="Cannot weld a body to itself",
+            )
+        body_1_id = mujoco.mj_name2id(
+            m=self._mj_model, type=mujoco.mjtObj.mjOBJ_BODY, name=body_1_name
+        )
+        if body_1_id == -1:
+            return SimulatorCallbackResult(
+                type=SimulatorCallbackResult.ResultType.FAILURE_BEFORE_EXECUTION_ON_MODEL,
+                info=f"Body 1 {body_1_name} not found",
+            )
+        body_2_id = mujoco.mj_name2id(
+            m=self._mj_model, type=mujoco.mjtObj.mjOBJ_BODY, name=body_2_name
+        )
+        if body_2_id == -1:
+            return SimulatorCallbackResult(
+                type=SimulatorCallbackResult.ResultType.FAILURE_BEFORE_EXECUTION_ON_MODEL,
+                info=f"Body 2 {body_2_name} not found",
+            )
+        for eq in self._mj_spec.equalities:
+            if (
+                eq.type == mujoco.mjtEq.mjEQ_WELD
+                and eq.name1 == body_1_name
+                and eq.name2 == body_2_name
+            ):
+                return SimulatorCallbackResult(
+                    type=SimulatorCallbackResult.ResultType.SUCCESS_WITHOUT_EXECUTION,
+                    info=f"Bodies {body_1_name} and {body_2_name} are already welded",
+                )
+
+        equality = self._mj_spec.add_equality()
+        equality.type = mujoco.mjtEq.mjEQ_WELD
+        equality.objtype = mujoco.mjtObj.mjOBJ_BODY
+        equality.name1 = body_1_name
+        equality.name2 = body_2_name
+        equality.active = 1
+
+        self._mj_model, self._mj_data = self._mj_spec.recompile(
+            self._mj_model, self._mj_data
+        )
+        if not self.headless:
+            self._renderer._sim().load(self._mj_model, self._mj_data, "")
+        if self.simulation_thread is None:
+            mujoco.mj_step1(self._mj_model, self._mj_data)
+
+        return SimulatorCallbackResult(
+            type=SimulatorCallbackResult.ResultType.SUCCESS_AFTER_EXECUTION_ON_MODEL,
+            info=f"Welded {body_1_name} to {body_2_name}",
+        )
+
+    @BaseSimulator.simulator_callback
+    def unweld_bodies(
+        self,
+        body_1_name: str,
+        body_2_name: str,
+    ) -> SimulatorCallbackResult:
+        """
+        Remove a weld equality constraint between two bodies.
+
+        :param body_1_name: Name of the first body.
+        :param body_2_name: Name of the second body.
+        :return: The result of the operation.
+        """
+        if body_1_name == body_2_name:
+            return SimulatorCallbackResult(
+                type=SimulatorCallbackResult.ResultType.FAILURE_BEFORE_EXECUTION_ON_MODEL,
+                info="Cannot unweld a body from itself",
+            )
+        found = False
+        for eq in self._mj_spec.equalities:
+            if (
+                eq.type == mujoco.mjtEq.mjEQ_WELD
+                and eq.name1 == body_1_name
+                and eq.name2 == body_2_name
+            ):
+                self._mj_spec.delete(eq)
+                found = True
+                break
+        if not found:
+            return SimulatorCallbackResult(
+                type=SimulatorCallbackResult.ResultType.SUCCESS_WITHOUT_EXECUTION,
+                info=f"No weld found between {body_1_name} and {body_2_name}",
+            )
+
+        self._mj_model, self._mj_data = self._mj_spec.recompile(
+            self._mj_model, self._mj_data
+        )
+        if not self.headless:
+            self._renderer._sim().load(self._mj_model, self._mj_data, "")
+        if self.simulation_thread is None:
+            mujoco.mj_step1(self._mj_model, self._mj_data)
+
+        return SimulatorCallbackResult(
+            type=SimulatorCallbackResult.ResultType.SUCCESS_AFTER_EXECUTION_ON_MODEL,
+            info=f"Unwelded {body_1_name} from {body_2_name}",
+        )
+
+    @BaseSimulator.simulator_callback
     def get_children_ids(self, body_id: int) -> SimulatorCallbackResult:
         """
         Get all children body ids of a body by its id.
@@ -1511,7 +1626,6 @@ class MujocoSimulator(BaseSimulator):
         :return: A SimulatorCallbackResult object with the segmentation data as the
             result.
         """
-
         with self._model_lock:
             with mujoco.Renderer(self._mj_model, height, width) as renderer:
                 renderer.enable_segmentation_rendering()

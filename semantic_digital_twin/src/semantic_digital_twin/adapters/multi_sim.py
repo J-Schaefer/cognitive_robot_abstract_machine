@@ -49,6 +49,7 @@ from semantic_digital_twin.world_description.connections import (
     RevoluteConnection,
     PrismaticConnection,
     ActiveConnection1DOF,
+    BallJointConnection,
     FixedConnection,
     Connection6DoF,
     OmniDrive,
@@ -320,9 +321,17 @@ class KinematicStructureEntityConverter(EntityConverter, ABC):
         kinematic_structure_entity_props = EntityConverter._convert(self, entity)
         # The simulator joint supplies the variable part, so the static frame must
         # exclude it (see Connection.reference_origin_expression).
-        [px, py, pz, qx, qy, qz, qw] = (
-            entity.parent_connection.reference_origin_as_position_quaternion().evaluate()[0]
-        )
+        [
+            px,
+            py,
+            pz,
+            qx,
+            qy,
+            qz,
+            qw,
+        ] = entity.parent_connection.reference_origin_as_position_quaternion().evaluate()[
+            0
+        ]
         kinematic_structure_entity_pos = [px, py, pz]
         kinematic_structure_entity_quat = [qw, qx, qy, qz]
         kinematic_structure_entity_props.update(
@@ -654,6 +663,23 @@ class Connection6DOFConverter(ConnectionConverter, ABC):
         """
         joint_props = ConnectionConverter._convert(self, entity)
         assert len(entity.dofs) == 7, "Connection6DoF must have exactly six DOFs."
+        return joint_props
+
+
+@dataclass
+class BallJointConnectionConverter(ConnectionConverter, ABC):
+    """
+    Converts a BallJointConnection object to a dictionary of ball joint
+    properties.
+    """
+
+    entity_type: ClassVar[Type[BallJointConnection]] = BallJointConnection
+    """
+    The type of the entity to convert.
+    """
+
+    def _convert(self, entity: BallJointConnection, **kwargs) -> Dict[str, Any]:
+        joint_props = ConnectionConverter._convert(self, entity)
         return joint_props
 
 
@@ -1443,6 +1469,11 @@ class MujocoPrismaticJointConverter(
 @dataclass
 class Mujoco6DOFJointConverter(MujocoJointConverter, Connection6DOFConverter):
     type: mujoco.mjtJoint = mujoco.mjtJoint.mjJNT_FREE
+
+
+@dataclass
+class MujocoBallJointConverter(MujocoJointConverter, BallJointConnectionConverter):
+    type: mujoco.mjtJoint = mujoco.mjtJoint.mjJNT_BALL
 
 
 @dataclass
@@ -2470,6 +2501,18 @@ class Connection6DOFSpawner(ConnectionSpawner, ABC):
 
 
 @dataclass
+class BallJointConnectionSpawner(ConnectionSpawner, ABC):
+    """
+    A spawner to spawn a BallJointConnection object in the simulator.
+    """
+
+    entity_type: ClassVar[Type[Connection]] = BallJointConnection
+    """
+    The type of the entity to spawn.
+    """
+
+
+@dataclass
 class ActuatorSpawner(EntitySpawner):
     """
     A spawner to spawn an Actuator object in the simulator.
@@ -2654,6 +2697,31 @@ class MujocoFreejointSpawner(MujocoEntitySpawner, Connection6DOFSpawner):
             entity_name=connection.name.name,
             entity_type="joint",
             entity_properties={"type": mujoco.mjtJoint.mjJNT_FREE},
+            parent_name=connection.child.name.name,
+        )
+        return (
+            result.type
+            == SimulatorCallbackResult.ResultType.SUCCESS_AFTER_EXECUTION_ON_MODEL
+        )
+
+
+@dataclass
+class MujocoBallJointSpawner(MujocoEntitySpawner, BallJointConnectionSpawner):
+    """
+    A spawner to spawn a BallJointConnection object in the MuJoCo simulator.
+    """
+
+    def _spawn_connection(
+        self, simulator: MujocoSimulator, connection: Connection
+    ) -> bool:
+        joint_pos = connection.parent_T_connection_expression.to_position()
+        result = simulator.add_entity(
+            entity_name=connection.name.name,
+            entity_type="joint",
+            entity_properties={
+                "type": mujoco.mjtJoint.mjJNT_BALL,
+                "pos": [joint_pos.x, joint_pos.y, joint_pos.z],
+            },
             parent_name=connection.child.name.name,
         )
         return (
@@ -2900,6 +2968,20 @@ class MujocoSynchronizer(MultiSimSynchronizer):
             self.simulator._mj_data.qpos[qpos_adr]
         )
 
+    def _read_balljoint_from_qpos(
+        self, connection: BallJointConnection, qpos_adr: int
+    ) -> None:
+        """
+        Copy a ball joint quaternion from MuJoCo qpos into ``world.state``.
+        """
+        mj_data = self.simulator._mj_data
+        state = self._world.state
+        qwxyz = mj_data.qpos[qpos_adr : qpos_adr + 4]
+        state[connection.qw.id].position = float(qwxyz[0])
+        state[connection.qx.id].position = float(qwxyz[1])
+        state[connection.qy.id].position = float(qwxyz[2])
+        state[connection.qz.id].position = float(qwxyz[3])
+
     def _sim_to_world(self) -> None:
         """
         Copy ``_mj_data.qpos`` back into ``world.state``.
@@ -2929,6 +3011,9 @@ class MujocoSynchronizer(MultiSimSynchronizer):
 
             if isinstance(connection, Connection6DoF):
                 self._read_6dof_from_qpos(connection, qpos_adr)
+                changed = True
+            elif isinstance(connection, BallJointConnection):
+                self._read_balljoint_from_qpos(connection, qpos_adr)
                 changed = True
             elif isinstance(connection, ActiveConnection1DOF):
                 self._read_1dof_from_qpos(connection, qpos_adr)
@@ -3011,6 +3096,37 @@ class MujocoSynchronizer(MultiSimSynchronizer):
             return
         self.simulator._mj_data.qpos[qpos_adr] = positions[idx]
 
+    def _write_balljoint_to_qpos(
+        self,
+        connection: BallJointConnection,
+        qpos_adr: int,
+        positions: numpy.ndarray,
+        previous_positions: numpy.ndarray,
+        state_index: Dict[Any, int],
+    ) -> None:
+        """
+        Push the ball joint world state for ``connection`` into the MuJoCo
+        qpos block at ``qpos_adr``. No-op if the DoF values match the previous
+        snapshot within tolerance.
+        """
+        iqw = state_index[connection.qw.id]
+        iqx = state_index[connection.qx.id]
+        iqy = state_index[connection.qy.id]
+        iqz = state_index[connection.qz.id]
+        dof_indices = [iqw, iqx, iqy, iqz]
+        if numpy.allclose(
+            positions[dof_indices],
+            previous_positions[dof_indices],
+            atol=1e-4,
+            rtol=1e-4,
+        ):
+            return
+        mj_data = self.simulator._mj_data
+        mj_data.qpos[qpos_adr + 0] = positions[iqw]
+        mj_data.qpos[qpos_adr + 1] = positions[iqx]
+        mj_data.qpos[qpos_adr + 2] = positions[iqy]
+        mj_data.qpos[qpos_adr + 3] = positions[iqz]
+
     def _on_state_change(self) -> None:
         """
         Push ``world.state`` into ``_mj_data.qpos`` for every connection whose
@@ -3038,6 +3154,14 @@ class MujocoSynchronizer(MultiSimSynchronizer):
 
             if isinstance(connection, Connection6DoF):
                 self._write_6dof_to_qpos(
+                    connection,
+                    qpos_adr,
+                    positions,
+                    previous_positions,
+                    state_index,
+                )
+            elif isinstance(connection, BallJointConnection):
+                self._write_balljoint_to_qpos(
                     connection,
                     qpos_adr,
                     positions,

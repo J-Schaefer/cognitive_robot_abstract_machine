@@ -602,6 +602,129 @@ class Connection6DoF(Connection):
 
 
 @dataclass(eq=False)
+class BallJointConnection(Connection):
+    """
+    A ball joint connection with 3 rotational degrees of freedom and no translation.
+
+    The child body can rotate freely around the connection point but its position
+    relative to the parent is fixed.
+    """
+
+    qx: DegreeOfFreedom = field(kw_only=True)
+    qy: DegreeOfFreedom = field(kw_only=True)
+    qz: DegreeOfFreedom = field(kw_only=True)
+    qw: DegreeOfFreedom = field(kw_only=True)
+    """
+    Rotation of child KinematicStructureEntity with respect to parent
+    KinematicStructureEntity represented as a quaternion.
+    """
+
+    def to_json(self) -> Dict[str, Any]:
+        result = super().to_json()
+        result["qx_id"] = to_json(self.qx.id)
+        result["qy_id"] = to_json(self.qy.id)
+        result["qz_id"] = to_json(self.qz.id)
+        result["qw_id"] = to_json(self.qw.id)
+        return result
+
+    @classmethod
+    def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
+        tracker = WorldEntityWithIDKwargsTracker.from_kwargs(kwargs)
+        parent = tracker.get_world_entity_with_id(id=from_json(data["parent_id"]))
+        child = tracker.get_world_entity_with_id(id=from_json(data["child_id"]))
+        return cls(
+            name=from_json(data["name"]),
+            parent=parent,
+            child=child,
+            parent_T_connection_expression=from_json(
+                data["parent_T_connection_expression"], **kwargs
+            ),
+            connection_T_child_expression=from_json(
+                data["connection_T_child_expression"], **kwargs
+            ),
+            qx=tracker.get_world_entity_with_id(id=from_json(data["qx_id"])),
+            qy=tracker.get_world_entity_with_id(id=from_json(data["qy_id"])),
+            qz=tracker.get_world_entity_with_id(id=from_json(data["qz_id"])),
+            qw=tracker.get_world_entity_with_id(id=from_json(data["qw_id"])),
+        )
+
+    def add_to_world(self, world: World):
+        super().add_to_world(world)
+        parent_R_child = Quaternion(
+            x=self.qx.variables.position,
+            y=self.qy.variables.position,
+            z=self.qz.variables.position,
+            w=self.qw.variables.position,
+        ).to_rotation_matrix()
+        self._kinematics = HomogeneousTransformationMatrix.from_point_rotation_matrix(
+            point=Point3(0, 0, 0),
+            rotation_matrix=parent_R_child,
+            child_frame=self.child,
+        )
+
+    @classmethod
+    def create_with_dofs(
+        cls,
+        world: World,
+        parent: KinematicStructureEntity,
+        child: KinematicStructureEntity,
+        *,
+        name: Optional[PrefixedName] = None,
+        parent_T_connection_expression: Optional[
+            HomogeneousTransformationMatrix
+        ] = None,
+        connection_T_child_expression: Optional[HomogeneousTransformationMatrix] = None,
+    ) -> Self:
+        name = name or cls._generate_default_name(parent=parent, child=child)
+        stringified_name = str(name)
+        qx = DegreeOfFreedom(name=PrefixedName("qx", stringified_name))
+        world.add_degree_of_freedom(qx)
+        qy = DegreeOfFreedom(name=PrefixedName("qy", stringified_name))
+        world.add_degree_of_freedom(qy)
+        qz = DegreeOfFreedom(name=PrefixedName("qz", stringified_name))
+        world.add_degree_of_freedom(qz)
+        qw = DegreeOfFreedom(name=PrefixedName("qw", stringified_name))
+        world.add_degree_of_freedom(qw)
+        world.state[qw.id].position = 1.0
+
+        return cls(
+            parent=parent,
+            child=child,
+            parent_T_connection_expression=parent_T_connection_expression,
+            connection_T_child_expression=connection_T_child_expression,
+            name=name,
+            qx=qx,
+            qy=qy,
+            qz=qz,
+            qw=qw,
+        )
+
+    @property
+    def passive_dofs(self) -> list[DegreeOfFreedom]:
+        return [self.qx, self.qy, self.qz, self.qw]
+
+    def copy_for_world(self, world: World) -> BallJointConnection:
+        (
+            other_parent,
+            other_child,
+            parent_T_connection_expression,
+            connection_T_child_expression,
+        ) = self._find_references_in_world(world)
+
+        return BallJointConnection(
+            name=deepcopy(self.name),
+            parent=other_parent,
+            child=other_child,
+            parent_T_connection_expression=parent_T_connection_expression,
+            connection_T_child_expression=connection_T_child_expression,
+            qx=world.get_degree_of_freedom_by_id(self.qx.id),
+            qy=world.get_degree_of_freedom_by_id(self.qy.id),
+            qz=world.get_degree_of_freedom_by_id(self.qz.id),
+            qw=world.get_degree_of_freedom_by_id(self.qw.id),
+        )
+
+
+@dataclass(eq=False)
 class WheeledDrive(ActiveConnection, HasUpdateState, ABC):
     """
     Superclass for connections that describe a drive, e.g., an omnidirectional drive or
