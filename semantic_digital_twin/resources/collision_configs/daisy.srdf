@@ -70,7 +70,6 @@
   <disable_self_collision link1="left_gripper_wrist_collision_cylinder_link" link2="right_wrist_1_link" reason="Unknown"/>
   <disable_self_collision link1="left_gripper_wrist_collision_cylinder_link" link2="right_wrist_2_link" reason="Unknown"/>
   <disable_self_collision link1="left_gripper_wrist_collision_cylinder_link" link2="right_wrist_3_link" reason="Unknown"/>
-  <disable_self_collision link1="left_gripper_wrist_collision_cylinder_link" link2="table" reason="Unknown"/>
   <disable_self_collision link1="left_shoulder_link" link2="left_gripper_wrist_collision_cylinder_link" reason="Unknown"/>
   <disable_self_collision link1="left_shoulder_link" link2="left_upper_arm_link" reason="Unknown"/>
   <disable_self_collision link1="left_shoulder_link" link2="right_forearm_link" reason="Unknown"/>
@@ -166,7 +165,6 @@
   <disable_self_collision link1="right_gripper_wrist_collision_cylinder_link" link2="right_wrist_1_link" reason="Unknown"/>
   <disable_self_collision link1="right_gripper_wrist_collision_cylinder_link" link2="right_wrist_2_link" reason="Unknown"/>
   <disable_self_collision link1="right_gripper_wrist_collision_cylinder_link" link2="right_wrist_3_link" reason="Unknown"/>
-  <disable_self_collision link1="right_gripper_wrist_collision_cylinder_link" link2="table" reason="Unknown"/>
   <disable_self_collision link1="right_shoulder_link" link2="left_upper_arm_link" reason="Unknown"/>
   <disable_self_collision link1="right_shoulder_link" link2="right_gripper_wrist_collision_cylinder_link" reason="Unknown"/>
   <disable_self_collision link1="right_shoulder_link" link2="table" reason="Unknown"/>
