@@ -29,6 +29,10 @@ from krrood.entity_query_language.factories import (
     variable_from,
 )
 from coraplex.querying.predicates import GripperIsFree
+from coraplex.querying.gripper_verification import (
+    IsGripperHoldingPart,
+    IsGripperNotFullyClosed,
+)
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
 from semantic_digital_twin.semantic_annotations.cable import Cable
@@ -598,4 +602,12 @@ class CableGraspAction(ActionDescription):
         return or_(
             is_body_in_gripper(variable_from(cable_body), left_end_effector) > 0.9,
             is_body_in_gripper(variable_from(cable_body), right_end_effector) > 0.9,
+            and_(
+                IsGripperHoldingPart(left_end_effector, ros_node=context.ros_node),
+                IsGripperNotFullyClosed(left_end_effector),
+            ),
+            and_(
+                IsGripperHoldingPart(right_end_effector, ros_node=context.ros_node),
+                IsGripperNotFullyClosed(right_end_effector),
+            ),
         )
