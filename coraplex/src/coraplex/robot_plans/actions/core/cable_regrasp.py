@@ -54,7 +54,7 @@ class CableRegraspAction(ActionDescription):
     The cable semantic annotation to regrasp.
     """
 
-    regrasp_height: float = field(default=0.15)
+    regrasp_height: float = field(default=0.5)
     """
     Height in metres above the table surface where the cable centre is positioned.
     """
@@ -64,116 +64,92 @@ class CableRegraspAction(ActionDescription):
     X coordinate in the world frame for the centre of the cable when horizontal.
     """
 
+    approach_direction: int = 0
+    """
+    Index of the hanger's local axis that is the front-facing axis.
+
+    0 is the X axis, 1 is the Y axis, 2 is the Z axis.
+    """
+
+    approach_sign: int = 1
+    """
+    Direction the approach axis is pointing.
+
+    If the axis is pointing towards the approach direction the approach_sign is +1, if
+    the axis is pointing to the back the approach_sign is -1.
+    """
+
     @property
     def _action_plan(self) -> PlanNode:
         holding_arm = self._determine_holding_arm()
         free_arm = Arms.RIGHT if holding_arm == Arms.LEFT else Arms.LEFT
 
-        holding_end_effector = ViewManager.get_end_effector_view(
-            holding_arm, self.robot
-        )
+        front_world = self._hanger_front()
 
-        cable_body = self.cable_annotation.root
-        tool_frame = holding_end_effector.tool_frame
-
-        tool_pose = tool_frame.global_pose
-        cable_pose = cable_body.global_pose
-
-        tool_T_cable = (
-            tool_pose.to_homogeneous_matrix().inverse()
-            @ cable_pose.to_homogeneous_matrix()
-        )
-        cable_T_tool = tool_T_cable.inverse()
-
-        half_length = self.cable_annotation.length / 2.0
-
-        cable_top_local = HomogeneousTransformationMatrix.from_xyz_rpy(
-            0, 0, half_length, reference_frame=cable_body
-        )
-        cable_bottom_local = HomogeneousTransformationMatrix.from_xyz_rpy(
-            0, 0, -half_length, reference_frame=cable_body
+        gripper_orientation = _gripper_orientation_from_z_axis(
+            gripper_z_axis=front_world,
+            fallback_direction=np.array([0.0, 0.0, 1.0]),
+            z_rotation=pi,
         )
 
         table_z = 0.605
-        target_centre_np = np.array(
-            [self.cable_centre_x, 0.0, table_z + self.regrasp_height]
+        target_z = table_z + self.regrasp_height
+
+        # Moves the holding arm to the centre of the table between both
+        # arms, raised above the table surface.
+        holding_pose = self._build_mid_pose(target_z, gripper_orientation)
+
+        # Positions the free arm beneath the holding arm so it can grasp
+        # the cable from below.
+        free_grasp_z = target_z - 0.08
+        free_grasp_pose = self._build_mid_pose(free_grasp_z, gripper_orientation)
+
+        # Spread both arms horizontally so the cable is stretched between
+        # them. Left arm moves left, right arm moves right, both at the
+        # same height.
+        half_length = self.cable_annotation.length / 2.0
+        hold_spread_pose = self._build_spread_pose(
+            holding_arm, target_z, half_length, gripper_orientation
         )
-
-        target_cable_pose = Pose(
-            position=Point3(
-                x=target_centre_np[0],
-                y=target_centre_np[1],
-                z=target_centre_np[2],
-                reference_frame=self.world.root,
-            ),
-            orientation=Quaternion.from_rpy(roll=-pi / 2, pitch=0, yaw=0),
-            reference_frame=self.world.root,
-        )
-
-        target_cable_T = target_cable_pose.to_homogeneous_matrix()
-        target_tool_T = target_cable_T @ cable_T_tool
-        target_tool_pose = target_tool_T.to_pose()
-
-        target_cable_after: Pose = (
-            target_tool_pose.to_homogeneous_matrix() @ tool_T_cable
-        ).to_pose()
-
-        cable_top_after = (
-            target_cable_after.to_homogeneous_matrix() @ cable_top_local.to_pose()
-        )
-        cable_bottom_after = (
-            target_cable_after.to_homogeneous_matrix() @ cable_bottom_local.to_pose()
-        )
-
-        tool_after_pos = target_tool_pose.to_position().to_np()[:3]
-        top_after_pos = cable_top_after.to_position().to_np()[:3]
-        bottom_after_pos = cable_bottom_after.to_position().to_np()[:3]
-
-        dist_to_top = np.linalg.norm(tool_after_pos - top_after_pos)
-        dist_to_bottom = np.linalg.norm(tool_after_pos - bottom_after_pos)
-
-        free_end_target = (
-            cable_top_after if dist_to_top >= dist_to_bottom else cable_bottom_after
-        )
-
-        y_direction = np.array([0.0, 1.0, 0.0])
-        side_sign = -1.0 if free_arm == Arms.RIGHT else 1.0
-        side_direction = y_direction * side_sign
-
-        free_grasp_orientation = self._grasp_gripper_orientation(
-            side_direction, np.array([0.0, 0.0, -1.0])
-        )
-
-        free_end_pos = free_end_target.to_position()
-        free_target_pose = Pose(
-            position=Point3(
-                x=free_end_pos.x,
-                y=free_end_pos.y,
-                z=free_end_pos.z,
-                reference_frame=self.world.root,
-            ),
-            orientation=free_grasp_orientation,
-            reference_frame=self.world.root,
+        free_spread_pose = self._build_spread_pose(
+            free_arm, target_z, half_length, gripper_orientation
         )
 
         print(f"Regrasping: holding={holding_arm.name}, free={free_arm.name}")
-        print(f"Target holding pose: {target_tool_pose.to_position()}")
-        print(f"Target free pose: {free_target_pose.to_position()}")
+        print(f"Target holding pose: {holding_pose.to_position()}")
+        print(f"Target free grasp pose: {free_grasp_pose.to_position()}")
 
         return sequential(
             children=[
+                # Open the free arm's gripper before approaching.
                 MoveGripperMotion(motion=GripperState.OPEN, gripper=free_arm),
+                # Move holding arm to centre above table, side-up orientation.
                 MoveToolCenterPointMotion(
-                    target_tool_pose,
+                    holding_pose,
+                    holding_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
+                # Move free arm beneath holding arm to grasp the lower
+                # portion of the cable.
+                MoveToolCenterPointMotion(
+                    free_grasp_pose,
+                    free_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
+                # Close gripper to capture the cable.
+                MoveGripperMotion(motion=GripperState.CLOSE, gripper=free_arm),
+                # Spread arms horizontally so the cable is held taut
+                # between both grippers at the same height.
+                MoveToolCenterPointMotion(
+                    hold_spread_pose,
                     holding_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
                 MoveToolCenterPointMotion(
-                    free_target_pose,
+                    free_spread_pose,
                     free_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
-                MoveGripperMotion(motion=GripperState.CLOSE, gripper=free_arm),
             ],
         )
 
@@ -190,6 +166,66 @@ class CableRegraspAction(ActionDescription):
             return Arms.RIGHT
 
         raise RuntimeError("Cable is not attached to any end effector")
+
+    def _hanger_front(self) -> np.ndarray:
+        """
+        Return the world-frame unit vector for the hanger's front-facing axis.
+
+        Uses ``approach_direction`` and ``approach_sign`` to extract the correct axis
+        from the hanger's global rotation, matching
+        :meth:`CableGraspAction._hanger_axes`.
+        """
+        hanger_rot = self.cable_annotation.hanging_from.global_transform
+        rot_np = np.array(hanger_rot.to_np()[:3, :3], dtype=float)
+        return self.approach_sign * rot_np[:, self.approach_direction]
+
+    def _build_mid_pose(self, z: float, orientation: Quaternion) -> Pose:
+        """
+        Build a pose at the centre position on the table, at the given height.
+
+        :param z: The Z coordinate of the pose in the world frame.
+        :param orientation: The gripper orientation quaternion.
+        """
+        return Pose(
+            position=Point3(
+                x=self.cable_centre_x,
+                y=0.0,
+                z=z,
+                reference_frame=self.world.root,
+            ),
+            orientation=orientation,
+            reference_frame=self.world.root,
+        )
+
+    def _build_spread_pose(
+        self,
+        arm: Arms,
+        z: float,
+        half_length: float,
+        orientation: Quaternion,
+    ) -> Pose:
+        """
+        Build a pose for spreading the arms horizontally.
+
+        The left arm moves to negative Y and the right arm to positive Y so the cable is
+        stretched between them at the same height.
+
+        :param arm: The arm to build the spread pose for.
+        :param z: The Z coordinate of the pose in the world frame.
+        :param half_length: Half the cable length in metres for the Y offset.
+        :param orientation: The gripper orientation quaternion.
+        """
+        y = -half_length if arm == Arms.LEFT else half_length
+        return Pose(
+            position=Point3(
+                x=self.cable_centre_x,
+                y=y,
+                z=z,
+                reference_frame=self.world.root,
+            ),
+            orientation=orientation,
+            reference_frame=self.world.root,
+        )
 
     def _grasp_gripper_orientation(
         self,
