@@ -243,6 +243,8 @@ plan_regrasp = sequential(
     [
         CableRegraspAction(
             cable_annotation=cable_annotation,
+            approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
+            approach_sign=-1,  # y-axis pointing to the back
         ),
         # ParkArmsAction(arm=Arms.BOTH),
     ],
