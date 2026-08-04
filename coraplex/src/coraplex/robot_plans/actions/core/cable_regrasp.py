@@ -59,7 +59,13 @@ class CableRegraspAction(ActionDescription):
     Height in metres above the table surface where the cable centre is positioned.
     """
 
-    cable_centre_x: float = field(default=-0.32)
+    table_width: float = field(default=1.2)
+    """
+    Distance in metres along the hanger's front-facing axis from the world origin to the
+    centre of the cable.
+    """
+
+    table_depth: float = field(default=0.6)
     """
     Distance in metres along the hanger's front-facing axis from the world origin to the
     centre of the cable.
@@ -84,11 +90,12 @@ class CableRegraspAction(ActionDescription):
     def _action_plan(self) -> PlanNode:
         holding_arm = self._determine_holding_arm()
         free_arm = Arms.RIGHT if holding_arm == Arms.LEFT else Arms.LEFT
+        side_sign = 1.0 if holding_arm == Arms.LEFT else -1.0
 
-        front, side, up = self._hanger_axes()
+        front_world, side_world, up_world = self._hanger_axes()
 
         gripper_orientation = _gripper_orientation_from_z_axis(
-            gripper_z_axis=front,
+            gripper_z_axis=self.approach_sign * front_world,
             fallback_direction=np.array([0.0, 0.0, 1.0]),
             z_rotation=pi,
         )
@@ -96,17 +103,23 @@ class CableRegraspAction(ActionDescription):
         table_z = 0.605
         target_z = table_z + self.regrasp_height
 
+        free_arm_end_effector = ViewManager.get_end_effector_view(free_arm, self.robot)
+        holding_arm_end_effector = ViewManager.get_end_effector_view(
+            holding_arm, self.robot
+        )
+        current_free_arm_pose = free_arm_end_effector.tool_frame.global_transform
+        current_free_arm_position = current_free_arm_pose.to_position()
+        free_arm_pos = current_free_arm_pose - side_world * (0.2 * side_sign)
+
         # Moves the holding arm to the centre of the table between both
         # arms, raised above the table surface.
-        holding_pose = self._build_mid_pose(
-            target_z, front, up, gripper_orientation
-        )
+        holding_pose = self._build_mid_pose(z=target_z, orientation=gripper_orientation)
 
         # Positions the free arm beneath the holding arm so it can grasp
         # the cable from below.
         free_grasp_z = target_z - 0.08
         free_grasp_pose = self._build_mid_pose(
-            free_grasp_z, front, up, gripper_orientation
+            z=free_grasp_z, orientation=gripper_orientation
         )
 
         # Spread both arms horizontally so the cable is stretched between
@@ -114,22 +127,24 @@ class CableRegraspAction(ActionDescription):
         # same height.
         half_length = self.cable_annotation.length / 2.0
         hold_spread_pose = self._build_spread_pose(
-            holding_arm,
-            target_z,
-            half_length,
-            front,
-            side,
-            up,
-            gripper_orientation,
+            arm=holding_arm,
+            z=target_z,
+            half_length=half_length,
+            orientation=_gripper_orientation_from_z_axis(
+                gripper_z_axis=self.approach_sign * front_world,
+                fallback_direction=np.array([0.0, 0.0, 1.0]),
+                z_rotation=-pi / 2,
+            ),
         )
         free_spread_pose = self._build_spread_pose(
-            free_arm,
-            target_z,
-            half_length,
-            front,
-            side,
-            up,
-            gripper_orientation,
+            arm=free_arm,
+            z=target_z,
+            half_length=half_length,
+            orientation=_gripper_orientation_from_z_axis(
+                gripper_z_axis=self.approach_sign * front_world,
+                fallback_direction=np.array([0.0, 0.0, 1.0]),
+                z_rotation=pi / 2,
+            ),
         )
 
         print(f"Regrasping: holding={holding_arm.name}, free={free_arm.name}")
@@ -194,27 +209,31 @@ class CableRegraspAction(ActionDescription):
         """
         hanger_rot = self.cable_annotation.hanging_from.global_transform
         rot_np = np.array(hanger_rot.to_np()[:3, :3], dtype=float)
+
         front = self.approach_sign * rot_np[:, self.approach_direction]
         up = rot_np[:, 2]
         side = np.cross(up, front)
+
         return front, side, up
 
     def _build_mid_pose(
         self,
         z: float,
-        front: np.ndarray,
-        up: np.ndarray,
         orientation: Quaternion,
     ) -> Pose:
         """
         Build a pose at the centre position between both arms along the hanger axes.
 
         :param z: Height along the up axis in metres.
-        :param front: World-frame unit vector for the hanger's front axis.
-        :param up: World-frame unit vector for the hanger's up axis.
         :param orientation: The gripper orientation quaternion.
         """
-        position = front * self.cable_centre_x + up * z
+        front_world, side_world, up_world = self._hanger_axes()
+
+        position = (
+            front_world * self.table_depth / 2
+            + side_world * (self.approach_sign * self.table_width / 2)
+            + up_world * z
+        )
         return Pose(
             position=Point3(
                 x=position[0],
@@ -231,9 +250,6 @@ class CableRegraspAction(ActionDescription):
         arm: Arms,
         z: float,
         half_length: float,
-        front: np.ndarray,
-        side: np.ndarray,
-        up: np.ndarray,
         orientation: Quaternion,
     ) -> Pose:
         """
@@ -245,15 +261,17 @@ class CableRegraspAction(ActionDescription):
         :param arm: The arm to build the spread pose for.
         :param z: Height along the up axis in metres.
         :param half_length: Half the cable length in metres for the offset.
-        :param front: World-frame unit vector for the hanger's front axis.
-        :param side: World-frame unit vector for the hanger's side axis.
-        :param up: World-frame unit vector for the hanger's up axis.
         :param orientation: The gripper orientation quaternion.
         """
         side_sign = -1.0 if arm == Arms.LEFT else 1.0
-        position = front * self.cable_centre_x + side * (
-            half_length * side_sign
-        ) + up * z
+
+        front_world, side_world, up_world = self._hanger_axes()
+
+        position = (
+            front_world * self.table_depth / 2
+            + side_world * (self.table_width / 2 - half_length * side_sign)
+            + up_world * z
+        )
         return Pose(
             position=Point3(
                 x=position[0],
