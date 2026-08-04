@@ -219,7 +219,8 @@ class CableGraspAction(ActionDescription):
         print(f"Grasp pose: {grasp_pose.to_position()}")
 
         gripper_offset_pos = (
-            post_scoop_pose.to_position().to_np()[:3] + front_world * 0.2
+            post_scoop_pose.to_position().to_np()[:3]
+            - front_world * 0.2 * self.approach_direction
         )
 
         return sequential(
@@ -420,12 +421,13 @@ class CableGraspAction(ActionDescription):
 
         poses["post_scoop_pose"] = post_scoop_pose
 
-        # Roll scoop gripper back
-        post_scoop_pose = Pose(
+        # Roll scoop gripper back and move down
+        return_post_scoop_pos = post_scoop_pos[:3] - up_world * 0.1
+        return_post_scoop_pose = Pose(
             position=Point3(
-                x=post_scoop_pos[0],
-                y=post_scoop_pos[1],
-                z=post_scoop_pos[2],
+                x=return_post_scoop_pos[0],
+                y=return_post_scoop_pos[1],
+                z=return_post_scoop_pos[2],
                 reference_frame=self.world.root,
             ),
             # Roll turn gripper up/down
@@ -435,7 +437,7 @@ class CableGraspAction(ActionDescription):
             reference_frame=self.world.root,
         )
 
-        poses["return_scoop_pose"] = post_scoop_pose
+        poses["return_scoop_pose"] = return_post_scoop_pose
 
         return poses
 
@@ -522,8 +524,8 @@ class CableGraspAction(ActionDescription):
 
         grasp_pos = (
             post_scoop_pose.to_position().to_np()[:3]
-            - side_world * (0.04 * side_sign)
-            + up_world * (0.06)
+            - side_world * (0.02 * side_sign)
+            + up_world * (0.05)
         )
         grasp_pose = Pose(
             position=Point3(
