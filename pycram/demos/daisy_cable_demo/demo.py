@@ -1,13 +1,19 @@
+#! /usr/bin/env python3
+
+# %% Imports
+
+# General import
 import os
 import time
 from math import pi
 from time import sleep
 
+# Monorepo imports
 from coraplex.datastructures.enums import ApproachDirection, Arms, VerticalAlignment
 from coraplex.datastructures.grasp import GraspDescription
 from coraplex.execution_environment import real_robot, simulated_robot
 from coraplex.plans.factories import sequential
-from coraplex.robot_plans import MoveJointsMotion, MoveGripperMotion
+from coraplex.robot_plans import MoveGripperMotion, MoveJointsMotion
 from coraplex.robot_plans.actions.core.cable_grasp import CableGraspAction
 from coraplex.robot_plans.actions.core.cable_regrasp import CableRegraspAction
 from coraplex.robot_plans.actions.core.pick_up import PickUpAction
@@ -21,6 +27,7 @@ from semantic_digital_twin.collision_checking.collision_rules import (
 )
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
+from semantic_digital_twin.exceptions import WorldEntityNotFoundError
 from semantic_digital_twin.orm.ormatic_interface import (
     AllowCollisionForAdjacentPairsDAO,
 )
@@ -28,8 +35,8 @@ from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.semantic_annotations.cable import Cable
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import FixedConnection
-from semantic_digital_twin.exceptions import WorldEntityNotFoundError
 
+# Custom imports
 from define_real_daisy import setup_real_daisy
 from define_sim_daisy import setup_sim_daisy
 
