@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import Optional
 
 from geometry_msgs.msg import (
     PoseStamped as ROSPoseStamped,
@@ -227,22 +228,22 @@ class WPGGripperActionServerTask(
     Grip preset.
     """
 
-    grip_position: int = None
+    grip_position: int | None = None
     """
     Opening width of the gripper [-5..120 mm].
     """
 
-    grip_force: int = None
+    grip_force: int | None = None
     """
     Force the gripper applies to the object [30..300 N].
     """
 
-    grip_speed: int = None
+    grip_speed: int | None = None
     """
     Motion speed of the gripper [5..350 mm/s].
     """
 
-    grip_acceleration: int = None
+    grip_acceleration: int | None = None
     """
     Motion acceleration of the gripper [100..4000 mm/s^2].
     """
@@ -266,6 +267,14 @@ class WPGGripperActionServerTask(
         super().build_msg(context)
 
         if self.message_type == Flexgrip:
+            if self.grip_position is None:
+                self.grip_position = 0
+            if self.grip_force is None:
+                self.grip_force = 90
+            if self.grip_speed is None:
+                self.grip_speed = 150
+            if self.grip_acceleration is None:
+                self.grip_acceleration = 600
             self._msg = Flexgrip.Goal(
                 port=0,
                 position=self.grip_position,
@@ -274,6 +283,14 @@ class WPGGripperActionServerTask(
                 acceleration=self.grip_acceleration,
             )
         elif self.message_type == Flexrelease:
+            if self.grip_position is None:
+                self.grip_position = 120
+            if self.grip_force is None:
+                self.grip_force = 90
+            if self.grip_speed is None:
+                self.grip_speed = 250
+            if self.grip_acceleration is None:
+                self.grip_acceleration = 2000
             self._msg = Flexrelease.Goal(
                 port=0,
                 position=self.grip_position,
@@ -283,12 +300,12 @@ class WPGGripperActionServerTask(
         elif self.message_type == Grip:
             self._msg = Grip.Goal(
                 port=0,
-                index=self.grip_preset,
+                index=self.grip_preset.value,
             )
         elif self.message_type == Release:
             self._msg = Release.Goal(
                 port=0,
-                index=self.grip_preset,
+                index=self.grip_preset.value,
             )
         else:
             raise ValueError(f"Unknown message type: {self.message_type}")
