@@ -272,6 +272,8 @@ class WPGGripperActionServerTask(
         """
         super().build_msg(context)
 
+        preset_index = self.grip_preset.value
+
         if self.message_type == Flexgrip:
             if self.grip_position is None:
                 self.grip_position = 0
@@ -306,12 +308,12 @@ class WPGGripperActionServerTask(
         elif self.message_type == Grip:
             self._msg = Grip.Goal(
                 port=0,
-                index=self.grip_preset.value,
+                index=preset_index,
             )
         elif self.message_type == Release:
             self._msg = Release.Goal(
                 port=0,
-                index=self.grip_preset.value,
+                index=preset_index,
             )
         else:
             raise ValueError(f"Unknown message type: {self.message_type}")
