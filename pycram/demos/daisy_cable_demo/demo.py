@@ -8,8 +8,18 @@ import time
 from math import pi
 from time import sleep
 
+from coraplex.alternative_motion_mappings.daisy_motion_mapping import (
+    DAiSyGripMotion,
+    DAiSyFlexGripMotion,
+)
+
 # Monorepo imports
-from coraplex.datastructures.enums import ApproachDirection, Arms, VerticalAlignment
+from coraplex.datastructures.enums import (
+    ApproachDirection,
+    Arms,
+    VerticalAlignment,
+    WPGGripPreset,
+)
 from coraplex.datastructures.grasp import GraspDescription
 from coraplex.execution_environment import real_robot, simulated_robot
 from coraplex.plans.factories import sequential
@@ -194,10 +204,21 @@ daisy_left_arm_positions = [
 plan_home = sequential(
     [
         # MoveGripperMotion(motion=GripperState.CLOSE, gripper=Arms.BOTH),
-        MoveGripperMotion(motion=GripperState.OPEN, gripper=Arms.BOTH),
+        DAiSyGripMotion(motion=GripperState.OPEN, gripper=Arms.BOTH),
         ParkArmsAction(arm=Arms.RIGHT),
         MoveJointsMotion(
             names=daisy_left_arm_names, positions=daisy_left_arm_positions
+        ),
+        DAiSyFlexGripMotion(
+            motion=GripperState.FLEXCLOSE,
+            gripper=Arms.BOTH,
+            grip_position=70,
+            grip_speed=300,
+        ),
+        DAiSyGripMotion(
+            motion=GripperState.OPEN,
+            gripper=Arms.BOTH,
+            grip_preset=WPGGripPreset.PRESET_0,
         ),
     ],
     context,
