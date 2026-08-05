@@ -289,12 +289,12 @@ class WPGGripperActionServerTask(
         elif self.message_type == Grip:
             self._msg = Grip.Goal(
                 port=0,
-                index=self.grip_preset.value,
+                index=self.grip_preset,
             )
         elif self.message_type == Release:
             self._msg = Release.Goal(
                 port=0,
-                index=self.grip_preset.value,
+                index=self.grip_preset,
             )
         else:
             raise ValueError(f"Unknown message type: {self.message_type}")
