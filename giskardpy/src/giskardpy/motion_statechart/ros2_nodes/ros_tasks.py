@@ -236,22 +236,30 @@ class WPGGripperActionServerTask(
 
     grip_position: int | None = None
     """
-    Opening width of the gripper [-5..120 mm].
+    Opening width of the gripper in mm [-5..120].
+
+    Converted to µm when building the Flexgrip/Flexrelease goal message.
     """
 
     grip_force: int | None = None
     """
-    Force the gripper applies to the object [30..300 N].
+    Force the gripper applies to the object in N [30..300].
+
+    Converted to mN when building the Flexgrip goal message.
     """
 
     grip_speed: int | None = None
     """
-    Motion speed of the gripper [5..350 mm/s].
+    Motion speed of the gripper in mm/s [5..350].
+
+    Converted to µm/s when building the Flexgrip/Flexrelease goal message.
     """
 
     grip_acceleration: int | None = None
     """
-    Motion acceleration of the gripper [100..4000 mm/s^2].
+    Motion acceleration of the gripper in mm/s² [100..4000].
+
+    Converted to µm/s² when building the Flexgrip/Flexrelease goal message.
     """
 
     def build_msg(self, context: MotionStatechartContext):
@@ -285,10 +293,10 @@ class WPGGripperActionServerTask(
                 self.grip_acceleration = 600
             self._msg = Flexgrip.Goal(
                 port=0,
-                position=self.grip_position,
-                force=self.grip_force,
-                speed=self.grip_speed,
-                acceleration=self.grip_acceleration,
+                position=self.grip_position * 1000,
+                force=self.grip_force * 1000,
+                speed=self.grip_speed * 1000,
+                acceleration=self.grip_acceleration * 1000,
             )
         elif self.message_type == Flexrelease:
             if self.grip_position is None:
@@ -301,9 +309,9 @@ class WPGGripperActionServerTask(
                 self.grip_acceleration = 2000
             self._msg = Flexrelease.Goal(
                 port=0,
-                position=self.grip_position,
-                speed=self.grip_speed,
-                acceleration=self.grip_acceleration,
+                position=self.grip_position * 1000,
+                speed=self.grip_speed * 1000,
+                acceleration=self.grip_acceleration * 1000,
             )
         elif self.message_type == Grip:
             self._msg = Grip.Goal(
