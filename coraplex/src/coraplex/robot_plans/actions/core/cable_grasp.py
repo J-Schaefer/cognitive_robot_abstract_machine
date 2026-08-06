@@ -518,7 +518,7 @@ class CableGraspAction(ActionDescription):
         poses["return_scoop_pose"] = return_scoop_pose
 
         pre_free_cable_pos = (  # TODO: check these values again
-            hanging_pos[:3] + front_world * (0.2 * self.approach_sign) - up_world * 0.05
+            hanging_pos[:3] - front_world * (0.2 * self.approach_sign) - up_world * 0.05
         )
         pre_free_cable_pose = Pose(
             position=Point3(
