@@ -19,9 +19,10 @@ from coraplex.datastructures.enums import (
     Arms,
     VerticalAlignment,
     WPGGripPreset,
+    ExecutionType,
 )
 from coraplex.datastructures.grasp import GraspDescription
-from coraplex.execution_environment import real_robot, simulated_robot
+from coraplex.execution_environment import real_robot, simulated_robot, semi_real_robot
 from coraplex.plans.factories import sequential
 from coraplex.robot_plans import MoveGripperMotion, MoveJointsMotion
 from coraplex.robot_plans.actions.core.cable_grasp import CableGraspAction
@@ -51,10 +52,11 @@ from define_real_daisy import setup_real_daisy
 from define_sim_daisy import setup_sim_daisy
 
 verbose = True
-real = True
+execution_mode = ExecutionType.REAL
+# execution_mode = ExecutionType.SEMI_REAL
 
 # %% Robot and World Setup
-if real:
+if execution_mode == ExecutionType.REAL or execution_mode == ExecutionType.SEMI_REAL:
     node, world, robot_view, context = setup_real_daisy()
 else:
     node, world, robot_view, context = setup_sim_daisy()
@@ -203,7 +205,7 @@ daisy_left_arm_positions = [
 
 plan_home = sequential(
     [
-        # MoveGripperMotion(motion=GripperState.CLOSE, gripper=Arms.BOTH),
+        MoveGripperMotion(motion=GripperState.CLOSE, gripper=Arms.BOTH),
         DAiSyGripMotion(motion=GripperState.OPEN, gripper=Arms.BOTH),
         ParkArmsAction(arm=Arms.RIGHT),
         MoveJointsMotion(
@@ -224,8 +226,11 @@ plan_home = sequential(
     context,
 )
 
-if real:
+if execution_mode == ExecutionType.REAL:
     with real_robot(collision_avoidance=False):
+        plan_home.perform()
+elif execution_mode == ExecutionType.SEMI_REAL:
+    with semi_real_robot(collision_avoidance=False):
         plan_home.perform()
 else:
     with simulated_robot:
@@ -259,8 +264,11 @@ plan = sequential(
     context,
 )
 
-if real:
+if execution_mode == ExecutionType.REAL:
     with real_robot(collision_avoidance=True):
+        plan.perform()
+elif execution_mode == ExecutionType.SEMI_REAL:
+    with semi_real_robot(collision_avoidance=True):
         plan.perform()
 else:
     with simulated_robot:
@@ -278,8 +286,11 @@ plan_regrasp = sequential(
     context,
 )
 
-if real:
+if execution_mode == ExecutionType.REAL:
     with real_robot(collision_avoidance=True):
+        plan_regrasp.perform()
+elif execution_mode == ExecutionType.SEMI_REAL:
+    with semi_real_robot(collision_avoidance=True):
         plan_regrasp.perform()
 else:
     with simulated_robot:
