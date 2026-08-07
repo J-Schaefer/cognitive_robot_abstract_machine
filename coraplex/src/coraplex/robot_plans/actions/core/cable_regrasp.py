@@ -170,7 +170,7 @@ class CableRegraspAction(ActionDescription):
             arm=free_arm,
             z=target_z,
             half_length=half_length,
-            orientation=spread_orientation,
+            orientation=spread_orientation.multiply(Quaternion.from_rpy(0, 0, -pi / 2)),
         )
 
         print(f"Regrasping: holding={holding_arm.name}, free={free_arm.name}")
