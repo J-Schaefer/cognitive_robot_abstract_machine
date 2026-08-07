@@ -52,8 +52,8 @@ from define_real_daisy import setup_real_daisy
 from define_sim_daisy import setup_sim_daisy
 
 verbose = True
-execution_mode = ExecutionType.REAL
-# execution_mode = ExecutionType.SEMI_REAL
+# execution_mode = ExecutionType.REAL
+execution_mode = ExecutionType.SEMI_REAL
 
 # %% Robot and World Setup
 if execution_mode == ExecutionType.REAL or execution_mode == ExecutionType.SEMI_REAL:
@@ -195,22 +195,41 @@ daisy_left_arm_names = [
     "left_wrist_3_joint",
 ]
 
-daisy_left_arm_positions = [
-    -2.71,
-    -1.01,
-    -2.10,
-    -1.59,
-    1.53,
-    -4.23,
+daisy_safe_left_arm_positions = [
+    -2.71,  # left_shoulder_pan_joint
+    -1.01,  # left_shoulder_lift_joint
+    -2.10,  # left_elbow_joint
+    -1.59,  # left_wrist_1_joint
+    1.53,  # left_wrist_2_joint
+    -4.23,  # left_wrist_3_joint
 ]
+
+daisy_right_arm_names = [
+    "right_shoulder_pan_joint",
+    "right_shoulder_lift_joint",
+    "right_elbow_joint",
+    "right_wrist_1_joint",
+    "right_wrist_2_joint",
+    "right_wrist_3_joint",
+]
+
+daisy_safe_right_arm_positions = [
+    2.17,  # right_shoulder_pan_joint
+    -2.17,  # right_shoulder_lift_joint
+    2.04,  # right_elbow_joint
+    -1.43,  # right_wrist_1_joint
+    -1.59,  # right_wrist_2_joint
+    1.39,  # right_wrist_3_joint
+]
+
 
 plan_home = sequential(
     [
         MoveGripperMotion(motion=GripperState.CLOSE, gripper=Arms.BOTH),
         DAiSyGripMotion(motion=GripperState.OPEN, gripper=Arms.BOTH),
         ParkArmsAction(arm=Arms.RIGHT),
-        MoveJointsMotion(
-            names=daisy_left_arm_names, positions=daisy_left_arm_positions
+        MoveJointsMotion(  # TODO Move this motion to the CableGraspAction and add generic version depending on the arm
+            names=daisy_left_arm_names, positions=daisy_safe_left_arm_positions
         ),
         DAiSyFlexGripMotion(
             motion=GripperState.FLEXCLOSE,
@@ -277,6 +296,9 @@ else:
 
 plan_regrasp = sequential(
     [
+        MoveJointsMotion(  # TODO Move this motion to the CableGraspAction and add generic version depending on the arm
+            names=daisy_right_arm_names, positions=daisy_safe_right_arm_positions
+        ),
         CableRegraspAction(
             cable_annotation=cable_annotation,
             approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
