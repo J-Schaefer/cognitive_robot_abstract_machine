@@ -182,7 +182,7 @@ class CableRegraspAction(ActionDescription):
         return sequential(
             children=[
                 # Park the free arm before starting to get it out of the way
-                ParkArmsAction(free_arm),
+                # ParkArmsAction(free_arm),
                 # Open the free arm's gripper before approaching.
                 MoveGripperMotion(motion=GripperState.OPEN, gripper=free_arm),
                 # Move holding arm to center above table, side-up orientation.
