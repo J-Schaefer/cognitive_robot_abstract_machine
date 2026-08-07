@@ -117,7 +117,7 @@ except (WorldEntityNotFoundError, IndexError):
                 parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
                     x=-0.42,
                     y=0.025,
-                    z=0.8,
+                    z=0.8477,
                     roll=pi / 2,
                     reference_frame=world.get_semantic_annotations_by_type(DAiSy)[
                         0
