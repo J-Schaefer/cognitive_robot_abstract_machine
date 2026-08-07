@@ -52,8 +52,9 @@ from define_real_daisy import setup_real_daisy
 from define_sim_daisy import setup_sim_daisy
 
 verbose = True
-# execution_mode = ExecutionType.REAL
-execution_mode = ExecutionType.SEMI_REAL
+collision_avoidance = True
+execution_mode = ExecutionType.REAL
+# execution_mode = ExecutionType.SEMI_REAL
 
 # %% Robot and World Setup
 if execution_mode == ExecutionType.REAL or execution_mode == ExecutionType.SEMI_REAL:
@@ -213,18 +214,27 @@ daisy_right_arm_names = [
     "right_wrist_3_joint",
 ]
 
+# daisy_safe_right_arm_positions = [
+#     2.17,  # right_shoulder_pan_joint
+#     -2.17,  # right_shoulder_lift_joint
+#     2.04,  # right_elbow_joint
+#     -1.43,  # right_wrist_1_joint
+#     -1.59,  # right_wrist_2_joint
+#     1.39,  # right_wrist_3_joint
+# ]
 daisy_safe_right_arm_positions = [
-    2.17,  # right_shoulder_pan_joint
-    -2.17,  # right_shoulder_lift_joint
-    2.04,  # right_elbow_joint
-    -1.43,  # right_wrist_1_joint
-    -1.59,  # right_wrist_2_joint
-    1.39,  # right_wrist_3_joint
+    -0.02,  # right_shoulder_pan_joint
+    -0.97,  # right_shoulder_lift_joint
+    -2.00,  # right_elbow_joint
+    -1.76,  # right_wrist_1_joint
+    1.56,  # right_wrist_2_joint
+    -0.83,  # right_wrist_3_joint
 ]
 
 
 plan_home = sequential(
     [
+        MoveGripperMotion(motion=GripperState.OPEN, gripper=Arms.BOTH),
         MoveGripperMotion(motion=GripperState.CLOSE, gripper=Arms.BOTH),
         DAiSyGripMotion(motion=GripperState.OPEN, gripper=Arms.BOTH),
         ParkArmsAction(arm=Arms.RIGHT),
@@ -285,10 +295,10 @@ plan = sequential(
 )
 
 if execution_mode == ExecutionType.REAL:
-    with real_robot(collision_avoidance=True):
+    with real_robot(collision_avoidance=collision_avoidance):
         plan.perform()
 elif execution_mode == ExecutionType.SEMI_REAL:
-    with semi_real_robot(collision_avoidance=True):
+    with semi_real_robot(collision_avoidance=collision_avoidance):
         plan.perform()
 else:
     with simulated_robot:
@@ -296,6 +306,9 @@ else:
 
 plan_regrasp = sequential(
     [
+        ParkArmsAction(
+            arm=Arms.RIGHT
+        ),  # TODO: this should be in the action description
         MoveJointsMotion(  # TODO Move this motion to the CableGraspAction and add generic version depending on the arm
             names=daisy_right_arm_names, positions=daisy_safe_right_arm_positions
         ),
@@ -303,6 +316,7 @@ plan_regrasp = sequential(
             cable_annotation=cable_annotation,
             approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
             approach_sign=-1,  # y-axis pointing to the back
+            regrasp_height=0.5,  # height above the table to perform the regrasp
         ),
         # ParkArmsAction(arm=Arms.BOTH),
     ],
@@ -310,10 +324,10 @@ plan_regrasp = sequential(
 )
 
 if execution_mode == ExecutionType.REAL:
-    with real_robot(collision_avoidance=True):
+    with real_robot(collision_avoidance=collision_avoidance):
         plan_regrasp.perform()
 elif execution_mode == ExecutionType.SEMI_REAL:
-    with semi_real_robot(collision_avoidance=True):
+    with semi_real_robot(collision_avoidance=collision_avoidance):
         plan_regrasp.perform()
 else:
     with simulated_robot:
