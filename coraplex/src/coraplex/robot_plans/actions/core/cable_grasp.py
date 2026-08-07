@@ -411,7 +411,7 @@ class CableGraspAction(ActionDescription):
         # Calculate pre-scoop pose, that's right in front of the cable hanger
         pre_scoop_pos = (
             hanging_pos[:3]
-            + front_world * (self.front_offset * 2)
+            - front_world * (self.front_offset * 2 * self.approach_sign)
             - up_world * self.down_offset
         )
         scoop_orientation = self._scoop_gripper_orientation(
@@ -433,7 +433,7 @@ class CableGraspAction(ActionDescription):
 
         scoop_pos = (
             hanging_pos[:3]
-            + front_world * self.front_offset
+            - front_world * self.front_offset * self.approach_sign
             - up_world * self.down_offset
         )
         scoop_pose = Pose(
@@ -518,7 +518,7 @@ class CableGraspAction(ActionDescription):
         poses["return_scoop_pose"] = return_scoop_pose
 
         pre_free_cable_pos = (  # TODO: check these values again
-            hanging_pos[:3] - front_world * (0.2 * self.approach_sign) - up_world * 0.05
+            hanging_pos[:3] - front_world * (0.3 * self.approach_sign) + up_world * 0.03
         )
         pre_free_cable_pose = Pose(
             position=Point3(
@@ -534,7 +534,7 @@ class CableGraspAction(ActionDescription):
         poses["pre_free_cable_pose"] = pre_free_cable_pose
 
         free_cable_pos = (
-            hanging_pos[:3] + front_world * self.front_offset - up_world * 0.05
+            hanging_pos[:3] - front_world * 0.02 * self.approach_sign + up_world * 0.03
         )
         free_cable_pose = Pose(
             position=Point3(
