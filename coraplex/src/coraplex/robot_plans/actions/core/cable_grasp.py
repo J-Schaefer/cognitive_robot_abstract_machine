@@ -241,12 +241,6 @@ class CableGraspAction(ActionDescription):
                 MoveGripperMotion(motion=GripperState.OPEN, gripper=scoop_arm),
                 MoveGripperMotion(motion=GripperState.OPEN, gripper=grasp_arm),
                 ParkArmsAction(arm=scoop_arm),
-                # # Move grasp arm out of the way
-                # MoveToolCenterPointMotion(
-                #     grasp_arm_scoop_pose,
-                #     grasp_arm,
-                #     movement_type=MovementType.CARTESIAN,
-                # ),
                 # Move scoop arm closer to hanger and rotate already
                 MoveToolCenterPointMotion(
                     approach_pose,
