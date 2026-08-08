@@ -46,6 +46,7 @@ from semantic_digital_twin.spatial_types.spatial_types import (
     Quaternion,
     RotationMatrix,
 )
+from semantic_digital_twin.world_description.world_entity import Body
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,11 @@ class CableGraspAction(ActionDescription):
     cable_annotation: Cable
     """
     The cable semantic annotation to grasp.
+    """
+
+    hanger_body: Body
+    """
+    Body of the cable hanger to hang the cable on.
     """
 
     grasp_offset: float = field(default=0.1)
@@ -406,7 +412,7 @@ class CableGraspAction(ActionDescription):
         pre_scoop_pos = (
             hanging_pos[:3]
             - front_world * (self.front_offset * 2 * self.approach_sign)
-            - up_world * self.down_offset
+            - up_world * (self.down_offset + 0.0477)
         )
         scoop_orientation = self._scoop_gripper_orientation(
             side_world * side_sign, front_world, z_rotation=pi
@@ -428,7 +434,7 @@ class CableGraspAction(ActionDescription):
         scoop_pos = (
             hanging_pos[:3]
             - front_world * self.front_offset * self.approach_sign
-            - up_world * self.down_offset
+            - up_world * (self.down_offset + 0.0477)
         )
         scoop_pose = Pose(
             position=Point3(
@@ -448,7 +454,7 @@ class CableGraspAction(ActionDescription):
             hanging_pos[:3]
             + front_world * self.front_offset
             - side_world * (self.side_offset * side_sign)
-            - up_world * self.down_offset
+            - up_world * (self.down_offset + 0.0477)
         )
 
         post_scoop_pose = Pose(
@@ -472,7 +478,7 @@ class CableGraspAction(ActionDescription):
         # Move scoop arm a bit to clear area and get out of the way
         clear_scoop_pos = (
             post_scoop_pos[:3]
-            - up_world * 0.1
+            - up_world * (0.1 + 0.0477)
             - front_world * (0.05 * self.approach_sign)
         )
         clear_scoop_pose = Pose(
@@ -493,7 +499,7 @@ class CableGraspAction(ActionDescription):
         return_scoop_pos = (
             pre_scoop_pos[:3]
             - front_world * (0.2 * self.approach_sign)
-            + up_world * 0.1
+            + up_world * (0.1 - 0.0477)
         )
         return_scoop_pose = Pose(
             position=Point3(
@@ -512,7 +518,9 @@ class CableGraspAction(ActionDescription):
         poses["return_scoop_pose"] = return_scoop_pose
 
         pre_free_cable_pos = (  # TODO: check these values again
-            hanging_pos[:3] - front_world * (0.3 * self.approach_sign) + up_world * 0.03
+            hanging_pos[:3]
+            - front_world * (0.3 * self.approach_sign)
+            + up_world * (0.03 - 0.0477)
         )
         pre_free_cable_pose = Pose(
             position=Point3(
@@ -528,7 +536,9 @@ class CableGraspAction(ActionDescription):
         poses["pre_free_cable_pose"] = pre_free_cable_pose
 
         free_cable_pos = (
-            hanging_pos[:3] - front_world * 0.02 * self.approach_sign + up_world * 0.03
+            hanging_pos[:3]
+            - front_world * 0.00 * self.approach_sign
+            + up_world * (0.03 - 0.0477)
         )
         free_cable_pose = Pose(
             position=Point3(
@@ -668,7 +678,9 @@ class CableGraspAction(ActionDescription):
             axis applied after computing the base orientation.
         """
         return _gripper_orientation_from_z_axis(
-            -front_direction, side_direction, z_rotation
+            -front_direction,
+            side_direction,
+            z_rotation,  # TODO: Try out with + pi rotation, also adjust pre scoop pose/post scoop pose
         )
 
     def _grasp_gripper_orientation(
