@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from typing import Optional
 
 from giskardpy.motion_statechart.goals.templates import Parallel
+from giskardpy.motion_statechart.tasks.joint_tasks import JointPositionList
 from semantic_digital_twin.datastructures.definitions import GripperState
+from semantic_digital_twin.datastructures.joint_state import JointState
+from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 
 from griplink_interfaces.action import Grip, Release, Flexgrip, Flexrelease
 
@@ -16,7 +19,9 @@ from giskardpy.motion_statechart.ros2_nodes.ros_tasks import (
 )
 
 from semantic_digital_twin.robots.daisy import DAiSy
+from semantic_digital_twin.robots.robot_parts import EndEffector
 from coraplex.datastructures.enums import ExecutionType, Arms, WPGGripPreset
+from coraplex.plans.executables import GiskardExecutable
 from coraplex.view_manager import ViewManager
 from coraplex.robot_plans import (
     MoveMotion,
@@ -34,10 +39,15 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DAiSyGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
     """
-    Uses the griplink action server to move the gripper of real DAiSy.
+    Uses the griplink action server to move the gripper of real DAiSy, or a joint
+    position goal for semi-real execution.
     """
 
-    execution_type = ExecutionType.REAL
+    execution_type = (
+        ExecutionType.REAL,
+        ExecutionType.SEMI_REAL,
+        ExecutionType.SIMULATED,
+    )
 
     grip_preset: WPGGripPreset = WPGGripPreset.PRESET_0
     """
@@ -55,6 +65,22 @@ class DAiSyGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
             or self.motion == GripperState.FLEXCLOSE
         ):
             raise ValueError(f"Gripper action {self.motion} not supported")
+
+        if (
+            GiskardExecutable.execution_type == ExecutionType.SEMI_REAL
+            or GiskardExecutable.execution_type == ExecutionType.SIMULATED
+        ):
+            arm: EndEffector = ViewManager().get_end_effector_view(
+                self.gripper, self.robot
+            )
+            return JointPositionList(
+                goal_state=arm.get_joint_state_by_type(self.motion),
+                name=(
+                    "OpenGripper"
+                    if self.motion == GripperState.OPEN
+                    else "CloseGripper"
+                ),
+            )
 
         task_kwargs = dict(
             grip_preset=self.grip_preset,
@@ -140,10 +166,15 @@ class DAiSyGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
 @dataclass
 class DAiSyFlexGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
     """
-    Use flex grip and release motions for the WPG grippers.
+    Use flex grip and release motions for the WPG grippers, or a joint position goal for
+    semi-real execution.
     """
 
-    execution_type = ExecutionType.REAL
+    execution_type = (
+        ExecutionType.REAL,
+        ExecutionType.SEMI_REAL,
+        ExecutionType.SIMULATED,
+    )
 
     grip_position: Optional[int] = None
     """
@@ -173,6 +204,37 @@ class DAiSyFlexGripMotion(MoveGripperMotion, AlternativeMotion[DAiSy]):
     def _motion_chart(self) -> MotionStatechartNode:
         if self.motion == GripperState.OPEN or self.motion == GripperState.CLOSE:
             raise ValueError(f"Gripper action {self.motion} not supported")
+
+        if (
+            GiskardExecutable.execution_type == ExecutionType.SEMI_REAL
+            or GiskardExecutable.execution_type == ExecutionType.SIMULATED
+        ):
+            arm: EndEffector = ViewManager().get_end_effector_view(
+                self.gripper, self.robot
+            )
+            position = self.grip_position if self.grip_position is not None else 120
+            open_state = arm.get_joint_state_by_type(GripperState.OPEN)
+            fraction = (120 - position) / 120
+            target_values = []
+            for connection in open_state.connections:
+                lower = connection.dof.limits.lower.position or 0.0
+                upper = connection.dof.limits.upper.position or 0.0
+                sdt_position = lower + fraction * (upper - lower)
+                target_values.append(sdt_position)
+            joint_state = JointState(
+                connections=open_state.connections,
+                target_values=target_values,
+                state_type=self.motion,
+                name=PrefixedName("flexgrip", prefix=arm.name.name),
+            )
+            return JointPositionList(
+                goal_state=joint_state,
+                name=(
+                    "FlexOpenGripper"
+                    if self.motion == GripperState.FLEXOPEN
+                    else "FlexCloseGripper"
+                ),
+            )
 
         task_kwargs = dict(
             grip_position=self.grip_position,

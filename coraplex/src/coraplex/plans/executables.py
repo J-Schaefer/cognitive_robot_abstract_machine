@@ -73,6 +73,11 @@ class Executable:
         Executes the unit.
         """
         for executable in self.execution_list:
+            if GiskardExecutable.execution_type in (
+                ExecutionType.REAL,
+                ExecutionType.SEMI_REAL,
+            ):
+                time.sleep(self.synchronize_time_delta.seconds)
             executable.execute()
 
 
@@ -138,7 +143,7 @@ class GiskardExecutable(Executable):
           the motion if either condition is observed to be false.
         """
         self._current_motion_state_chart = MotionStatechart()
-        if self.execution_type == ExecutionType.REAL:
+        if self.execution_type in (ExecutionType.REAL, ExecutionType.SEMI_REAL):
             self._current_motion_state_chart.add_node(
                 seq := Sequence(list(self.motion_mappings.values()))
             )
@@ -296,7 +301,7 @@ class GiskardExecutable(Executable):
         match GiskardExecutable.execution_type:
             case ExecutionType.SIMULATED:
                 self._execute_simulation()
-            case ExecutionType.REAL:
+            case ExecutionType.REAL | ExecutionType.SEMI_REAL:
                 self._execute_real()
             case ExecutionType.NO_EXECUTION:
                 return
