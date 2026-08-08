@@ -7,6 +7,7 @@ import os
 import time
 from math import pi
 from time import sleep
+import numpy as np
 
 from coraplex.alternative_motion_mappings.daisy_motion_mapping import (
     DAiSyGripMotion,
@@ -169,7 +170,7 @@ with world.modify_world():
         hanging_from=hanger_body,
         length=0.3,
         mount_offset_x=0.078,
-        mount_offset_y=-0.05,
+        mount_offset_y=-0.07,
         height_offset=0.0,
     )
 
@@ -283,6 +284,7 @@ plan = sequential(
         # ),
         CableGraspAction(
             cable_annotation=cable_annotation,
+            hanger_body=hanger_body,
             grasp_offset=0.1,
             side_offset=0.2,
             front_offset=-0.01,
@@ -314,9 +316,10 @@ plan_regrasp = sequential(
         ),
         CableRegraspAction(
             cable_annotation=cable_annotation,
+            hanger_body=hanger_body,
             approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
             approach_sign=-1,  # y-axis pointing to the back
-            regrasp_height=0.5,  # height above the table to perform the regrasp
+            regrasp_height=0.75,  # height above the table to perform the regrasp
         ),
         # ParkArmsAction(arm=Arms.BOTH),
     ],
