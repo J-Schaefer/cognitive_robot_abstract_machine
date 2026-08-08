@@ -194,6 +194,7 @@ class CableRegraspAction(ActionDescription):
                 # ParkArmsAction(free_arm),
                 # Open the free arm's gripper before approaching.
                 MoveGripperMotion(motion=GripperState.OPEN, gripper=free_arm),
+                ParkArmsAction(holding_arm),  # TODO: Evaluate is that actually works
                 # Move holding arm to center above table, side-up orientation.
                 MoveToolCenterPointMotion(
                     holding_pose,
