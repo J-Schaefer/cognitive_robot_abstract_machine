@@ -178,8 +178,8 @@ with world.modify_world():
         height_offset=0.0,
     )
 
-    world.collision_manager.extend_default_rules(
-        [AllowCollisionForBodies(allowed_collision_bodies={cable_annotation.root})]
+    world.collision_manager.add_ignore_collision_rule(
+        AllowCollisionForBodies(allowed_collision_bodies={cable_annotation.root})
     )
 
 # %% Debug Prints
