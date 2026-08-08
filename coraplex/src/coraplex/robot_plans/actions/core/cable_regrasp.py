@@ -8,6 +8,7 @@ import numpy as np
 
 from coraplex.datastructures.dataclasses import Context
 from coraplex.datastructures.enums import Arms, MovementType
+from coraplex.plans.attachment_nodes import AttachNode
 from coraplex.plans.factories import sequential
 from coraplex.plans.plan_node import PlanNode
 from coraplex.querying.predicates import GripperIsFree, GripperIsNotFree
@@ -37,6 +38,7 @@ from semantic_digital_twin.spatial_types.spatial_types import (
     Pose,
     Quaternion,
 )
+from semantic_digital_twin.world_description.world_entity import Body
 
 
 @dataclass
@@ -53,6 +55,11 @@ class CableRegraspAction(ActionDescription):
     cable_annotation: Cable
     """
     The cable semantic annotation to regrasp.
+    """
+
+    hanger_body: Body
+    """
+    Body of the cable hanger to hang the cable on.
     """
 
     regrasp_height: float = field(default=0.5)
@@ -134,7 +141,7 @@ class CableRegraspAction(ActionDescription):
             orientation=_gripper_orientation_from_z_axis(
                 gripper_z_axis=side_sign * side_world,
                 fallback_direction=np.array([0.0, 0.0, 1.0]),
-                z_rotation=pi,
+                z_rotation=2 * pi,
             ),
         )
 
@@ -159,7 +166,9 @@ class CableRegraspAction(ActionDescription):
         # Spread both arms horizontally so the cable is stretched between
         # them. Left arm moves left, right arm moves right, both at the
         # same height.
-        half_length = self.cable_annotation.length / 2.0
+        half_length = (
+            self.cable_annotation.length / 2.0
+        )  # TODO: Adjust for cable length abd motion range
         hold_spread_pose = self._build_spread_pose(
             arm=holding_arm,
             z=target_z,
@@ -170,7 +179,7 @@ class CableRegraspAction(ActionDescription):
             arm=free_arm,
             z=target_z,
             half_length=half_length,
-            orientation=spread_orientation.multiply(Quaternion.from_rpy(0, 0, -pi / 2)),
+            orientation=spread_orientation,
         )
 
         print(f"Regrasping: holding={holding_arm.name}, free={free_arm.name}")
@@ -200,6 +209,11 @@ class CableRegraspAction(ActionDescription):
                 ),
                 # Close gripper to capture the cable.
                 MoveGripperMotion(motion=GripperState.CLOSE, gripper=free_arm),
+                # Attach the cable to the grasp arm
+                AttachNode(
+                    body=self.cable_annotation.root,
+                    new_parent=free_arm_end_effector.tool_frame,
+                ),
                 # Rotate both arms in next orientation before moving
                 MoveToolCenterPointMotion(
                     inter_holding_pose,
@@ -212,15 +226,16 @@ class CableRegraspAction(ActionDescription):
                 # Spread arms horizontally so the cable is held taut
                 # between both grippers at the same height.
                 MoveToolCenterPointMotion(
-                    hold_spread_pose,
-                    holding_arm,
-                    movement_type=MovementType.CARTESIAN,
-                ),
-                MoveToolCenterPointMotion(
                     free_spread_pose,
                     free_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
+                MoveToolCenterPointMotion(
+                    hold_spread_pose,
+                    holding_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
+                MoveGripperMotion(motion=GripperState.OPEN, gripper=holding_arm),
             ],
         )
 
@@ -273,7 +288,7 @@ class CableRegraspAction(ActionDescription):
         position = (
             front_world * self.table_depth / 2
             + side_world * (self.approach_sign * self.table_width / 2)
-            + up_world * up_offset
+            + up_world * (up_offset - 0.0477)
             + front_world * front_offset
             + side_world * side_offset
         )
@@ -314,7 +329,7 @@ class CableRegraspAction(ActionDescription):
         position = (
             -front_world * self.approach_sign * self.table_depth / 2
             - side_world * (self.table_width / 2 - half_length * side_sign)
-            + up_world * z
+            + up_world * (z - 0.0477)
         )
         return Pose(
             position=Point3(
