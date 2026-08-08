@@ -39,6 +39,7 @@ from coraplex.querying.gripper_verification import (
 )
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
+from semantic_digital_twin.robots.robot_parts import EndEffector
 from semantic_digital_twin.semantic_annotations.cable import Cable
 from semantic_digital_twin.spatial_types.spatial_types import (
     HomogeneousTransformationMatrix,
@@ -327,6 +328,9 @@ class CableGraspAction(ActionDescription):
                 AttachNode(
                     body=self.cable_annotation.root,
                     new_parent=grasp_end_effector.tool_frame,
+                    parent_T_connection_expression=self._attachment_transform(
+                        grasp_end_effector
+                    ),
                 ),
                 # Clear area with scoop arm
                 MoveToolCenterPointMotion(
@@ -748,6 +752,22 @@ class CableGraspAction(ActionDescription):
             z=self.cable_annotation.height_offset,
         )
         return (parent_global @ local_offset).to_position()
+
+    def _attachment_transform(
+        self, end_effector: EndEffector
+    ) -> HomogeneousTransformationMatrix:
+        """
+        Compute the transform from the end effector's tool frame to the cable body.
+
+        Uses the same mount offsets and length as the cable's original hanging setup so
+        the cable body is positioned consistently relative to the gripper.
+        """
+        return HomogeneousTransformationMatrix.from_xyz_rpy(
+            x=self.cable_annotation.mount_offset_x,
+            y=self.cable_annotation.mount_offset_y,
+            z=self.cable_annotation.height_offset - self.cable_annotation.length / 2,
+            reference_frame=end_effector.tool_frame,
+        )
 
     def _choose_scoop_arm(self) -> Arms:
         left_arm = ViewManager.get_arm_view(Arms.LEFT, self.robot)
