@@ -33,6 +33,7 @@ from semantic_digital_twin.world_description.connections import (
     FixedConnection,
 )
 from semantic_digital_twin.world_description.world_entity import Body
+from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 
 from giskardpy.motion_statechart.graph_node import CancelMotion
 from krrood.symbolic_math.symbolic_math import (
@@ -390,8 +391,10 @@ class ConditionExecutable(Executable):
 @dataclass
 class ModelChangeExecutable(Executable):
     """
-    Executable that re-attaches a body to a new parent in the world model while keeping
-    its current global pose.
+    Executable that re-attaches a body to a new parent in the world model.
+
+    By default, the body's current global pose is preserved. Pass
+    ``parent_T_connection_expression`` to override the attachment transform.
     """
 
     body: Body = field(kw_only=True)
@@ -402,6 +405,17 @@ class ModelChangeExecutable(Executable):
     new_parent: Body = field(kw_only=True)
     """
     The body the moved body is attached to afterwards.
+    """
+
+    parent_T_connection_expression: Optional[HomogeneousTransformationMatrix] = field(
+        default=None, kw_only=True
+    )
+    """
+    Explicit transform from ``new_parent`` to the body.
+
+    When ``None`` (default), the transform is computed via forward kinematics to
+    preserve the body's current global pose. When provided, this transform is used
+    directly as the ``parent_T_connection_expression`` of the new ``FixedConnection``.
     """
 
     giskard_idle_settle_delta: timedelta = field(
@@ -418,11 +432,14 @@ class ModelChangeExecutable(Executable):
 
     def execute(self) -> None:
         """
-        Re-parent the body to ``new_parent`` while preserving its global pose.
+        Re-parent the body to ``new_parent``.
         """
-        obj_transform = self.context.world.compute_forward_kinematics(
-            self.new_parent, self.body
-        )
+        if self.parent_T_connection_expression is not None:
+            obj_transform = self.parent_T_connection_expression
+        else:
+            obj_transform = self.context.world.compute_forward_kinematics(
+                self.new_parent, self.body
+            )
         with self.context.world.modify_world():
             self.context.world.remove_connection(self.body.parent_connection)
             # TODO: this shouldn't be fixed but 6DOF

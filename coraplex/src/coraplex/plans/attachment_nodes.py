@@ -1,7 +1,12 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
+from typing_extensions import Optional
+
 from coraplex.plans.executables import Executable, ModelChangeExecutable
-from coraplex.plans.plan_node import PlanNode, ExecutionBoundaryNode
+from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
+from coraplex.plans.plan_node import ExecutionBoundaryNode
 from semantic_digital_twin.world_description.world_entity import Body
 
 
@@ -26,6 +31,17 @@ class ModelChangeNode(ExecutionBoundaryNode):
     New parent to which the body should be attached to.
     """
 
+    parent_T_connection_expression: Optional[HomogeneousTransformationMatrix] = field(
+        default=None, kw_only=True
+    )
+    """
+    Explicit transform from ``new_parent`` to the body.
+
+    When ``None`` (default), the transform is computed via forward kinematics to
+    preserve the body's current global pose. When provided, this transform is used
+    directly as the ``parent_T_connection_expression`` of the new connection.
+    """
+
     def __post_init__(self):
         self.new_parent = self.new_parent or self.body._world.root
 
@@ -34,7 +50,10 @@ class ModelChangeNode(ExecutionBoundaryNode):
 
     def parse(self) -> ModelChangeExecutable:
         return ModelChangeExecutable(
-            context=self.plan.context, body=self.body, new_parent=self.new_parent
+            context=self.plan.context,
+            body=self.body,
+            new_parent=self.new_parent,
+            parent_T_connection_expression=self.parent_T_connection_expression,
         )
 
 
