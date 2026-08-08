@@ -5,6 +5,7 @@ import time
 from contextlib import AbstractContextManager, ExitStack, nullcontext
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 from typing_extensions import Callable, List, Dict, ClassVar, Optional, TYPE_CHECKING
 
@@ -32,6 +33,7 @@ from krrood.entity_query_language.factories import evaluate_condition
 from krrood.symbolic_math.symbolic_math import Scalar, trinary_logic_not
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.world_entity import Body
+from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 
 if TYPE_CHECKING:
     from giskardpy.motion_statechart.motion_statechart import StateHistory

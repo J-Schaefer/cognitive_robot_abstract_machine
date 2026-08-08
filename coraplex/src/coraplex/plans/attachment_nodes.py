@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 from typing_extensions import Optional
@@ -5,6 +7,7 @@ from typing_extensions import Optional
 from coraplex.plans.executables import (
     MoveBranchExecutable,
 )
+from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from coraplex.plans.plan_node import ExecutionBoundaryNode
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.world_entity import (
@@ -50,11 +53,10 @@ class ReAttachNode(ExecutionBoundaryNode):
     def notify(self):
         pass
 
-    def parse(self) -> MoveBranchExecutable:
-        return MoveBranchExecutable(
-            context=self.context,
+    def parse(self) -> ModelChangeExecutable:
+        return ModelChangeExecutable(
+            context=self.plan.context,
             body=self.body,
             new_parent=self.new_parent,
             parent_T_connection_expression=self.parent_T_connection_expression,
             execution_scope=self.execution_scope,
-        )
