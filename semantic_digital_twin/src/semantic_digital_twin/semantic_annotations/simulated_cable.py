@@ -54,6 +54,21 @@ class SimulatedCable(HasRootBody):
     The body from which this cable hangs.
     """
 
+    mount_offset_x: float = 0.0
+    """
+    Offset in x to mount the cable with.
+    """
+
+    mount_offset_y: float = 0.0
+    """
+    Offset in y to mount the cable with.
+    """
+
+    height_offset: float = 0.0
+    """
+    Offset in z to mount the cable with.
+    """
+
     link_bodies: list[Body] = field(kw_only=True)
     """
     The bodies that make up the cable chain, in order from the attachment point to the
@@ -79,6 +94,9 @@ class SimulatedCable(HasRootBody):
         length: float,
         thickness: float,
         number_of_links: int,
+        mount_offset_x: float = 0.0,
+        mount_offset_y: float = 0.0,
+        height_offset: float = 0.0,
         cable_color: Color = Color.YELLOW(),
     ) -> Self:
         """
@@ -115,7 +133,9 @@ class SimulatedCable(HasRootBody):
             link_bodies.append(link_body)
 
         attachment_transform = HomogeneousTransformationMatrix.from_xyz_rpy(
-            z=-link_length / 2,
+            x=mount_offset_x,
+            y=mount_offset_y,
+            z=height_offset,
             reference_frame=hanging_from,
         )
         attachment_connection = FixedConnection(

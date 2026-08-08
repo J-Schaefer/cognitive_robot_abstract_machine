@@ -47,6 +47,7 @@ from semantic_digital_twin.orm.ormatic_interface import (
 )
 from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.semantic_annotations.cable import Cable
+from semantic_digital_twin.semantic_annotations.simulated_cable import SimulatedCable
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import FixedConnection
 
@@ -168,9 +169,22 @@ hanger_body = world.get_body_by_name(PrefixedName("cable_hanger_2.stl"))
 # %% Cable Definition
 # TODO: Figure out how to respawn the cable at a new position
 with world.modify_world():
-    cable_annotation = Cable.create_with_new_body_in_world(
+    # cable_annotation = Cable.create_with_new_body_in_world(
+    #     name=PrefixedName("cable"),
+    #     world=world,
+    #     hanging_from=hanger_body,
+    #     length=0.3,
+    #     mount_offset_x=0.078,
+    #     mount_offset_y=-0.07,
+    #     height_offset=0.0,
+    # )
+
+    cable_annotation = SimulatedCable.create_in_world(
         name=PrefixedName("cable"),
         world=world,
+        length=0.5,
+        thickness=0.005,
+        number_of_links=12,
         hanging_from=hanger_body,
         length=0.3,
         mount_offset_x=0.055,
