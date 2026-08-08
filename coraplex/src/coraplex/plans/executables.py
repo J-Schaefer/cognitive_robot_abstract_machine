@@ -174,6 +174,11 @@ class Executable:
         Executes the unit.
         """
         for executable in self.execution_list:
+            if GiskardExecutable.execution_type in (
+                ExecutionType.REAL,
+                ExecutionType.SEMI_REAL,
+            ):
+                time.sleep(self.synchronize_time_delta.seconds)
             executable.execute()
 
 
@@ -343,7 +348,7 @@ class GiskardExecutable(Executable):
         match GiskardExecutable.execution_type:
             case ExecutionType.SIMULATED:
                 self._execute_simulation()
-            case ExecutionType.REAL:
+            case ExecutionType.REAL | ExecutionType.SEMI_REAL:
                 self._execute_real()
             case _:
                 raise UnknownExecutionType(GiskardExecutable.execution_type)
