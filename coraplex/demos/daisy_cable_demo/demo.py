@@ -28,6 +28,7 @@ from coraplex.plans.factories import sequential
 from coraplex.robot_plans import MoveGripperMotion, MoveJointsMotion
 from coraplex.robot_plans.actions.core.cable_grasp import CableGraspAction
 from coraplex.robot_plans.actions.core.cable_regrasp import CableRegraspAction
+from coraplex.robot_plans.actions.core.cable_rehang import CableRehangAction
 from coraplex.robot_plans.actions.core.pick_up import PickUpAction
 from coraplex.robot_plans.actions.core.robot_body import (
     ParkArmsAction,
@@ -335,5 +336,29 @@ elif execution_mode == ExecutionType.SEMI_REAL:
 else:
     with simulated_robot:
         plan_regrasp.perform()
+
+# %% Rehang Cable
+plan_rehang = sequential(
+    [
+        CableRehangAction(
+            cable_annotation=cable_annotation,
+            hanger_body=hanger_body,
+            side_offset=0.07,
+            approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
+            approach_sign=-1,  # y-axis pointing to the back
+        )
+    ],
+    context,
+)
+
+if execution_mode == ExecutionType.REAL:
+    with real_robot(collision_avoidance=collision_avoidance):
+        plan_rehang.perform()
+elif execution_mode == ExecutionType.SEMI_REAL:
+    with semi_real_robot(collision_avoidance=collision_avoidance):
+        plan_rehang.perform()
+else:
+    with simulated_robot:
+        plan_rehang.perform()
 
 print("Plan finished.")
