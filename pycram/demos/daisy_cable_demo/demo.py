@@ -318,7 +318,7 @@ plan_regrasp = sequential(
             hanger_body=hanger_body,
             approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
             approach_sign=-1,  # y-axis pointing to the back
-            regrasp_height=0.75,  # height above the table to perform the regrasp
+            regrasp_height=0.6,  # height above the table to perform the regrasp
         ),
         # ParkArmsAction(arm=Arms.BOTH),
     ],
