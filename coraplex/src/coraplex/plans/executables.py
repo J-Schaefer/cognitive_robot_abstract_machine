@@ -4,6 +4,7 @@ import logging
 from contextlib import AbstractContextManager, ExitStack, nullcontext
 from datetime import datetime
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 from typing_extensions import Callable, List, Dict, ClassVar, Optional, TYPE_CHECKING
 
@@ -30,6 +31,7 @@ from giskardpy.ros_executor import Ros2Executor
 from krrood.entity_query_language.factories import evaluate_condition
 from krrood.symbolic_math.symbolic_math import Scalar, trinary_logic_not
 from semantic_digital_twin.world_description.world_entity import Body
+from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 
 if TYPE_CHECKING:
     from giskardpy.motion_statechart.motion_statechart import StateHistory
@@ -430,6 +432,9 @@ class MoveBranchExecutable(Executable):
     """
     Executable that moves a body under a new parent, keeping the body's own connection
     so an actively driven body stays drivable afterwards.
+
+    By default, the body's current global pose is preserved. Pass
+    ``parent_T_connection_expression`` to override the attachment transform.
     """
 
     body: Body = field(kw_only=True)
@@ -442,6 +447,21 @@ class MoveBranchExecutable(Executable):
     The new parent to which the branch is moved.
     """
 
+
+    parent_T_connection_expression: Optional[HomogeneousTransformationMatrix] = field(
+        default=None, kw_only=True
+    )
+    """
+    Explicit transform from ``new_parent`` to the body.
+
+    When ``None`` (default), the transform is computed via forward kinematics to
+    preserve the body's current global pose. When provided, this transform is used
+    directly as the ``parent_T_connection_expression`` of the new ``FixedConnection``.
+    """
+
+    giskard_idle_settle_delta: timedelta = field(
+        default=timedelta(seconds=0.3), kw_only=True
+    )
     execution_scope: Callable[[], AbstractContextManager[None]] = field(
         default=nullcontext, kw_only=True, repr=False, compare=False
     )
