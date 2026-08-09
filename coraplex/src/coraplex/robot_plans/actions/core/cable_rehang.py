@@ -179,12 +179,51 @@ class CableRehangAction(ActionDescription):
 
         front_world, side_world, up_world = self._hanger_axes()
 
-        hand_pose = hang_poses["hang_pose"]
+        approach_hang_pose = hang_poses["approach_hang_pose"]
+        pre_hang_pose = hang_poses["pre_hang_pose"]
+        hang_pose = hang_poses["hang_pose"]
+
+        print(f"Approach hang pose: {approach_hang_pose.to_position()}")
+        print(f"Pre hang pose: {pre_hang_pose.to_position()}")
+        print(f"Hang pose: {hang_pose.to_position()}")
+
+        side_sign = 1.0 if free_arm == Arms.LEFT else -1.0
+        current_free_arm_transform = free_end_effector.tool_frame.global_transform
+        current_free_arm_position = current_free_arm_transform.to_position()
+        current_free_arm_orientation = current_free_arm_transform.to_quaternion()
+        free_arm_out_of_way_pos = current_free_arm_position.to_np()[:3] - side_world * (
+            0.15 * side_sign
+        )
+        free_arm_out_of_way_pose = Pose(
+            Point3(
+                x=free_arm_out_of_way_pos[0],
+                y=free_arm_out_of_way_pos[1],
+                z=free_arm_out_of_way_pos[2],
+                reference_frame=self.world.root,
+            ),
+            orientation=current_free_arm_orientation,
+            reference_frame=self.world.root,
+        )
 
         return sequential(
             [
                 MoveToolCenterPointMotion(
-                    target=hand_pose,
+                    target=free_arm_out_of_way_pose,
+                    arm=free_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
+                MoveToolCenterPointMotion(
+                    target=approach_hang_pose,
+                    arm=holding_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
+                MoveToolCenterPointMotion(
+                    target=pre_hang_pose,
+                    arm=holding_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
+                MoveToolCenterPointMotion(
+                    target=hang_pose,
                     arm=holding_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
@@ -192,6 +231,12 @@ class CableRehangAction(ActionDescription):
                 AttachNode(
                     body=self.cable_annotation.root,
                     new_parent=self.hanger_body,
+                ),
+                MoveGripperMotion(gripper=holding_arm, motion=GripperState.OPEN),
+                MoveToolCenterPointMotion(
+                    target=pre_hang_pose,
+                    arm=holding_arm,
+                    movement_type=MovementType.CARTESIAN,
                 ),
             ],
         )
@@ -243,17 +288,18 @@ class CableRehangAction(ActionDescription):
         front_world, side_world, up_world = self._hanger_axes()
         side_sign = 1.0 if holding_arm == Arms.RIGHT else -1.0
 
-        hanging_pos = self._hanging_point_position().to_np()
+        hanger_pos = self._hanger_point_position().to_np()
+        print(f"Hanger pose: {hanger_pos[:3]}")
 
         hang_orientation = self._hang_gripper_orientation(
             side_world * side_sign, front_world, z_rotation=pi
         )
 
         hang_pos = (
-            hanging_pos[:3]
-            - front_world * self.front_offset * self.approach_sign
+            hanger_pos[:3]
+            + front_world * self.front_offset * self.approach_sign
             + side_world * (self.side_offset * side_sign)
-            + up_world * (self.up_offset + 0.0477)
+            + up_world * self.up_offset
         )
         hang_pose = Pose(
             position=Point3(
@@ -265,8 +311,35 @@ class CableRehangAction(ActionDescription):
             orientation=hang_orientation,
             reference_frame=self.world.root,
         )
-
         poses["hang_pose"] = hang_pose
+
+        pre_hang_pos = hang_pos[:3] + front_world * (0.1 * self.approach_sign)
+        pre_hang_pose = Pose(
+            position=Point3(
+                x=pre_hang_pos[0],
+                y=pre_hang_pos[1],
+                z=pre_hang_pos[2],
+                reference_frame=self.world.root,
+            ),
+            orientation=hang_orientation,
+            reference_frame=self.world.root,
+        )
+
+        poses["pre_hang_pose"] = pre_hang_pose
+
+        approach_hang_pos = pre_hang_pos[:3] + front_world * 0.1 * self.approach_sign
+        approach_hang_pose = Pose(
+            position=Point3(
+                x=approach_hang_pos[0],
+                y=approach_hang_pos[1],
+                z=approach_hang_pos[2],
+                reference_frame=self.world.root,
+            ),
+            orientation=hang_orientation,
+            reference_frame=self.world.root,
+        )
+
+        poses["approach_hang_pose"] = approach_hang_pose
 
         return poses
 
@@ -296,12 +369,19 @@ class CableRehangAction(ActionDescription):
             z_rotation,
         )
 
-    def _hanging_point_position(self) -> Point3:
-        parent_global = self.cable_annotation.hanging_from.global_transform
+    def _hanger_point_position(self) -> Point3:
+        parent_global = self.hanger_body.global_transform
+        front_world, side_world, up_world = self._hanger_axes()
+
+        offset = (
+            front_world * self.front_offset
+            + side_world * self.side_offset
+            + up_world * self.up_offset
+        )
         local_offset = HomogeneousTransformationMatrix.from_xyz_rpy(
-            x=self.cable_annotation.mount_offset_x,
-            y=self.cable_annotation.mount_offset_y,
-            z=self.cable_annotation.height_offset,
+            x=offset[0],
+            y=offset[1],
+            z=offset[2],
         )
         return (parent_global @ local_offset).to_position()
 
