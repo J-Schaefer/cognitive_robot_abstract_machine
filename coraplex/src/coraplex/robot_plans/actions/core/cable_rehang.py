@@ -297,7 +297,10 @@ class CableRehangAction(ActionDescription):
 
         hang_pos = (
             hanger_pos[:3]
-            + front_world * self.front_offset * self.approach_sign
+            - front_world
+            * (
+                self.front_offset * self.approach_sign
+            )  # TODO: Check why front world is (-0, -1, -0)
             + side_world * (self.side_offset * side_sign)
             + up_world * self.up_offset
         )
@@ -313,7 +316,7 @@ class CableRehangAction(ActionDescription):
         )
         poses["hang_pose"] = hang_pose
 
-        pre_hang_pos = hang_pos[:3] + front_world * (0.1 * self.approach_sign)
+        pre_hang_pos = hang_pos[:3] - front_world * (0.1 * self.approach_sign)
         pre_hang_pose = Pose(
             position=Point3(
                 x=pre_hang_pos[0],
@@ -327,7 +330,7 @@ class CableRehangAction(ActionDescription):
 
         poses["pre_hang_pose"] = pre_hang_pose
 
-        approach_hang_pos = pre_hang_pos[:3] + front_world * 0.1 * self.approach_sign
+        approach_hang_pos = pre_hang_pos[:3] - front_world * 0.1 * self.approach_sign
         approach_hang_pose = Pose(
             position=Point3(
                 x=approach_hang_pos[0],
