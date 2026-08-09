@@ -142,7 +142,7 @@ class CableRegraspAction(ActionDescription):
                 gripper_z_axis=side_sign * side_world,
                 fallback_direction=np.array([0.0, 0.0, 1.0]),
                 z_rotation=2 * pi,
-            ),
+            ).multiply(Quaternion.from_rpy(pi / 4, 0.0, 0.0)),
         )
 
         # TODO Add intermediate poses
