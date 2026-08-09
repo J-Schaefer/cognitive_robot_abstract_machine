@@ -76,6 +76,7 @@ from semantic_digital_twin.world_description.world_modification import (
     AddKinematicStructureEntityModification,
     AddActuatorModification,
     AddConnectionModification,
+    RemoveConnectionModification,
 )
 
 logger = logging.getLogger(__name__)
@@ -2790,9 +2791,10 @@ class MultiSimSynchronizer(ModelChangeCallback, ABC):
     """
     A callback to synchronize the world model with the simulator.
 
-    Listens to world *model* changes (entity/connection/actuator additions)
-    via the :class:`ModelChangeCallback` base and spawns the matching entities
-    in the simulator. In addition, a sibling :class:`_MultiSimStateCallback`
+    Listens to world *model* changes (entity/connection/actuator additions
+    and removals) via the :class:`ModelChangeCallback` base and spawns the
+    matching entities in the simulator or re-parents / detaches them.
+    In addition, a sibling :class:`_MultiSimStateCallback`
     is created in ``__post_init__`` that listens to world *state* changes and
     routes them to :meth:`_on_state_change` so concrete synchronizers can
     push the new state into the simulator (the *world → sim* direction).
@@ -2828,16 +2830,51 @@ class MultiSimSynchronizer(ModelChangeCallback, ABC):
         )
 
     def on_model_change(self, **kwargs):
-        for modification in self._world._model_manager.model_modification_blocks[-1]:
-            if isinstance(modification, AddKinematicStructureEntityModification):
+        modifications = self._world._model_manager.model_modification_blocks[-1]
+        removals: Dict[str, Connection] = {}
+        additions: List[AddConnectionModification] = []
+
+        for modification in modifications:
+            if isinstance(modification, RemoveConnectionModification):
+                child_name = modification.connection.child.name.name
+                removals[child_name] = modification.connection
+            elif isinstance(modification, AddConnectionModification):
+                additions.append(modification)
+            elif isinstance(modification, AddKinematicStructureEntityModification):
                 entity = modification.kinematic_structure_entity
                 self.entity_spawner.spawn(simulator=self.simulator, entity=entity)
-            elif isinstance(modification, AddConnectionModification):
-                connection = modification.connection
-                self.entity_spawner.spawn(simulator=self.simulator, entity=connection)
             elif isinstance(modification, AddActuatorModification):
                 entity = modification.actuator
                 self.entity_spawner.spawn(simulator=self.simulator, entity=entity)
+
+        for add_mod in additions:
+            child_name = add_mod.connection.child.name.name
+            if child_name in removals:
+                _old_connection = removals.pop(child_name)
+                new_parent_name = add_mod.connection.parent.name.name
+                transform = add_mod.connection.parent_T_connection_expression
+                pos = transform.to_position()
+                quat = transform.to_quaternion()
+                self.simulator.callbacks["attach"](
+                    body_1_name=child_name,
+                    body_2_name=new_parent_name,
+                    relative_position=numpy.array(
+                        [float(pos.x), float(pos.y), float(pos.z)]
+                    ),
+                    relative_quaternion=numpy.array(
+                        [float(quat.w), float(quat.x), float(quat.y), float(quat.z)]
+                    ),
+                )
+            else:
+                self.entity_spawner.spawn(
+                    simulator=self.simulator, entity=add_mod.connection
+                )
+
+        for child_name in removals:
+            self.simulator.callbacks["detach"](
+                body_name=child_name,
+                add_freejoint=True,
+            )
 
     def stop(self):
         if self._state_callback is not None:

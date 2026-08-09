@@ -48,6 +48,7 @@ from semantic_digital_twin.orm.ormatic_interface import (
 from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.semantic_annotations.cable import Cable
 from semantic_digital_twin.semantic_annotations.simulated_cable import SimulatedCable
+from semantic_digital_twin.adapters.multi_sim import MujocoSim
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import FixedConnection
 
@@ -193,8 +194,15 @@ with world.modify_world():
     )
 
     world.collision_manager.add_ignore_collision_rule(
-        AllowCollisionForBodies(allowed_collision_bodies={cable_annotation.root})
+        AllowCollisionForBodies(
+            allowed_collision_bodies=set(cable_annotation.link_bodies)
+        )
     )
+
+# %% Start Physics Simulation
+multi_sim = MujocoSim(world=world, headless=True, step_size=0.001)
+multi_sim.start_simulation()
+# Cable now droops under gravity, synced to world.state at 30 Hz
 
 # %% Debug Prints
 if verbose:
@@ -381,3 +389,5 @@ else:
         plan_rehang.perform()
 
 print("Plan finished.")
+
+multi_sim.stop_simulation()

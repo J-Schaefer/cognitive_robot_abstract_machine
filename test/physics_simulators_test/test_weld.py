@@ -170,3 +170,211 @@ class TestWeldBodies:
             == SimulatorCallbackResult.ResultType.FAILURE_BEFORE_EXECUTION_ON_MODEL
         )
         simulator.stop()
+
+
+class TestRecursiveAttachDetach:
+    """
+    Tests for attach and detach callbacks with bodies that have child bodies.
+    """
+
+    @pytest.fixture
+    def simulator(self):
+        import mujoco
+        import tempfile
+        import os
+
+        xml = """<mujoco model="attach_test">
+  <worldbody>
+    <body name="parent" pos="0 0 1" quat="1 0 0 0">
+      <geom name="parent_geom" type="sphere" size="0.05" rgba="1 0 0 1"/>
+      <body name="child" pos="0 0.1 0" quat="1 0 0 0">
+        <geom name="child_geom" type="sphere" size="0.05" rgba="1 0 0 1"/>
+        <body name="grandchild" pos="0 0 0.1" quat="1 0 0 0">
+          <geom name="grandchild_geom" type="sphere" size="0.03" rgba="0 1 0 1"/>
+          <joint name="grandchild_joint" type="ball" pos="0 0 -0.1"/>
+        </body>
+      </body>
+    </body>
+    <body name="target" pos="0 2 1" quat="1 0 0 0">
+      <geom name="target_geom" type="sphere" size="0.05" rgba="0 0 1 1"/>
+    </body>
+  </worldbody>
+</mujoco>"""
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
+            f.write(xml)
+            file_path = f.name
+
+        sim = MujocoSimulator(
+            _headless=True,
+            _step_size=0.001,
+            file_path=file_path,
+        )
+        yield sim
+        try:
+            sim.stop()
+        except Exception:
+            pass
+        try:
+            os.unlink(file_path)
+        except Exception:
+            pass
+
+    def test_attach_preserves_child_bodies(self, simulator):
+        """
+        Attaching a body with children preserves the entire subtree.
+        """
+        import mujoco
+
+        simulator.start(simulate_in_thread=False, render_in_thread=False)
+        for _ in range(10):
+            simulator.step()
+
+        result = simulator.callbacks["attach"](
+            body_1_name="child",
+            body_2_name="target",
+        )
+        assert (
+            result.type
+            == SimulatorCallbackResult.ResultType.SUCCESS_AFTER_EXECUTION_ON_MODEL
+        )
+
+        body_names = simulator.callbacks["get_all_body_names"]().result
+        assert "child" in body_names
+        assert "grandchild" in body_names
+
+        grandchild_id = mujoco.mj_name2id(
+            m=simulator._mj_model,
+            type=mujoco.mjtObj.mjOBJ_BODY,
+            name="grandchild",
+        )
+        assert grandchild_id != -1
+
+        grandchild_pos = simulator.callbacks["get_body_position"](
+            body_name="grandchild"
+        ).result
+        assert grandchild_pos is not None
+
+        simulator.stop()
+
+    def test_attach_child_body_has_new_parent(self, simulator):
+        """
+        After attach, the moved child body's parent is the target.
+        """
+        import mujoco
+
+        simulator.start(simulate_in_thread=False, render_in_thread=False)
+        for _ in range(10):
+            simulator.step()
+
+        simulator.callbacks["attach"](
+            body_1_name="child",
+            body_2_name="target",
+        )
+
+        child_id = mujoco.mj_name2id(
+            m=simulator._mj_model,
+            type=mujoco.mjtObj.mjOBJ_BODY,
+            name="child",
+        )
+        parent_id = simulator._mj_model.body(child_id).parentid[0]
+        parent_name = mujoco.mj_id2name(
+            m=simulator._mj_model,
+            type=mujoco.mjtObj.mjOBJ_BODY,
+            id=parent_id,
+        )
+        assert parent_name == "target"
+        simulator.stop()
+
+    def test_attach_grandchild_remains_child_of_child(self, simulator):
+        """
+        After attaching child to target, grandchild remains a child of child.
+        """
+        import mujoco
+
+        simulator.start(simulate_in_thread=False, render_in_thread=False)
+        for _ in range(10):
+            simulator.step()
+
+        simulator.callbacks["attach"](
+            body_1_name="child",
+            body_2_name="target",
+        )
+
+        grandchild_id = mujoco.mj_name2id(
+            m=simulator._mj_model,
+            type=mujoco.mjtObj.mjOBJ_BODY,
+            name="grandchild",
+        )
+        parent_id = simulator._mj_model.body(grandchild_id).parentid[0]
+        parent_name = mujoco.mj_id2name(
+            m=simulator._mj_model,
+            type=mujoco.mjtObj.mjOBJ_BODY,
+            id=parent_id,
+        )
+        assert parent_name == "child"
+        simulator.stop()
+
+    def test_attach_preserves_grandchild_ball_joint(self, simulator):
+        """
+        After attaching child, the grandchild's ball joint still exists.
+        """
+        import mujoco
+
+        simulator.start(simulate_in_thread=False, render_in_thread=False)
+        for _ in range(10):
+            simulator.step()
+
+        simulator.callbacks["attach"](
+            body_1_name="child",
+            body_2_name="target",
+        )
+
+        grandchild_joint_id = mujoco.mj_name2id(
+            m=simulator._mj_model,
+            type=mujoco.mjtObj.mjOBJ_JOINT,
+            name="grandchild_joint",
+        )
+        assert grandchild_joint_id != -1
+        joint_type = simulator._mj_model.joint(grandchild_joint_id).type[0]
+        assert joint_type == mujoco.mjtJoint.mjJNT_BALL
+        simulator.stop()
+
+    def test_detach_preserves_child_bodies(self, simulator):
+        """
+        Detaching a body with children preserves the entire subtree.
+        """
+        import mujoco
+
+        simulator.start(simulate_in_thread=False, render_in_thread=False)
+        for _ in range(10):
+            simulator.step()
+
+        result = simulator.callbacks["detach"](
+            body_name="child",
+            add_freejoint=True,
+        )
+        assert (
+            result.type
+            == SimulatorCallbackResult.ResultType.SUCCESS_AFTER_EXECUTION_ON_MODEL
+        )
+
+        body_names = simulator.callbacks["get_all_body_names"]().result
+        assert "child" in body_names
+        assert "grandchild" in body_names
+
+        grandchild_id = mujoco.mj_name2id(
+            m=simulator._mj_model,
+            type=mujoco.mjtObj.mjOBJ_BODY,
+            name="grandchild",
+        )
+        assert grandchild_id != -1
+
+        child_id = mujoco.mj_name2id(
+            m=simulator._mj_model,
+            type=mujoco.mjtObj.mjOBJ_BODY,
+            name="child",
+        )
+        parent_id = simulator._mj_model.body(child_id).parentid[0]
+        assert parent_id == 0
+        simulator.stop()

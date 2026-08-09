@@ -147,36 +147,16 @@ class MujocoSimulator(BaseSimulator):
         self, body_spec: mujoco.MjsBody, dummy_prefix: str, body_name: str
     ):
         """
-        This is a workaround to a bug that happens in MuJoCo older versions when detaching a body that has children:
-        the children bodies are not properly detached and keep the same name,
-        which causes a conflict when attaching them to another body with the same name.
-        The workaround is to add a dummy prefix to the body and its children before recompiling,
-        then remove the dummy prefix after recompiling.
+        This is a workaround to a bug that happens in MuJoCo older versions when
+        detaching a body that has children: the children bodies are not properly
+        detached and keep the same name, which causes a conflict when attaching
+        them to another body with the same name. The workaround is to add a dummy
+        prefix to the body and its children before recompiling, then remove the
+        dummy prefix after recompiling.
         """
         with self._model_lock:
+            self._recursive_fix_prefix(body_spec, dummy_prefix)
             body_spec.name = body_name
-            try:
-                for body_child in (
-                    body_spec.bodies
-                    + body_spec.joints
-                    + body_spec.geoms
-                    + body_spec.sites
-                ):
-                    body_child.name = body_child.name.replace(dummy_prefix, "")
-            except ValueError:
-                self.log_warning(
-                    f"Failed to resolve body_spec for {body_name}, this is a bug from MuJoCo"
-                )
-                self._mj_model, self._mj_data = self._mj_spec.recompile(
-                    self._mj_model, self._mj_data
-                )
-                for body_child in (
-                    body_spec.bodies
-                    + body_spec.joints
-                    + body_spec.geoms
-                    + body_spec.sites
-                ):
-                    body_child.name = body_child.name.replace(dummy_prefix, "")
             self._mj_model, self._mj_data = self._mj_spec.recompile(
                 self._mj_model, self._mj_data
             )
@@ -193,6 +173,76 @@ class MujocoSimulator(BaseSimulator):
                 self._renderer._sim().load(self._mj_model, self._mj_data, "")
                 if self.simulation_thread is None:
                     mujoco.mj_step1(self._mj_model, self._mj_data)
+
+    @staticmethod
+    def _recursive_fix_prefix(
+        body_spec: mujoco.MjsBody,
+        dummy_prefix: str,
+    ) -> None:
+        """
+        Recursively remove ``dummy_prefix`` from every entity name in the body
+        subtree.
+        """
+        for entity in (
+            body_spec.bodies
+            + body_spec.joints
+            + body_spec.geoms
+            + body_spec.sites
+        ):
+            entity.name = entity.name.replace(dummy_prefix, "")
+        for child in body_spec.bodies:
+            MujocoSimulator._recursive_fix_prefix(child, dummy_prefix)
+
+    def _recursive_copy_body_subtree(
+        self,
+        old_spec: mujoco.MjsBody,
+        new_spec: mujoco.MjsBody,
+        dummy_prefix: str,
+    ) -> None:
+        """
+        Recursively copy geoms, joints, sites, and child bodies from ``old_spec``
+        to ``new_spec``, prefixing all names with ``dummy_prefix``.
+        """
+        for geom in old_spec.geoms:
+            new_spec.add_geom(
+                name=f"{dummy_prefix}{geom.name}",
+                pos=geom.pos,
+                quat=geom.quat,
+                type=geom.type,
+                size=geom.size,
+                rgba=geom.rgba,
+                conaffinity=geom.conaffinity,
+                condim=geom.condim,
+                contype=geom.contype,
+                density=geom.density,
+                friction=geom.friction,
+                meshname=geom.meshname,
+            )
+        for site in old_spec.sites:
+            new_spec.add_site(
+                name=f"{dummy_prefix}{site.name}",
+                pos=site.pos,
+                quat=site.quat,
+                type=site.type,
+                size=site.size,
+                rgba=site.rgba,
+                group=site.group,
+            )
+        for joint in old_spec.joints:
+            new_spec.add_joint(
+                name=f"{dummy_prefix}{joint.name}",
+                type=joint.type,
+                pos=joint.pos,
+            )
+        for old_child in old_spec.bodies:
+            child_pos = old_child.pos
+            child_quat = old_child.quat
+            new_child_spec = new_spec.add_body(
+                name=f"{dummy_prefix}{old_child.name}",
+                pos=child_pos,
+                quat=child_quat,
+            )
+            self._recursive_copy_body_subtree(old_child, new_child_spec, dummy_prefix)
 
     @property
     def file_path(self) -> str:
@@ -823,30 +873,9 @@ class MujocoSimulator(BaseSimulator):
             pos=relative_position,
             quat=relative_quaternion,
         )
-        # for body_child in body_1_spec_copy.bodies:
-        #     body_2_spec.add_body(body_child)
-        for geom_child in body_1_spec.geoms:
-            body_1_spec_new.add_geom(
-                name=f"{dummy_prefix}{geom_child.name}",
-                pos=geom_child.pos,
-                quat=geom_child.quat,
-                type=geom_child.type,
-                size=geom_child.size,
-                rgba=geom_child.rgba,
-                conaffinity=geom_child.conaffinity,
-                condim=geom_child.condim,
-                contype=geom_child.contype,
-                density=geom_child.density,
-                friction=geom_child.friction,
-                meshname=geom_child.meshname,
-            )
-        # for site_child in body_1_spec_copy.sites:
-        #     body_1_spec.add_site(site_child)
-
-        # body_2_frame = body_2_spec.add_frame()
-        # body_1_spec_new = body_2_frame.attach_body(body_1_spec, dummy_prefix, "")
-        # body_1_spec_new.pos = relative_position
-        # body_1_spec_new.quat = relative_quaternion
+        self._recursive_copy_body_subtree(
+            body_1_spec, body_1_spec_new, dummy_prefix
+        )
         if mujoco.mj_version() < 335:
             self._mj_spec.detach_body(body_1_spec)
         else:
@@ -911,25 +940,9 @@ class MujocoSimulator(BaseSimulator):
             pos=absolute_position,
             quat=absolute_quaternion,
         )
-        # for body_child in body_1_spec_copy.bodies:
-        #     body_2_spec.add_body(body_child)
-        for geom_child in body_spec.geoms:
-            body_spec_new.add_geom(
-                name=f"{dummy_prefix}{geom_child.name}",
-                pos=geom_child.pos,
-                quat=geom_child.quat,
-                type=geom_child.type,
-                size=geom_child.size,
-                rgba=geom_child.rgba,
-                conaffinity=geom_child.conaffinity,
-                condim=geom_child.condim,
-                contype=geom_child.contype,
-                density=geom_child.density,
-                friction=geom_child.friction,
-                meshname=geom_child.meshname,
-            )
-        # for site_child in body_1_spec_copy.sites:
-        #     body_1_spec.add_site(site_child)
+        self._recursive_copy_body_subtree(
+            body_spec, body_spec_new, dummy_prefix
+        )
         if add_freejoint:
             body_spec_new.add_freejoint()
         if mujoco.mj_version() < 335:
