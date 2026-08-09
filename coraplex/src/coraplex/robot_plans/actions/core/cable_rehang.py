@@ -191,7 +191,7 @@ class CableRehangAction(ActionDescription):
                 # Attach the cable to the grasp arm
                 AttachNode(
                     body=self.cable_annotation.root,
-                    new_parent=self.world.get,
+                    new_parent=self.hanger_body,
                 ),
             ],
         )
