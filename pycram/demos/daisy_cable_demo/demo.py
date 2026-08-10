@@ -35,6 +35,7 @@ from coraplex.robot_plans.actions.core.robot_body import (
     SetGripperAction,
 )
 from semantic_digital_twin.adapters.mesh import STLParser
+from semantic_digital_twin.collision_checking.collision_matrix import CollisionRule
 from semantic_digital_twin.collision_checking.collision_rules import (
     AllowCollisionForBodies,
 )
@@ -54,9 +55,11 @@ from define_real_daisy import setup_real_daisy
 from define_sim_daisy import setup_sim_daisy
 
 verbose = True
-collision_avoidance = True
+collision_avoidance = False
 execution_mode = ExecutionType.REAL
 # execution_mode = ExecutionType.SEMI_REAL
+
+print(f"Running in: {execution_mode}")
 
 # %% Robot and World Setup
 if execution_mode == ExecutionType.REAL or execution_mode == ExecutionType.SEMI_REAL:
@@ -169,7 +172,7 @@ with world.modify_world():
         world=world,
         hanging_from=hanger_body,
         length=0.3,
-        mount_offset_x=0.078,
+        mount_offset_x=0.055,
         mount_offset_y=-0.07,
         height_offset=0.0,
     )
@@ -287,8 +290,8 @@ plan = sequential(
             hanger_body=hanger_body,
             grasp_offset=0.1,
             side_offset=0.2,
-            front_offset=-0.01,
-            down_offset=0.12,
+            front_offset=-0.04,
+            down_offset=0.1677,
             approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
             approach_sign=-1,  # y-axis pointing to the back
         ),
@@ -342,7 +345,7 @@ plan_rehang = sequential(
         CableRehangAction(
             cable_annotation=cable_annotation,
             hanger_body=hanger_body,
-            side_offset=0.02,
+            side_offset=0.05,
             front_offset=0.07,
             up_offset=0.03,
             approach_direction=1,  # approach in y direction, coming from the front of the cable hanger

@@ -23,6 +23,7 @@ from coraplex.robot_plans.motions.gripper import (
     MoveGripperMotion,
     MoveToolCenterPointMotion,
 )
+from coraplex.utils import translate_pose_along_local_axis
 from coraplex.view_manager import ViewManager
 from krrood.entity_query_language.core.variable import Variable
 from krrood.entity_query_language.factories import (
@@ -271,6 +272,11 @@ class CableGraspAction(ActionDescription):
                     grip_position=0,
                     grip_speed=150,
                 ),
+                # Attach the cable to the scoop arm
+                AttachNode(
+                    body=self.cable_annotation.root,
+                    new_parent=scoop_end_effector.tool_frame,
+                ),
                 # Move the scoop arm to the post-scoop position, actually scoop cable
                 MoveToolCenterPointMotion(
                     post_scoop_pose,
@@ -315,7 +321,7 @@ class CableGraspAction(ActionDescription):
                     motion=GripperState.FLEXCLOSE,
                     gripper=grasp_arm,
                     grip_position=0,
-                    grip_force=120,
+                    grip_force=180,
                 ),
                 # Attach the cable to the grasp arm
                 AttachNode(
@@ -346,6 +352,14 @@ class CableGraspAction(ActionDescription):
                     scoop_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
+                # Move grasp arm slightly up
+                MoveToolCenterPointMotion(
+                    translate_pose_along_local_axis(
+                        pose=grasp_pose, axis=[0, 1, 0], distance=-0.07
+                    ),
+                    grasp_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
                 MoveToolCenterPointMotion(
                     pre_free_cable_pose, scoop_arm, movement_type=MovementType.CARTESIAN
                 ),
@@ -356,13 +370,21 @@ class CableGraspAction(ActionDescription):
                     motion=GripperState.FLEXCLOSE,
                     gripper=scoop_arm,
                     grip_position=0,
-                    grip_force=120,
+                    grip_force=90,
                     grip_speed=120,
                 ),
                 MoveToolCenterPointMotion(
                     pre_free_cable_pose, scoop_arm, movement_type=MovementType.CARTESIAN
                 ),
                 MoveGripperMotion(motion=GripperState.OPEN, gripper=scoop_arm),
+                # Move grasp arm slightly up
+                MoveToolCenterPointMotion(
+                    translate_pose_along_local_axis(
+                        pose=grasp_pose, axis=[0, 1, 0], distance=0.07
+                    ),
+                    grasp_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
             ],
         )
 
@@ -408,33 +430,14 @@ class CableGraspAction(ActionDescription):
 
         hanging_pos = self._hanging_point_position().to_np()
 
-        # Calculate pre-scoop pose, that's right in front of the cable hanger
-        pre_scoop_pos = (
-            hanging_pos[:3]
-            - front_world * (self.front_offset * 2 * self.approach_sign)
-            - up_world * (self.down_offset + 0.0477)
-        )
         scoop_orientation = self._scoop_gripper_orientation(
             side_world * side_sign, front_world, z_rotation=pi
         )
 
-        pre_scoop_pose = Pose(
-            position=Point3(
-                x=pre_scoop_pos[0],
-                y=pre_scoop_pos[1],
-                z=pre_scoop_pos[2],
-                reference_frame=self.world.root,
-            ),
-            orientation=scoop_orientation,
-            reference_frame=self.world.root,
-        )
-
-        poses["pre_scoop_pose"] = pre_scoop_pose
-
         scoop_pos = (
             hanging_pos[:3]
-            - front_world * self.front_offset * self.approach_sign
-            - up_world * (self.down_offset + 0.0477)
+            - front_world * (self.approach_sign * self.front_offset)
+            - up_world * self.down_offset
         )
         scoop_pose = Pose(
             position=Point3(
@@ -449,12 +452,28 @@ class CableGraspAction(ActionDescription):
 
         poses["scoop_pose"] = scoop_pose
 
+        # Calculate pre-scoop pose, that's right in front of the cable hanger
+        pre_scoop_pos = scoop_pos[:3] - front_world * (self.approach_sign * 0.05)
+
+        pre_scoop_pose = Pose(
+            position=Point3(
+                x=pre_scoop_pos[0],
+                y=pre_scoop_pos[1],
+                z=pre_scoop_pos[2],
+                reference_frame=self.world.root,
+            ),
+            orientation=scoop_orientation,
+            reference_frame=self.world.root,
+        )
+
+        poses["pre_scoop_pose"] = pre_scoop_pose
+
         # Move to side to scoop up cable, at the same time roll gripper around z axis
         post_scoop_pos = (
             hanging_pos[:3]
             + front_world * self.front_offset
             - side_world * (self.side_offset * side_sign)
-            - up_world * (self.down_offset + 0.0477)
+            - up_world * self.down_offset
         )
 
         post_scoop_pose = Pose(
@@ -478,9 +497,10 @@ class CableGraspAction(ActionDescription):
         # Move scoop arm a bit to clear area and get out of the way
         clear_scoop_pos = (
             post_scoop_pos[:3]
-            - up_world * (0.1 + 0.0477)
             - front_world * (0.05 * self.approach_sign)
+            - up_world * 0.1
         )
+
         clear_scoop_pose = Pose(
             position=Point3(
                 x=clear_scoop_pos[0],
@@ -519,8 +539,8 @@ class CableGraspAction(ActionDescription):
 
         pre_free_cable_pos = (  # TODO: check these values again
             hanging_pos[:3]
-            - front_world * (0.3 * self.approach_sign)
-            + up_world * (0.03 - 0.0477)
+            - front_world * (0.2 * self.approach_sign)
+            + up_world * (-0.015)
         )
         pre_free_cable_pose = Pose(
             position=Point3(
@@ -537,8 +557,8 @@ class CableGraspAction(ActionDescription):
 
         free_cable_pos = (
             hanging_pos[:3]
-            - front_world * 0.00 * self.approach_sign
-            + up_world * (0.03 - 0.0477)
+            - front_world * (-0.03 * self.approach_sign)
+            + up_world * (-0.015)
         )
         free_cable_pose = Pose(
             position=Point3(
@@ -639,8 +659,8 @@ class CableGraspAction(ActionDescription):
         grasp_pos = (
             post_scoop_pose.to_position().to_np()[:3]
             - front_world * (0.01 * self.approach_sign)
-            - side_world * (0.02 * side_sign)
-            + up_world * (0.05)
+            - side_world * (0.014 * side_sign)  # smaller number is to the left
+            + up_world * (0.04)
         )
         grasp_pose = Pose(
             position=Point3(
