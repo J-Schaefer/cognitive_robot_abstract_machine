@@ -187,7 +187,6 @@ with world.modify_world():
         thickness=0.005,
         number_of_links=12,
         hanging_from=hanger_body,
-        length=0.3,
         mount_offset_x=0.055,
         mount_offset_y=-0.07,
         height_offset=0.0,
