@@ -288,22 +288,22 @@ class CableRehangAction(ActionDescription):
         front_world, side_world, up_world = self._hanger_axes()
         side_sign = 1.0 if holding_arm == Arms.RIGHT else -1.0
 
-        hanger_pos = self._hanger_point_position().to_np()
-        print(f"Hanger pose: {hanger_pos[:3]}")
+        hang_pos = self._hanging_point_position().to_np()
+        print(f"Hanging pose: {hang_pos[:3]}")
 
         hang_orientation = self._hang_gripper_orientation(
             side_world * side_sign, front_world, z_rotation=pi
         )
 
-        hang_pos = (
-            hanger_pos[:3]
-            - front_world
-            * (
-                self.front_offset * self.approach_sign
-            )  # TODO: Check why front world is (-0, -1, -0)
-            + side_world * (self.side_offset * side_sign)
-            + up_world * self.up_offset
-        )
+        # hang_pos = (
+        #     hanger_pos[:3]
+        #     - front_world
+        #     * (
+        #         self.front_offset * self.approach_sign
+        #     )  # TODO: Check why front world is (-0, -1, -0)
+        #     + side_world * (self.side_offset * side_sign)
+        #     + up_world * self.up_offset
+        # )
         hang_pose = Pose(
             position=Point3(
                 x=hang_pos[0],
@@ -372,7 +372,20 @@ class CableRehangAction(ActionDescription):
             z_rotation,
         )
 
-    def _hanger_point_position(self) -> Point3:
+    def _hanging_point_position(self) -> Point3:
+        """
+        Calculates the position of the cable hanging point in global coordinates.
+
+        This method computes the global position of the hanging point by first
+        determining the global axes of the hanger, then calculating an offset
+        vector based on the provided front, side, and up offsets. The offset
+        is transformed into a local transformation matrix, and the position
+        is obtained by applying this transformation to the global transformation
+        matrix of the parent body.
+
+        Returns:
+            Point3: The global position of the hanging point.
+        """
         parent_global = self.hanger_body.global_transform
         front_world, side_world, up_world = self._hanger_axes()
 
