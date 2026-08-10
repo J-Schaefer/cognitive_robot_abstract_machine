@@ -6,6 +6,9 @@ from typing import Any, Dict
 
 import numpy as np
 
+from coraplex.alternative_motion_mappings.daisy_motion_mapping import (
+    DAiSyFlexGripMotion,
+)
 from coraplex.datastructures.dataclasses import Context
 from coraplex.datastructures.enums import Arms, MovementType
 from coraplex.plans.attachment_nodes import AttachNode
@@ -21,6 +24,7 @@ from coraplex.robot_plans.motions.gripper import (
     MoveGripperMotion,
     MoveToolCenterPointMotion,
 )
+from coraplex.utils import translate_pose_along_local_axis
 from coraplex.view_manager import ViewManager
 from krrood.entity_query_language.core.variable import Variable
 from krrood.entity_query_language.factories import (
@@ -128,39 +132,40 @@ class CableRegraspAction(ActionDescription):
             orientation=_gripper_orientation_from_z_axis(
                 gripper_z_axis=-up_world,
                 fallback_direction=np.array([0.0, 0.0, 1.0]),
-                z_rotation=pi / 2,
+                z_rotation=3 * pi / 2,
             ),
         )
 
         # Positions the free arm beneath the holding arm so it can grasp
         # the cable from below.
-        free_grasp_z = target_z - 0.08
+        free_grasp_z = target_z - 0.01
         free_grasp_pose = self._build_mid_pose(
             up_offset=free_grasp_z,
-            side_offset=0.1,
+            side_offset=0.04,
             orientation=_gripper_orientation_from_z_axis(
                 gripper_z_axis=side_sign * side_world,
                 fallback_direction=np.array([0.0, 0.0, 1.0]),
-                z_rotation=2 * pi,
-            ).multiply(Quaternion.from_rpy(pi / 4, 0.0, 0.0)),
+                z_rotation=pi,
+            ).multiply(Quaternion.from_rpy(-pi / 4, 0.0, 0.0)),
         )
 
-        # TODO Add intermediate poses
         spread_orientation = _gripper_orientation_from_z_axis(
             gripper_z_axis=self.approach_sign * front_world,
             fallback_direction=np.array([0.0, 0.0, 1.0]),
-            z_rotation=-pi / 2,
+            z_rotation=pi / 2,
         )
 
-        inter_holding_pose = Pose(
-            position=holding_pose.to_position(),
+        inter_holding_arm_pose = self._build_mid_pose(
+            side_offset=-0.1,
+            up_offset=target_z,
             orientation=spread_orientation,
-            reference_frame=self.world.root,
         )
-        inter_free_pose = Pose(
-            position=free_grasp_pose.to_position(),
+
+        inter_free_arm_pose = self._build_mid_pose(
+            side_offset=0.1,
+            up_offset=target_z - 0.1,
             orientation=spread_orientation,
-            reference_frame=self.world.root,
+            # orientation=spread_orientation.multiply(Quaternion.from_rpy(0.0, 0.0, -pi)),
         )
 
         # Spread both arms horizontally so the cable is stretched between
@@ -180,6 +185,7 @@ class CableRegraspAction(ActionDescription):
             z=target_z,
             half_length=half_length,
             orientation=spread_orientation,
+            # orientation=spread_orientation.multiply(Quaternion.from_rpy(0.0, 0.0, -2 * pi),
         )
 
         print(f"Regrasping: holding={holding_arm.name}, free={free_arm.name}")
@@ -201,6 +207,14 @@ class CableRegraspAction(ActionDescription):
                     holding_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
+                # Approach grasp position with free arm
+                MoveToolCenterPointMotion(
+                    translate_pose_along_local_axis(
+                        pose=free_grasp_pose, axis=[0, 0, 1], distance=-0.05
+                    ),
+                    free_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
                 # Move free arm beneath holding arm to grasp the lower
                 # portion of the cable.
                 MoveToolCenterPointMotion(
@@ -209,20 +223,38 @@ class CableRegraspAction(ActionDescription):
                     movement_type=MovementType.CARTESIAN,
                 ),
                 # Close gripper to capture the cable.
-                MoveGripperMotion(motion=GripperState.CLOSE, gripper=free_arm),
+                DAiSyFlexGripMotion(
+                    motion=GripperState.FLEXCLOSE,
+                    gripper=free_arm,
+                    grip_position=0,
+                    grip_force=90,
+                ),
                 # Attach the cable to the grasp arm
                 AttachNode(
                     body=self.cable_annotation.root,
                     new_parent=free_arm_end_effector.tool_frame,
                 ),
+                # Move the free, now cable holding, arm 10cm downwards and back to slide the cable in the gripper
+                MoveToolCenterPointMotion(
+                    target=translate_pose_along_local_axis(
+                        pose=free_grasp_pose, axis=[0, 1, 0], distance=0.15
+                    ),
+                    arm=free_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
+                MoveToolCenterPointMotion(
+                    target=free_grasp_pose,
+                    arm=free_arm,
+                    movement_type=MovementType.CARTESIAN,
+                ),
                 # Rotate both arms in next orientation before moving
                 MoveToolCenterPointMotion(
-                    inter_holding_pose,
+                    inter_holding_arm_pose,
                     holding_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
                 MoveToolCenterPointMotion(
-                    inter_free_pose, free_arm, movement_type=MovementType.CARTESIAN
+                    inter_free_arm_pose, free_arm, movement_type=MovementType.CARTESIAN
                 ),
                 # Spread arms horizontally so the cable is held taut
                 # between both grippers at the same height.
@@ -236,6 +268,32 @@ class CableRegraspAction(ActionDescription):
                     holding_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
+                # Move gripper back and forth to pull again
+                # DAiSyFlexGripMotion(
+                #     motion=GripperState.FLEXOPEN,
+                #     gripper=free_arm,
+                #     grip_position=2,
+                # ),
+                # MoveToolCenterPointMotion(
+                #     translate_pose_along_local_axis(
+                #         pose=hold_spread_pose, axis=[0, 1, 0], distance=0.2
+                #     ),
+                #     holding_arm,
+                #     movement_type=MovementType.CARTESIAN,
+                # ),
+                # DAiSyFlexGripMotion(
+                #     motion=GripperState.FLEXCLOSE,
+                #     gripper=free_arm,
+                #     grip_position=0,
+                #     grip_force=200,
+                # ),
+                # MoveToolCenterPointMotion(
+                #     translate_pose_along_local_axis(
+                #         pose=hold_spread_pose, axis=[0, 1, 0], distance=-0.2
+                #     ),
+                #     holding_arm,
+                #     movement_type=MovementType.CARTESIAN,
+                # ),
                 MoveGripperMotion(motion=GripperState.OPEN, gripper=holding_arm),
             ],
         )
@@ -281,7 +339,7 @@ class CableRegraspAction(ActionDescription):
         """
         Build a pose at the center position between both arms along the hanger axes.
 
-        :param z: Height along the up axis in metres.
+        :param up_offset: Height along the up axis in metres.
         :param orientation: The gripper orientation quaternion.
         """
         front_world, side_world, up_world = self._hanger_axes()
