@@ -35,6 +35,7 @@ from krrood.entity_query_language.factories import (
 )
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
+from semantic_digital_twin.robots.robot_parts import EndEffector
 from semantic_digital_twin.semantic_annotations.cable import Cable
 from semantic_digital_twin.spatial_types.spatial_types import (
     HomogeneousTransformationMatrix,
@@ -233,6 +234,9 @@ class CableRegraspAction(ActionDescription):
                 AttachNode(
                     body=self.cable_annotation.root,
                     new_parent=free_arm_end_effector.tool_frame,
+                    parent_T_connection_expression=self._attachment_transform(
+                        free_arm_end_effector
+                    ),
                 ),
                 # Move the free, now cable holding, arm 10cm downwards and back to slide the cable in the gripper
                 MoveToolCenterPointMotion(
@@ -298,6 +302,24 @@ class CableRegraspAction(ActionDescription):
                 # ),
                 MoveGripperMotion(motion=GripperState.OPEN, gripper=holding_arm),
             ],
+        )
+
+    def _attachment_transform(
+        self, end_effector: EndEffector
+    ) -> HomogeneousTransformationMatrix:
+        """
+        Compute the transform from the end effector's tool frame to the cable body.
+
+        The cable body's Z axis is aligned with the tool frame's Y axis so that the
+        cable cylinder is held correctly between the gripper fingers. The cable body is
+        centered at the tool frame origin (TCP).
+        """
+        return HomogeneousTransformationMatrix.from_xyz_rpy(
+            x=0.0,
+            y=0.0,
+            z=0.0,
+            roll=-pi / 2,
+            reference_frame=end_effector.tool_frame,
         )
 
     def _determine_holding_arm(self) -> Arms:
