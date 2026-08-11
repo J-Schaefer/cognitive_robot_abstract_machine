@@ -431,8 +431,7 @@ class ModelChangeExecutable(Executable):
 
     When ``None`` (default), the transform is computed via forward kinematics to
     preserve the body's current global pose. When provided, this transform is used
-    directly as the ``parent_T_connection_expression`` of the new
-    ``FixedConnection``.
+    directly as the ``parent_T_connection_expression`` of the new ``FixedConnection``.
     """
 
     def execute(self) -> None:
