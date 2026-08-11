@@ -352,12 +352,18 @@ class CableGraspAction(ActionDescription):
                     scoop_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
-                # Move grasp arm slightly up
+                # Move grasp arm slightly up and right
                 MoveToolCenterPointMotion(
-                    translate_pose_along_local_axis(
-                        pose=grasp_pose, axis=[0, 1, 0], distance=-0.07
+                    target=translate_pose_along_local_axis(
+                        translate_pose_along_local_axis(
+                            pose=grasp_pose,
+                            axis=[0, 1, 0],
+                            distance=-0.07,
+                        ),
+                        axis=[1, 0, 0],
+                        distance=0.1,
                     ),
-                    grasp_arm,
+                    arm=grasp_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
                 MoveToolCenterPointMotion(
