@@ -277,6 +277,9 @@ class CableGraspAction(ActionDescription):
                 AttachNode(
                     body=self.cable_annotation.root,
                     new_parent=scoop_end_effector.tool_frame,
+                    parent_T_connection_expression=self._attachment_transform(
+                        scoop_end_effector
+                    ),
                 ),
                 # Move the scoop arm to the post-scoop position, actually scoop cable
                 MoveToolCenterPointMotion(
@@ -759,13 +762,15 @@ class CableGraspAction(ActionDescription):
         """
         Compute the transform from the end effector's tool frame to the cable body.
 
-        Uses the same mount offsets and length as the cable's original hanging setup so
-        the cable body is positioned consistently relative to the gripper.
+        The cable body's Z axis is aligned with the tool frame's Y axis so that the
+        cable cylinder is held correctly between the gripper fingers. The cable body is
+        centered at the tool frame origin (TCP).
         """
         return HomogeneousTransformationMatrix.from_xyz_rpy(
-            x=self.cable_annotation.mount_offset_x,
-            y=self.cable_annotation.mount_offset_y,
-            z=self.cable_annotation.height_offset - self.cable_annotation.length / 2,
+            x=0.0,
+            y=0.0,
+            z=0.0,
+            roll=-pi / 2,
             reference_frame=end_effector.tool_frame,
         )
 
