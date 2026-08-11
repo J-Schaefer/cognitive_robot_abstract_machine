@@ -178,6 +178,7 @@ with world.modify_world():
         height_offset=0.0,
     )
 
+    # TODO: Replaced world.collision_manager.extend_default_rules with this here to test if it makes a difference
     world.collision_manager.add_ignore_collision_rule(
         AllowCollisionForBodies(allowed_collision_bodies={cable_annotation.root})
     )
@@ -343,15 +344,21 @@ else:
 # %% Rehang Cable
 plan_rehang = sequential(
     [
+        ParkArmsAction(
+            arm=Arms.RIGHT
+        ),  # TODO: this should be in the action description
+        MoveJointsMotion(  # TODO Move this motion to the CableGraspAction and add generic version depending on the arm
+            names=daisy_right_arm_names, positions=daisy_safe_right_arm_positions
+        ),
         CableRehangAction(
             cable_annotation=cable_annotation,
             hanger_body=hanger_body,
             side_offset=0.05,
-            front_offset=0.07,
+            front_offset=0.06,
             up_offset=0.03,
             approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
             approach_sign=-1,  # y-axis pointing to the back
-        )
+        ),
     ],
     context,
 )
