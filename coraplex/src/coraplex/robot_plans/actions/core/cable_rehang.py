@@ -227,10 +227,16 @@ class CableRehangAction(ActionDescription):
                     arm=holding_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
-                # Attach the cable to the grasp arm
+                # Attach the cable to the hanger
                 AttachNode(
                     body=self.cable_annotation.root,
                     new_parent=self.hanger_body,
+                    parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
+                        x=0.0,
+                        y=0.0,
+                        z=-self.cable_annotation.length / 2,
+                        reference_frame=self.hanger_body,
+                    ),
                 ),
                 MoveGripperMotion(gripper=holding_arm, motion=GripperState.OPEN),
                 MoveToolCenterPointMotion(
