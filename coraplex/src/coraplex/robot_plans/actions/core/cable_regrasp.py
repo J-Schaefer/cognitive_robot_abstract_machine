@@ -237,13 +237,15 @@ class CableRegraspAction(ActionDescription):
                 # Move the free, now cable holding, arm 10cm downwards and back to slide the cable in the gripper
                 MoveToolCenterPointMotion(
                     target=translate_pose_along_local_axis(
-                        pose=free_grasp_pose, axis=[0, 1, 0], distance=0.15
+                        pose=free_grasp_pose, axis=[0, 1, 0], distance=0.3
                     ),
                     arm=free_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
                 MoveToolCenterPointMotion(
-                    target=free_grasp_pose,
+                    target=translate_pose_along_local_axis(
+                        pose=free_grasp_pose, axis=[0, 1, 0], distance=0.05
+                    ),
                     arm=free_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
