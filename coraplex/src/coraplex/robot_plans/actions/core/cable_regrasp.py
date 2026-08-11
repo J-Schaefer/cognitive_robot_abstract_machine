@@ -172,9 +172,7 @@ class CableRegraspAction(ActionDescription):
         # Spread both arms horizontally so the cable is stretched between
         # them. Left arm moves left, right arm moves right, both at the
         # same height.
-        half_length = (
-            self.cable_annotation.length / 2.0
-        )  # TODO: Adjust for cable length abd motion range
+        half_length = 0.3
         hold_spread_pose = self._build_spread_pose(
             arm=holding_arm,
             z=target_z,
@@ -228,7 +226,7 @@ class CableRegraspAction(ActionDescription):
                     motion=GripperState.FLEXCLOSE,
                     gripper=free_arm,
                     grip_position=0,
-                    grip_force=90,
+                    grip_force=30,
                 ),
                 # Attach the cable to the grasp arm
                 AttachNode(
