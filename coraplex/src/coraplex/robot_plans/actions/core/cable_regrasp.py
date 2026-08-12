@@ -226,7 +226,7 @@ class CableRegraspAction(ActionDescription):
                     motion=GripperState.FLEXCLOSE,
                     gripper=free_arm,
                     grip_position=0,
-                    grip_force=30,
+                    grip_force=20,
                 ),
                 # Attach the cable to the grasp arm
                 AttachNode(
