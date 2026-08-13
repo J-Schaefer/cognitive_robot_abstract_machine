@@ -7,7 +7,7 @@ from math import pi
 
 import numpy as np
 from numpy import dtype, ndarray
-from typing_extensions import Any, Dict
+from typing import Any, Optional
 
 from coraplex.alternative_motion_mappings.daisy_motion_mapping import (
     DAiSyFlexGripMotion,
@@ -228,11 +228,13 @@ class CableRehangAction(ActionDescription):
                     target=pre_hang_pose,
                     arm=holding_arm,
                     movement_type=MovementType.CARTESIAN,
+                    threshold=0.001,
                 ),
                 MoveToolCenterPointMotion(
                     target=hang_pose,
                     arm=holding_arm,
-                    movement_type=MovementType.CARTESIAN,
+                    movement_type=MovementType.STRAIGHT_TRANSLATION,
+                    threshold=0.001,
                 ),
                 # Attach the cable to the hanger
                 AttachNode(
@@ -435,7 +437,7 @@ class CableRehangAction(ActionDescription):
 
     @staticmethod
     def pre_condition(
-        variables: Dict[str, Variable], context: Context, kwargs: Dict[str, Any]
+        variables: dict[str, Variable], context: Context, kwargs: dict[str, Any]
     ) -> ConditionType:
         left_end_effector = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
         right_end_effector = ViewManager.get_end_effector_view(
@@ -454,7 +456,7 @@ class CableRehangAction(ActionDescription):
 
     @staticmethod
     def post_condition(
-        variables: Dict[str, Variable], context: Context, kwargs: Dict[str, Any]
+        variables: dict[str, Variable], context: Context, kwargs: dict[str, Any]
     ) -> ConditionType:
         left_end_effector = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
         right_end_effector = ViewManager.get_end_effector_view(
