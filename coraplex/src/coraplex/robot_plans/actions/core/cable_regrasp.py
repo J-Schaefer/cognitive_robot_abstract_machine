@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from math import pi
-from typing import Any, Dict
+from typing import Any, Optional
 
 import numpy as np
 
@@ -220,6 +220,7 @@ class CableRegraspAction(ActionDescription):
                     free_grasp_pose,
                     free_arm,
                     movement_type=MovementType.CARTESIAN,
+                    threshold=0.001,
                 ),
                 # Close gripper to capture the cable.
                 DAiSyFlexGripMotion(
@@ -432,7 +433,7 @@ class CableRegraspAction(ActionDescription):
 
     @staticmethod
     def pre_condition(
-        variables: Dict[str, Variable], context: Context, kwargs: Dict[str, Any]
+        variables: dict[str, Variable], context: Context, kwargs: dict[str, Any]
     ) -> ConditionType:
         left_end_effector = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
         right_end_effector = ViewManager.get_end_effector_view(
@@ -451,7 +452,7 @@ class CableRegraspAction(ActionDescription):
 
     @staticmethod
     def post_condition(
-        variables: Dict[str, Variable], context: Context, kwargs: Dict[str, Any]
+        variables: dict[str, Variable], context: Context, kwargs: dict[str, Any]
     ) -> ConditionType:
         left_end_effector = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
         right_end_effector = ViewManager.get_end_effector_view(
