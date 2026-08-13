@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 from math import pi
 
 import numpy as np
+from networkx.algorithms import threshold
 from numpy import dtype, ndarray
-from typing_extensions import Any, Dict
 
 from coraplex.alternative_motion_mappings.daisy_motion_mapping import (
     DAiSyFlexGripMotion,
@@ -265,7 +265,8 @@ class CableGraspAction(ActionDescription):
                 MoveToolCenterPointMotion(
                     scoop_pose,
                     scoop_arm,
-                    movement_type=MovementType.CARTESIAN,
+                    movement_type=MovementType.STRAIGHT_TRANSLATION,
+                    threshold=0.001,
                 ),
                 DAiSyFlexGripMotion(
                     motion=GripperState.FLEXCLOSE,
@@ -286,6 +287,7 @@ class CableGraspAction(ActionDescription):
                     post_scoop_pose,
                     scoop_arm,
                     movement_type=MovementType.CARTESIAN,
+                    threshold=0.001,
                 ),
                 # Move grasp arm closer to hanger but keep previous orientation
                 MoveToolCenterPointMotion(
@@ -319,6 +321,7 @@ class CableGraspAction(ActionDescription):
                     grasp_pose,
                     grasp_arm,
                     movement_type=MovementType.CARTESIAN,
+                    threshold=0.001,
                 ),
                 # Close gripper of grasp arm to grasp the cable
                 DAiSyFlexGripMotion(
@@ -359,16 +362,22 @@ class CableGraspAction(ActionDescription):
                     scoop_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
-                # Move grasp arm slightly up and right
+                # Move grasp arm slightly up and right and rotate slightly
                 MoveToolCenterPointMotion(
-                    target=translate_pose_along_local_axis(
+                    target=Pose(
                         translate_pose_along_local_axis(
-                            pose=grasp_pose,
-                            axis=[0, 1, 0],
-                            distance=-0.07,
+                            translate_pose_along_local_axis(
+                                pose=grasp_pose,
+                                axis=[0, 1, 0],
+                                distance=-0.07,
+                            ),
+                            axis=[1, 0, 0],
+                            distance=0.2,
+                        ).to_position(),
+                        orientation=grasp_pose.to_quaternion().multiply(
+                            Quaternion.from_rpy(0, 0, pi / 6)
                         ),
-                        axis=[1, 0, 0],
-                        distance=0.1,
+                        reference_frame=self.world.root,
                     ),
                     arm=grasp_arm,
                     movement_type=MovementType.CARTESIAN,
@@ -377,13 +386,16 @@ class CableGraspAction(ActionDescription):
                     pre_free_cable_pose, scoop_arm, movement_type=MovementType.CARTESIAN
                 ),
                 MoveToolCenterPointMotion(
-                    free_cable_pose, scoop_arm, movement_type=MovementType.CARTESIAN
+                    free_cable_pose,
+                    scoop_arm,
+                    movement_type=MovementType.STRAIGHT_TRANSLATION,
+                    threshold=0.001,
                 ),
                 DAiSyFlexGripMotion(
                     motion=GripperState.FLEXCLOSE,
                     gripper=scoop_arm,
                     grip_position=0,
-                    grip_force=90,
+                    grip_force=30,
                     grip_speed=120,
                 ),
                 MoveToolCenterPointMotion(
@@ -799,7 +811,7 @@ class CableGraspAction(ActionDescription):
 
     @staticmethod
     def pre_condition(
-        variables: Dict[str, Variable], context: Context, kwargs: Dict[str, Any]
+        variables: dict[str, Variable], context: Context, kwargs: dict[str, Any]
     ) -> ConditionType:
         left_end_effector = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
         right_end_effector = ViewManager.get_end_effector_view(
@@ -812,7 +824,7 @@ class CableGraspAction(ActionDescription):
 
     @staticmethod
     def post_condition(
-        variables: Dict[str, Variable], context: Context, kwargs: Dict[str, Any]
+        variables: dict[str, Variable], context: Context, kwargs: dict[str, Any]
     ) -> ConditionType:
         left_end_effector = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
         right_end_effector = ViewManager.get_end_effector_view(
