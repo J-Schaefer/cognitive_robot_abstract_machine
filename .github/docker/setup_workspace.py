@@ -175,6 +175,8 @@ def main():
         "ros-jazzy-ament-cmake-ros",
         "ros-jazzy-launch-testing-ament-cmake",
         "ros-jazzy-rviz2",
+        "ros-jazzy-ur-client-library",
+        "ros-jazzy-ur-robot-driver",
     ]
     manager.dep_manager.install_packages(packages)
 
@@ -185,7 +187,7 @@ def main():
     repos = [
         Repository("https://github.com/code-iai/iai_maps.git", "ros-jazzy", "iai_maps"),
         Repository(
-            "https://github.com/code-iai/iai_robots.git", "ros-jazzy", "iai_robots"
+            "https://github.com/j-schaefer/iai_robots.git", "vrb/cable-demo", "iai_robots"
         ),
         Repository(
             "https://github.com/code-iai/iai_pr2.git", "ros-jazzy-main", "iai_pr2"
@@ -270,7 +272,6 @@ def main():
             "https://github.com/code-iai/iai_weiss_wpg_300-120-gripper.git",
             "main",
             "iai_weiss_wpg_300-120-gripper",
-            ["griplink"],
         ),
     ]
 
