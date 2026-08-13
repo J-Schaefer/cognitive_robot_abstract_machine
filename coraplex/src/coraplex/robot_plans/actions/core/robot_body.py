@@ -236,6 +236,7 @@ class FollowToolCenterPointPathAction(ActionDescription):
             target_locations,
             self.arm,
             allow_gripper_collision=True,
+            threshold=self.threshold,
         )
 
         return execute_single(motion)
@@ -271,13 +272,14 @@ class MoveManipulatorAction(ActionDescription):
 
     @property
     def _action_plan(self) -> PlanNode:
-        return execute_single(
-            MoveManipulatorMotion(
-                self.target_pose,
-                self.end_effector,
-                self.allow_gripper_collision,
-            )
+        motion_kwargs = dict(
+            target=self.target_pose,
+            end_effector=self.end_effector,
+            allow_gripper_collision=self.allow_gripper_collision,
         )
+        if self.threshold is not None:
+            motion_kwargs["threshold"] = self.threshold
+        return execute_single(MoveManipulatorMotion(**motion_kwargs))
 
     @staticmethod
     def post_condition(

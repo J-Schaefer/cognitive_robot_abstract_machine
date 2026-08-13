@@ -80,15 +80,25 @@ class LookingMotion(BaseMotion):
     Camera annotation that should look at the target.
     """
 
+    threshold: Optional[float] = None
+    """
+    Convergence threshold for the pointing task in radians.
+
+    Uses the giskardpy default when None.
+    """
+
     def perform(self):
         return
 
     @property
     def _motion_chart(self):
         self.camera.forward_facing_axis.reference_frame = self.camera.root
-        return Pointing(
+        task_kwargs = dict(
             root_link=self.robot.get_torso().root,
             tip_link=self.camera.root,
             goal_point=self.target.to_position(),
             pointing_axis=self.camera.forward_facing_axis,
         )
+        if self.threshold is not None:
+            task_kwargs["threshold"] = self.threshold
+        return Pointing(**task_kwargs)

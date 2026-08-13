@@ -79,13 +79,17 @@ class ReachAction(ActionDescription):
         return sequential(
             children=[
                 MoveToolCenterPointMotion(
-                    target_pre_pose, self.arm, allow_gripper_collision=False
+                    target_pre_pose,
+                    self.arm,
+                    allow_gripper_collision=False,
+                    threshold=self.threshold,
                 ),
                 MoveToolCenterPointMotion(
                     target_pose,
                     self.arm,
                     allow_gripper_collision=False,
                     movement_type=MovementType.CARTESIAN,
+                    threshold=self.threshold,
                 ),
             ],
         )
@@ -170,6 +174,7 @@ class PickUpAction(ActionDescription):
                     object_designator=self.object_designator,
                     arm=self.arm,
                     grasp_description=self.grasp_description,
+                    threshold=self.threshold,
                 ),
                 MoveGripperMotion(motion=GripperState.CLOSE, gripper=self.arm),
                 AttachNode(
@@ -183,6 +188,7 @@ class PickUpAction(ActionDescription):
                     self.arm,
                     allow_gripper_collision=True,
                     movement_type=MovementType.TRANSLATION,
+                    threshold=self.threshold,
                 ),
             ],
         )
@@ -258,10 +264,15 @@ class GraspingAction(ActionDescription):
 
         return sequential(
             [
-                MoveToolCenterPointMotion(pre_pose, self.arm),
+                MoveToolCenterPointMotion(
+                    pre_pose, self.arm, threshold=self.threshold
+                ),
                 MoveGripperMotion(GripperState.OPEN, self.arm),
                 MoveToolCenterPointMotion(
-                    grasp_pose, self.arm, allow_gripper_collision=True
+                    grasp_pose,
+                    self.arm,
+                    allow_gripper_collision=True,
+                    threshold=self.threshold,
                 ),
                 MoveGripperMotion(
                     GripperState.CLOSE, self.arm, allow_gripper_collision=True

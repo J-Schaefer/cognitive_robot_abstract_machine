@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ActionDescription(Designator):
     """
     Abstract base class for all actions.
@@ -40,6 +40,14 @@ class ActionDescription(Designator):
     Actions are like builders for plans. An action has a set of parameters (its fields)
     from which it builds a symbolic plan and hence can be viewed as an easy abstraction
     of concrete low-level behavior that makes sense in certain contexts.
+    """
+
+    threshold: Optional[float] = None
+    """
+    Convergence threshold for underlying Cartesian motions in meters.
+
+    Passed through to the motions this action composes. Uses the motion's or giskardpy's
+    default when None.
     """
 
     @property

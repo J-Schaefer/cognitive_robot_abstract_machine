@@ -178,6 +178,7 @@ class ToolMotionAction(FullBodyControlledAction, ABC):
                     allow_gripper_collision=True,
                     alignment_pairs=self._alignment_pairs,
                     tip=self.tool.get_tool_frame(),
+                    threshold=self.threshold,
                 )
             ]
         )
@@ -585,12 +586,14 @@ class PouringAction(FullBodyControlledAction):
                     self.arm,
                     allow_gripper_collision=True,
                     movement_type=MovementType.CARTESIAN,
+                    threshold=self.threshold,
                 ),
                 MoveToolCenterPointMotion(
                     pour_pose,
                     self.arm,
                     allow_gripper_collision=True,
                     movement_type=MovementType.CARTESIAN,
+                    threshold=self.threshold,
                 ),
             ]
         )

@@ -17,7 +17,9 @@ class TiagoMoveSim(MoveMotion, AlternativeMotion[Tiago]):
 
     @property
     def _motion_chart(self):
-
-        return DifferentialDriveBaseGoal(
+        ds_kwargs = dict(
             goal_pose=self.target,
         )
+        if self.threshold is not None:
+            ds_kwargs["threshold"] = self.threshold
+        return DifferentialDriveBaseGoal(**ds_kwargs)

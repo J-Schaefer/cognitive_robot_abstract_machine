@@ -40,20 +40,26 @@ class StretchMoveToolCenterPoint(MoveToolCenterPointMotion, AlternativeMotion[St
         goal_copy = self.world.transform(goal_copy, self.world.root)
         goal_point = goal_copy.to_position()
         goal_point.z = 0
+        pointing_kwargs = dict(
+            root_link=self.world.root,
+            tip_link=self.robot.root,
+            goal_point=goal_point,
+            pointing_axis=Vector3(0, -1, 0, reference_frame=self.robot.root),
+            binding_policy=GoalBindingPolicy.Bind_at_build,
+        )
+        if self.threshold is not None:
+            pointing_kwargs["threshold"] = self.threshold
+        cartesian_kwargs = dict(
+            root_link=self.world.root,
+            tip_link=tip,
+            goal_pose=self.target,
+        )
+        if self.threshold is not None:
+            cartesian_kwargs["threshold"] = self.threshold
         return Sequence(
             [
-                Pointing(
-                    root_link=self.world.root,
-                    tip_link=self.robot.root,
-                    goal_point=goal_point,
-                    pointing_axis=Vector3(0, -1, 0, reference_frame=self.robot.root),
-                    binding_policy=GoalBindingPolicy.Bind_at_build,
-                ),
-                CartesianPose(
-                    root_link=self.world.root,
-                    tip_link=tip,
-                    goal_pose=self.target,
-                ),
+                Pointing(**pointing_kwargs),
+                CartesianPose(**cartesian_kwargs),
             ]
         )
 
@@ -73,7 +79,8 @@ class StretchMoveSim(MoveMotion, AlternativeMotion[Stretch]):
     def _motion_chart(self):
         world_T_target = self.world.transform(self.target, self.world.root)
         world_T_target.z = 0
-        return DifferentialDriveBaseGoal(goal_pose=world_T_target, threshold=0.01)
+        threshold = 0.01 if self.threshold is None else self.threshold
+        return DifferentialDriveBaseGoal(goal_pose=world_T_target, threshold=threshold)
 
 
 class StretchMoveReal(MoveMotion, AlternativeMotion[Stretch]):
@@ -91,7 +98,8 @@ class StretchMoveReal(MoveMotion, AlternativeMotion[Stretch]):
     def _motion_chart(self) -> DifferentialDriveBaseGoal:
         world_T_target = self.world.transform(self.target, self.world.root)
         world_T_target.z = 0
-        return DifferentialDriveBaseGoal(goal_pose=world_T_target, threshold=0.1)
+        threshold = 0.1 if self.threshold is None else self.threshold
+        return DifferentialDriveBaseGoal(goal_pose=world_T_target, threshold=threshold)
         # Commented out for now since we use the giskard goal which also works for smaller distances
         # return NavigateActionServerTask(
         #     target_pose=self.target,

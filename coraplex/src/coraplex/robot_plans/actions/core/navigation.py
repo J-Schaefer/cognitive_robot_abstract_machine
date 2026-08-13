@@ -38,7 +38,11 @@ class NavigateAction(ActionDescription):
 
     @property
     def _action_plan(self) -> PlanNode:
-        return execute_single(MoveMotion(self.target_location, self.keep_joint_states))
+        return execute_single(
+            MoveMotion(
+                self.target_location, self.keep_joint_states, threshold=self.threshold
+            )
+        )
 
     @staticmethod
     def pre_condition(
@@ -87,4 +91,6 @@ class LookAtAction(ActionDescription):
     @property
     def _action_plan(self) -> PlanNode:
         camera = self.camera or self.robot.get_default_camera()
-        return execute_single(LookingMotion(target=self.target, camera=camera))
+        return execute_single(
+            LookingMotion(target=self.target, camera=camera, threshold=self.threshold)
+        )

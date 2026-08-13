@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from typing_extensions import Any, Dict
+from typing_extensions import Any, Dict, Optional
 
 from coraplex.plans.attachment_nodes import DetachNode
 from coraplex.plans.plan_node import PlanNode
@@ -85,10 +85,13 @@ class PlaceAction(ActionDescription):
                     previous_grasp,
                     self.object_designator,
                     reverse_reach_order=True,
+                    threshold=self.threshold,
                 ),
                 MoveGripperMotion(GripperState.OPEN, self.arm),
                 DetachNode(body=self.object_designator, new_parent=self.world.root),
-                MoveToolCenterPointMotion(retract_pose, self.arm),
+                MoveToolCenterPointMotion(
+                    retract_pose, self.arm, threshold=self.threshold
+                ),
             ],
             self.context,
         )

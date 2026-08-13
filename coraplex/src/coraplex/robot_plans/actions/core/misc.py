@@ -146,6 +146,7 @@ class MoveToReach(ActionDescription):
                     target_pose,
                     self.grasp_description.end_effector,
                     allow_gripper_collision=False,
+                    threshold=self.threshold,
                 ),
             ]
         )
