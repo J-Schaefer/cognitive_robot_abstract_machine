@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
 from typing import Self, List
@@ -11,57 +10,28 @@ from semantic_digital_twin.collision_checking.collision_rules import (
     SelfCollisionMatrixRule,
     AvoidExternalCollisions,
     AvoidSelfCollisions,
+    AvoidCollisionBetweenGroups,
 )
 from semantic_digital_twin.datastructures.definitions import (
     StaticJointState,
     GripperState,
 )
-from semantic_digital_twin.datastructures.field_of_view import FieldOfView
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.robot_part_mixins import (
     HasLeftRightArm,
     HasTwoFingers,
-    HasSensors,
 )
 from semantic_digital_twin.robots.robot_parts import (
     AbstractRobot,
     Arm,
     EndEffector,
     Finger,
-    Camera,
 )
 from semantic_digital_twin.spatial_types import Quaternion, Vector3
 from semantic_digital_twin.world_description.world_entity import (
     KinematicStructureEntity,
 )
-
-
-class DAiSyJoint(StrEnum):
-    """
-    Names of the DAiSy's commandable connections, as spelled in its URDF.
-
-    Members are usable wherever a connection name is expected, so a configuration keyed
-    by them stays a plain mapping of names to positions.
-    """
-
-    LEFT_SHOULDER_PAN = "left_shoulder_pan_joint"
-    LEFT_SHOULDER_LIFT = "left_shoulder_lift_joint"
-    LEFT_ELBOW = "left_elbow_joint"
-    LEFT_WRIST_1 = "left_wrist_1_joint"
-    LEFT_WRIST_2 = "left_wrist_2_joint"
-    LEFT_WRIST_3 = "left_wrist_3_joint"
-    LEFT_GRIPPER_FINGER = "left_gripper_finger_joint"
-    LEFT_GRIPPER_RIGHT_FINGER = "left_gripper_right_finger_joint"
-
-    RIGHT_SHOULDER_PAN = "right_shoulder_pan_joint"
-    RIGHT_SHOULDER_LIFT = "right_shoulder_lift_joint"
-    RIGHT_ELBOW = "right_elbow_joint"
-    RIGHT_WRIST_1 = "right_wrist_1_joint"
-    RIGHT_WRIST_2 = "right_wrist_2_joint"
-    RIGHT_WRIST_3 = "right_wrist_3_joint"
-    RIGHT_GRIPPER_FINGER = "right_gripper_finger_joint"
-    RIGHT_GRIPPER_RIGHT_FINGER = "right_gripper_right_finger_joint"
 
 
 @dataclass(eq=False)
@@ -71,9 +41,6 @@ class DAiSyLeftGripperLeftFinger(Finger):
         pass
 
     def setup_joint_states(self) -> List[JointState]:
-        """
-        No separate joint states for the finger.
-        """
         return []
 
     @classmethod
@@ -97,9 +64,6 @@ class DAiSyLeftGripperRightFinger(Finger):
         pass
 
     def setup_joint_states(self) -> List[JointState]:
-        """
-        No separate joint states for the finger.
-        """
         return []
 
     @classmethod
@@ -123,9 +87,6 @@ class DAiSyRightGripperLeftFinger(Finger):
         pass
 
     def setup_joint_states(self) -> List[JointState]:
-        """
-        No separate joint states for the finger.
-        """
         return []
 
     @classmethod
@@ -149,9 +110,6 @@ class DAiSyRightGripperRightFinger(Finger):
         pass
 
     def setup_joint_states(self) -> List[JointState]:
-        """
-        No separate joint states for the finger.
-        """
         return []
 
     @classmethod
@@ -178,8 +136,9 @@ class DAiSyLeftGripper(
 
     def setup_joint_states(self) -> List[JointState]:
         left_gripper_joints = [
-            self._world.get_connection_by_name(DAiSyJoint.LEFT_GRIPPER_FINGER),
+            self._world.get_connection_by_name("left_gripper_finger_joint"),
         ]
+
         gripper_open = JointState.from_mapping(
             name=PrefixedName("left_gripper_open", prefix=self.name.name),
             mapping=dict(zip(left_gripper_joints, [0.0])),
@@ -226,8 +185,9 @@ class DAiSyRightGripper(
 
     def setup_joint_states(self) -> List[JointState]:
         right_gripper_joints = [
-            self._world.get_connection_by_name(DAiSyJoint.RIGHT_GRIPPER_FINGER),
+            self._world.get_connection_by_name("right_gripper_finger_joint"),
         ]
+
         gripper_open = JointState.from_mapping(
             name=PrefixedName("right_gripper_open", prefix=self.name.name),
             mapping=dict(zip(right_gripper_joints, [0.0])),
@@ -259,18 +219,6 @@ class DAiSyRightGripper(
 
 @dataclass(eq=False)
 class DAiSyLeftArm(Arm[DAiSyLeftGripper]):
-    """
-    The left UR5 arm.
-    """
-
-    ARM_PARK_CONFIGURATION: ClassVar[dict[str, float]] = {
-        "shoulder_pan_joint": -0.26,
-        "shoulder_lift_joint": -2.02,
-        "elbow_joint": 1.78,
-        "wrist_1_joint": -1.28,
-        "wrist_2_joint": -1.55,
-        "wrist_3_joint": -1.83,
-    }
 
     def setup_hardware_interfaces(self):
         self._setup_hardware_interfaces_for_active_connections()
@@ -279,7 +227,19 @@ class DAiSyLeftArm(Arm[DAiSyLeftGripper]):
         connections = self.active_connections
         arm_park = JointState.from_mapping(
             name=PrefixedName("left_arm_park", prefix=self.name.name),
-            mapping=dict(zip(connections, [0, -1.57, 1, 0, 0, 0.785])),
+            mapping=dict(
+                zip(
+                    connections,
+                    [
+                        -1.84,  # left_shoulder_pan_joint
+                        -1.94,  # left_shoulder_lift_joint
+                        1.81,  # left_elbow_joint
+                        -1.45,  # left_wrist_1_joint
+                        -1.60,  # left_wrist_2_joint
+                        -3.40,  # left_wrist_3_joint
+                    ],
+                )
+            ),
             state_type=StaticJointState.PARK,
         )
         return [arm_park]
@@ -289,34 +249,15 @@ class DAiSyLeftArm(Arm[DAiSyLeftGripper]):
         cls, robot_root: KinematicStructureEntity
     ) -> Self:
         return cls(
-            root=robot_root._world.get_body_in_branch_by_name(
-                robot_root, "table_center"
-            ),
+            root=robot_root._world.get_body_in_branch_by_name(robot_root, "table"),
             tip=robot_root._world.get_body_in_branch_by_name(
                 robot_root, "left_wrist_3_link"
             ),
         )
 
 
-# ---------------------------------------------------------------------------
-# Right arm
-# ---------------------------------------------------------------------------
-
-
 @dataclass(eq=False)
 class DAiSyRightArm(Arm[DAiSyRightGripper]):
-    """
-    The right UR5 arm.
-    """
-
-    ARM_PARK_CONFIGURATION: ClassVar[dict[str, float]] = {
-        "shoulder_pan_joint": -0.41,
-        "shoulder_lift_joint": -1.08,
-        "elbow_joint": -1.78,
-        "wrist_1_joint": -1.86,
-        "wrist_2_joint": 1.57,
-        "wrist_3_joint": -1.18,
-    }
 
     def setup_hardware_interfaces(self):
         self._setup_hardware_interfaces_for_active_connections()
@@ -325,7 +266,19 @@ class DAiSyRightArm(Arm[DAiSyRightGripper]):
         connections = self.active_connections
         arm_park = JointState.from_mapping(
             name=PrefixedName("right_arm_park", prefix=self.name.name),
-            mapping=dict(zip(connections, [2.355, -1.57, 1, 0, 0, 0.785])),
+            mapping=dict(
+                zip(
+                    connections,
+                    [
+                        1.19,  # right_shoulder_pan_joint
+                        -1.00,  # right_shoulder_lift_joint
+                        -1.90,  # right_elbow_joint
+                        -1.81,  # right_wrist_1_joint
+                        1.56,  # right_wrist_2_joint
+                        0.40,  # right_wrist_3_joint
+                    ],
+                )
+            ),
             state_type=StaticJointState.PARK,
         )
         return [arm_park]
@@ -335,54 +288,15 @@ class DAiSyRightArm(Arm[DAiSyRightGripper]):
         cls, robot_root: KinematicStructureEntity
     ) -> Self:
         return cls(
-            root=robot_root._world.get_body_in_branch_by_name(
-                robot_root, "table_center"
-            ),
+            root=robot_root._world.get_body_in_branch_by_name(robot_root, "table"),
             tip=robot_root._world.get_body_in_branch_by_name(
                 robot_root, "right_wrist_3_link"
             ),
         )
 
 
-# ---------------------------------------------------------------------------
-# DAiSy robot
-# ---------------------------------------------------------------------------
-
-
 @dataclass(eq=False)
-class DAiSyCamera(Camera):
-    """
-    DAiSy does not currently have a dedicated camera.
-
-    Setup a fake camera link in URDF to satisfy SemDT
-    """
-
-    def setup_hardware_interfaces(self):
-        pass
-
-    def setup_joint_states(self) -> List[JointState]:
-        return []
-
-    @classmethod
-    def setup_default_configuration_in_world_below_robot_root(
-        cls, robot_root: KinematicStructureEntity
-    ) -> Self:
-        return cls(
-            root=robot_root._world.get_body_in_branch_by_name(
-                robot_root, "camera_link"
-            ),
-            forward_facing_axis=Vector3.Z(),
-            field_of_view=FieldOfView(horizontal_angle=1.047, vertical_angle=0.785),
-            minimal_height=1.4,
-            maximal_height=1.4,
-            default_camera=True,
-        )
-
-
-@dataclass(eq=False)
-class DAiSy(
-    AbstractRobot, HasLeftRightArm[DAiSyLeftArm, DAiSyRightArm], HasSensors[DAiSyCamera]
-):
+class DAiSy(AbstractRobot, HasLeftRightArm[DAiSyLeftArm, DAiSyRightArm]):
     """
     Represents two UR5 Arms mounted on a table.
 
@@ -418,11 +332,47 @@ class DAiSy(
                     violated_distance=0.0,
                     robot=self,
                 ),
+                AvoidCollisionBetweenGroups(
+                    buffer_zone_distance=0.015,
+                    violated_distance=0.0,
+                    body_group_a=[self._world.get_body_by_name("left_forearm_link")],
+                    body_group_b=[
+                        self._world.get_body_by_name(
+                            "left_gripper_wrist_collision_cylinder_link"
+                        )
+                    ],
+                ),
+                AvoidCollisionBetweenGroups(
+                    buffer_zone_distance=0.015,
+                    violated_distance=0.0,
+                    body_group_a=[self._world.get_body_by_name("right_forearm_link")],
+                    body_group_b=[
+                        self._world.get_body_by_name(
+                            "right_gripper_wrist_collision_cylinder_link"
+                        )
+                    ],
+                ),
+                AvoidCollisionBetweenGroups(
+                    buffer_zone_distance=0.015,
+                    violated_distance=0.0,
+                    body_group_a=[self._world.get_body_by_name("right_forearm_link")],
+                    body_group_b=[
+                        self._world.get_body_by_name("right_gripper_side_cylinder_link")
+                    ],
+                ),
+                AvoidCollisionBetweenGroups(
+                    buffer_zone_distance=0.015,
+                    violated_distance=0.0,
+                    body_group_a=[self._world.get_body_by_name("right_forearm_link")],
+                    body_group_b=[
+                        self._world.get_body_by_name("left_gripper_side_cylinder_link")
+                    ],
+                ),
             ]
         )
 
     def _setup_velocity_limits(self):
-        self.tighten_dof_velocity_limits_proportionally(maximum_velocity=0.2)
+        self.tighten_dof_velocity_limits_proportionally(maximum_velocity=1.0)
 
     def get_end_effectors(self) -> list[EndEffector]:
         return [self.left_arm.end_effector, self.right_arm.end_effector]
