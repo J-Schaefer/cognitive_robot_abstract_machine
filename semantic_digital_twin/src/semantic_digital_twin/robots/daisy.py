@@ -20,6 +20,9 @@ from semantic_digital_twin.datastructures.definitions import (
 from semantic_digital_twin.datastructures.field_of_view import FieldOfView
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
+from semantic_digital_twin.robots.gripper_configurations import (
+    WPGGripperConfiguration,
+)
 from semantic_digital_twin.robots.robot_part_mixins import (
     HasLeftRightArm,
     HasTwoFingers,
@@ -202,6 +205,7 @@ class DAiSyLeftGripper(
                 robot_root, "left_gripper_tool_frame"
             ),
             front_facing_orientation=Quaternion(0, 0, 0, 1),
+            gripper_configuration=WPGGripperConfiguration(),
         )
 
 
@@ -245,6 +249,7 @@ class DAiSyRightGripper(
                 robot_root, "right_gripper_tool_frame"
             ),
             front_facing_orientation=Quaternion(0, 0, 0, 1),
+            gripper_configuration=WPGGripperConfiguration(),
         )
 
 
