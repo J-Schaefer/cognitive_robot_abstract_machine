@@ -38,6 +38,7 @@ from semantic_digital_twin.exceptions import (
     DuplicateRobotAssignmentsError,
     MissingDefaultCameraError,
 )
+from semantic_digital_twin.robots.gripper_configurations import GripperConfiguration
 from semantic_digital_twin.robots.robot_part_mixins import (
     HasEndEffector,
     HasMobileBase,
@@ -523,6 +524,17 @@ class EndEffector(AbstractRobotPart, ABC):
     front_facing_axis: Vector3 = field(init=False)
     """
     The axis of the end_effector's tool frame that is facing forward.
+    """
+
+    gripper_configuration: Optional[GripperConfiguration] = field(
+        kw_only=True, default=None
+    )
+    """
+    Hardware-specific parameters the gripper needs to execute an open/close motion.
+
+    ``None`` for grippers whose motion needs no extra parameters; an end effector whose
+    motion mapping reads these parameters attaches the matching subclass at
+    construction.
     """
 
     def __post_init__(self):

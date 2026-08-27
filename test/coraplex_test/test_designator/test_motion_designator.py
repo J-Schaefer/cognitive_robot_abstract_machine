@@ -24,6 +24,7 @@ from coraplex.robot_plans.actions.core.pick_up import PickUpAction
 from coraplex.robot_plans.actions.core.placing import PlaceAction
 from coraplex.robot_plans.actions.core.robot_body import MoveTorsoAction
 from coraplex.robot_plans.motions.gripper import MoveGripperMotion
+from coraplex.view_manager import ViewManager
 from giskardpy.motion_statechart.goals.cartesian_goals import DifferentialDriveBaseGoal
 from giskardpy.motion_statechart.goals.templates import Parallel
 from giskardpy.motion_statechart.monitors.monitors import LocalMinimumReached
@@ -40,6 +41,10 @@ from giskardpy.motion_statechart.tasks.pointing import Pointing
 from semantic_digital_twin.datastructures.definitions import GripperState, TorsoState
 from semantic_digital_twin.datastructures.definitions import TorsoState, GripperState
 from semantic_digital_twin.robots.daisy import DAiSy
+from semantic_digital_twin.robots.gripper_configurations import (
+    WPGGripperConfiguration,
+    WPGGripPreset,
+)
 from semantic_digital_twin.robots.pr2 import PR2
 from semantic_digital_twin.spatial_types import Point3, Quaternion
 from semantic_digital_twin.spatial_types.spatial_types import Pose
@@ -571,36 +576,46 @@ def test_stretch_base_motion_follows_the_execution_environment(
     reason="DAiSy motion mappings not available",
 )
 class TestDAiSyGripMotion:
-    def _grip_motion(self, daisy_world, arm=Arms.LEFT, motion=GripperState.CLOSE):
-        daisy = daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
-        return DAiSyGripMotion(motion=motion, gripper=arm, plan_node=daisy)
+    def _grip_motion(
+        self,
+        immutable_daisy_world,
+        arm=Arms.LEFT,
+        motion=GripperState.CLOSE,
+        gripper_configuration=None,
+    ):
+        _, _, context = immutable_daisy_world
+        motion_obj = DAiSyGripMotion(
+            motion=motion,
+            gripper=arm,
+            gripper_configuration=gripper_configuration,
+        )
+        execute_single(motion_obj, context=context)
+        return motion_obj
 
-    def test_semi_real_returns_joint_position_list(self, daisy_world):
-        motion = self._grip_motion(daisy_world)
+    def test_semi_real_returns_joint_position_list(self, immutable_daisy_world):
+        motion = self._grip_motion(immutable_daisy_world)
         with semi_real_robot:
             chart = motion._motion_chart
         assert isinstance(chart, JointPositionList)
         assert chart.name == "CloseGripper"
 
-    def test_semi_real_open_returns_joint_position_list(self, daisy_world):
-        motion = self._grip_motion(daisy_world, motion=GripperState.OPEN)
+    def test_semi_real_open_returns_joint_position_list(self, immutable_daisy_world):
+        motion = self._grip_motion(immutable_daisy_world, motion=GripperState.OPEN)
         with semi_real_robot:
             chart = motion._motion_chart
         assert isinstance(chart, JointPositionList)
         assert chart.name == "OpenGripper"
 
-    def test_real_returns_wpg_action_server_task(self, daisy_world):
-        motion = self._grip_motion(daisy_world)
+    def test_real_returns_wpg_action_server_task(self, immutable_daisy_world):
+        motion = self._grip_motion(immutable_daisy_world)
         with real_robot:
-            from giskardpy.motion_statechart.goals.templates import Parallel
-
             chart = motion._motion_chart
-            assert isinstance(chart, Parallel)
-            assert len(chart.nodes) == 1
-            assert isinstance(chart.nodes[0], WPGGripperActionServerTask)
+        assert isinstance(chart, Parallel)
+        assert len(chart.nodes) == 1
+        assert isinstance(chart.nodes[0], WPGGripperActionServerTask)
 
-    def test_raises_on_flex_actions(self, daisy_world):
-        motion = self._grip_motion(daisy_world, motion=GripperState.FLEXOPEN)
+    def test_raises_on_flex_actions(self, immutable_daisy_world):
+        motion = self._grip_motion(immutable_daisy_world, motion=GripperState.FLEXOPEN)
         with semi_real_robot:
             with pytest.raises(ValueError, match="not supported"):
                 motion._motion_chart
@@ -611,27 +626,44 @@ class TestDAiSyGripMotion:
     reason="DAiSy motion mappings not available",
 )
 class TestDAiSyFlexGripMotion:
-    def _flex_motion(self, daisy_world, arm=Arms.LEFT, motion=GripperState.FLEXCLOSE):
-        daisy = daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
-        return DAiSyFlexGripMotion(motion=motion, gripper=arm, plan_node=daisy)
+    def _flex_motion(
+        self,
+        immutable_daisy_world,
+        arm=Arms.LEFT,
+        motion=GripperState.FLEXCLOSE,
+        gripper_configuration=None,
+    ):
+        _, _, context = immutable_daisy_world
+        motion_obj = DAiSyFlexGripMotion(
+            motion=motion,
+            gripper=arm,
+            gripper_configuration=gripper_configuration,
+        )
+        execute_single(motion_obj, context=context)
+        return motion_obj
 
-    def test_semi_real_returns_joint_position_list(self, daisy_world):
-        motion = self._flex_motion(daisy_world)
+    def test_semi_real_returns_joint_position_list(self, immutable_daisy_world):
+        motion = self._flex_motion(immutable_daisy_world)
         with semi_real_robot:
             chart = motion._motion_chart
         assert isinstance(chart, JointPositionList)
         assert chart.name == "FlexCloseGripper"
 
-    def test_semi_real_flexopen_returns_joint_position_list(self, daisy_world):
-        motion = self._flex_motion(daisy_world, motion=GripperState.FLEXOPEN)
+    def test_semi_real_flexopen_returns_joint_position_list(
+        self, immutable_daisy_world
+    ):
+        motion = self._flex_motion(immutable_daisy_world, motion=GripperState.FLEXOPEN)
         with semi_real_robot:
             chart = motion._motion_chart
         assert isinstance(chart, JointPositionList)
         assert chart.name == "FlexOpenGripper"
 
-    def test_semi_real_target_within_joint_limits(self, daisy_world):
-        motion = self._flex_motion(daisy_world, motion=GripperState.FLEXCLOSE)
-        motion.grip_position = 60
+    def test_semi_real_target_within_joint_limits(self, immutable_daisy_world):
+        motion = self._flex_motion(
+            immutable_daisy_world,
+            motion=GripperState.FLEXCLOSE,
+            gripper_configuration=WPGGripperConfiguration(grip_position=60),
+        )
         with semi_real_robot:
             chart = motion._motion_chart
         for connection, target in chart.goal_state.items():
@@ -642,9 +674,12 @@ class TestDAiSyFlexGripMotion:
                 abs(target - expected) < 0.001
             ), f"Expected ~{expected} for grip_position=60, got {target}"
 
-    def test_semi_real_full_open_maps_to_lower_limit(self, daisy_world):
-        motion = self._flex_motion(daisy_world, motion=GripperState.FLEXOPEN)
-        motion.grip_position = 120
+    def test_semi_real_full_open_maps_to_lower_limit(self, immutable_daisy_world):
+        motion = self._flex_motion(
+            immutable_daisy_world,
+            motion=GripperState.FLEXOPEN,
+            gripper_configuration=WPGGripperConfiguration(grip_position=120),
+        )
         with semi_real_robot:
             chart = motion._motion_chart
         for connection, target in chart.goal_state.items():
@@ -653,9 +688,12 @@ class TestDAiSyFlexGripMotion:
                 abs(target - lower) < 0.001
             ), f"Expected lower limit {lower} for grip_position=120, got {target}"
 
-    def test_semi_real_full_close_maps_to_upper_limit(self, daisy_world):
-        motion = self._flex_motion(daisy_world, motion=GripperState.FLEXCLOSE)
-        motion.grip_position = 0
+    def test_semi_real_full_close_maps_to_upper_limit(self, immutable_daisy_world):
+        motion = self._flex_motion(
+            immutable_daisy_world,
+            motion=GripperState.FLEXCLOSE,
+            gripper_configuration=WPGGripperConfiguration(grip_position=0),
+        )
         with semi_real_robot:
             chart = motion._motion_chart
         for connection, target in chart.goal_state.items():
@@ -664,18 +702,121 @@ class TestDAiSyFlexGripMotion:
                 abs(target - upper) < 0.001
             ), f"Expected upper limit {upper} for grip_position=0, got {target}"
 
-    def test_real_returns_wpg_action_server_task(self, daisy_world):
-        motion = self._flex_motion(daisy_world)
+    def test_real_returns_wpg_action_server_task(self, immutable_daisy_world):
+        motion = self._flex_motion(immutable_daisy_world)
         with real_robot:
-            from giskardpy.motion_statechart.goals.templates import Parallel
-
             chart = motion._motion_chart
-            assert isinstance(chart, Parallel)
-            assert len(chart.nodes) == 1
-            assert isinstance(chart.nodes[0], WPGGripperActionServerTask)
+        assert isinstance(chart, Parallel)
+        assert len(chart.nodes) == 1
+        assert isinstance(chart.nodes[0], WPGGripperActionServerTask)
 
-    def test_raises_on_open_close(self, daisy_world):
-        motion = self._flex_motion(daisy_world, motion=GripperState.OPEN)
+    def test_raises_on_open_close(self, immutable_daisy_world):
+        motion = self._flex_motion(immutable_daisy_world, motion=GripperState.OPEN)
         with semi_real_robot:
             with pytest.raises(ValueError, match="not supported"):
                 motion._motion_chart
+
+
+# %% DAiSy gripper configuration forwarding
+
+
+@pytest.mark.skipif(
+    not daisy_mappings_available,
+    reason="DAiSy motion mappings not available",
+)
+class TestDAiSyGripperConfigurationForwarding:
+    """
+    The gripper configuration attached to a DAiSy end effector reaches the WPG action
+    server task through the motion dispatch, and an explicit configuration on the
+    motion overrides the end effector's default.
+    """
+
+    def _motion_through_dispatch(
+        self,
+        immutable_daisy_world,
+        motion,
+        gripper_configuration=None,
+    ):
+        _, _, context = immutable_daisy_world
+        context.alternative_motion_mappings = [DAiSyGripMotion, DAiSyFlexGripMotion]
+        motion_obj = MoveGripperMotion(
+            motion=motion,
+            gripper=Arms.LEFT,
+            gripper_configuration=gripper_configuration,
+        )
+        execute_single(motion_obj, context=context)
+        return motion_obj
+
+    def test_gripper_configuration_defaults_to_none_on_motion(
+        self, immutable_daisy_world
+    ):
+        motion = self._motion_through_dispatch(
+            immutable_daisy_world, GripperState.CLOSE
+        )
+        assert motion.gripper_configuration is None
+
+    def test_grip_motion_uses_end_effector_default_preset(self, immutable_daisy_world):
+        _, robot, _ = immutable_daisy_world
+        motion = self._motion_through_dispatch(
+            immutable_daisy_world, GripperState.CLOSE
+        )
+        end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
+        expected_preset = end_effector.gripper_configuration.grip_preset
+        with real_robot:
+            chart = motion.motion_chart
+        task = chart.nodes[0]
+        assert isinstance(task, WPGGripperActionServerTask)
+        assert task.grip_preset is expected_preset
+
+    def test_grip_motion_explicit_configuration_overrides_end_effector_default(
+        self, immutable_daisy_world
+    ):
+        override = WPGGripperConfiguration(grip_preset=WPGGripPreset.PRESET_3)
+        motion = self._motion_through_dispatch(
+            immutable_daisy_world, GripperState.CLOSE, override
+        )
+        with real_robot:
+            chart = motion.motion_chart
+        task = chart.nodes[0]
+        assert isinstance(task, WPGGripperActionServerTask)
+        assert task.grip_preset is override.grip_preset
+
+    def test_flexgrip_motion_forwards_position_force_speed_acceleration(
+        self, immutable_daisy_world
+    ):
+        config = WPGGripperConfiguration(
+            grip_position=60,
+            grip_force=100,
+            grip_speed=50,
+            grip_acceleration=2000,
+        )
+        motion = self._motion_through_dispatch(
+            immutable_daisy_world, GripperState.FLEXCLOSE, config
+        )
+        with real_robot:
+            chart = motion.motion_chart
+        task = chart.nodes[0]
+        assert isinstance(task, WPGGripperActionServerTask)
+        assert task.grip_position == config.grip_position
+        assert task.grip_force == config.grip_force
+        assert task.grip_speed == config.grip_speed
+        assert task.grip_acceleration == config.grip_acceleration
+
+    def test_flexrelease_motion_forwards_position_speed_acceleration(
+        self, immutable_daisy_world
+    ):
+        config = WPGGripperConfiguration(
+            grip_position=30,
+            grip_speed=80,
+            grip_acceleration=1500,
+        )
+        motion = self._motion_through_dispatch(
+            immutable_daisy_world, GripperState.FLEXOPEN, config
+        )
+        with real_robot:
+            chart = motion.motion_chart
+        task = chart.nodes[0]
+        assert isinstance(task, WPGGripperActionServerTask)
+        assert task.grip_position == config.grip_position
+        assert task.grip_speed == config.grip_speed
+        assert task.grip_acceleration == config.grip_acceleration

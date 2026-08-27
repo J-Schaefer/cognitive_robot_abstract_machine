@@ -30,6 +30,7 @@ from coraplex.exceptions import MissingToolFrame, MissingWaypoints
 from coraplex.robot_plans.mixins import (
     CartesianVelocityLimitParameters,
     GripperStallToleranceParameters,
+    HasGripperConfiguration,
     HasTcpGoalThresholds,
 )
 from coraplex.robot_plans.motions.base import BaseMotion
@@ -115,7 +116,9 @@ class ReachMotion(BaseMotion, HasTcpGoalThresholds):
 
 
 @dataclass
-class MoveGripperMotion(BaseMotion, GripperStallToleranceParameters):
+class MoveGripperMotion(
+    BaseMotion, GripperStallToleranceParameters, HasGripperConfiguration
+):
     """
     Opens or closes the gripper
     """
