@@ -36,6 +36,7 @@ try:
     )
 except ModuleNotFoundError:
     pass
+from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.robots.pr2 import PR2
 from semantic_digital_twin.robots.stretch import Stretch
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
@@ -100,6 +101,24 @@ def immutable_stretch_apartment_world(stretch_apartment_world):
 
     stretch_apartment_world.state._data[:] = state
     stretch_apartment_world.notify_state_change()
+
+
+@pytest.fixture(scope="function")
+def immutable_daisy_world(daisy_world):
+    """
+    A DAiSy world, robot and context for motion-mapping tests.
+
+    Mirrors :func:`immutable_stretch_apartment_world`; the session-scoped
+    ``daisy_world`` is left untouched by restoring its state afterwards.
+    """
+    robot = daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
+    context = Context(daisy_world, robot)
+    state = deepcopy(daisy_world.state._data)
+
+    yield daisy_world, robot, context
+
+    daisy_world.state._data[:] = state
+    daisy_world.notify_state_change()
 
 @pytest.fixture
 def whole_scene_region(immutable_model_world) -> BoundingBox:

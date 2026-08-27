@@ -14,8 +14,8 @@ from geometry_msgs.msg import (
 
 from griplink_interfaces.action import Grip, Release, Flexgrip, Flexrelease
 
-from coraplex.datastructures.enums import WPGGripPreset
 from semantic_digital_twin.datastructures.definitions import GripperState
+from semantic_digital_twin.robots.gripper_configurations import WPGGripPreset
 from semantic_digital_twin.robots.robot_parts import EndEffector
 
 try:
