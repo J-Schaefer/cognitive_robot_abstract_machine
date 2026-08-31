@@ -5,7 +5,7 @@ from math import pi
 import numpy as np
 import pytest
 
-from coraplex.robot_plans.actions.core.cable_grasp import (
+from coraplex.robot_plans.actions.core.cable_actions import (
     _gripper_orientation_from_z_axis,
 )
 from semantic_digital_twin.spatial_types.spatial_types import Quaternion
