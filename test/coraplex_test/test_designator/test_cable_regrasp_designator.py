@@ -5,8 +5,10 @@ import pytest
 from coraplex.datastructures.enums import Arms
 from coraplex.execution_environment import simulated_robot
 from coraplex.plans.factories import sequential
-from coraplex.robot_plans.actions.core.cable_grasp import CableGraspAction
-from coraplex.robot_plans.actions.core.cable_regrasp import CableRegraspAction
+from coraplex.robot_plans.actions.core.cable_actions import (
+    CableGraspAction,
+    CableRegraspAction,
+)
 from coraplex.robot_plans.actions.core.robot_body import ParkArmsAction
 from coraplex.view_manager import ViewManager
 from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
