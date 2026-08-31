@@ -11,7 +11,7 @@ from coraplex.querying.gripper_verification import (
     IsGripperNotFullyClosed,
     WPGGripperDeviceState,
 )
-from coraplex.robot_plans.actions.core.cable_grasp import CableGraspAction
+from coraplex.robot_plans.actions.core.cable_actions import CableGraspAction
 from coraplex.view_manager import ViewManager
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.daisy import (

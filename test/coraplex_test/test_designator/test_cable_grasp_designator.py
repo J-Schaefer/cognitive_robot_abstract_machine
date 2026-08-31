@@ -9,7 +9,7 @@ from coraplex.datastructures.dataclasses import Context
 from coraplex.datastructures.enums import Arms
 from coraplex.execution_environment import simulated_robot
 from coraplex.plans.factories import sequential
-from coraplex.robot_plans.actions.core.cable_grasp import CableGraspAction
+from coraplex.robot_plans.actions.core.cable_actions import CableGraspAction
 from coraplex.robot_plans.actions.core.robot_body import ParkArmsAction
 from coraplex.view_manager import ViewManager
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
