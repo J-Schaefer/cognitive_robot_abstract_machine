@@ -26,9 +26,11 @@ from coraplex.datastructures.grasp import GraspDescription
 from coraplex.execution_environment import real_robot, simulated_robot, semi_real_robot
 from coraplex.plans.factories import sequential
 from coraplex.robot_plans import MoveGripperMotion, MoveJointsMotion
-from coraplex.robot_plans.actions.core.cable_grasp import CableGraspAction
-from coraplex.robot_plans.actions.core.cable_regrasp import CableRegraspAction
-from coraplex.robot_plans.actions.core.cable_rehang import CableRehangAction
+from coraplex.robot_plans.actions.core.cable_actions import (
+    CableGraspAction,
+    CableRegraspAction,
+    CableRehangAction,
+)
 from coraplex.robot_plans.actions.core.pick_up import PickUpAction
 from coraplex.robot_plans.actions.core.robot_body import (
     ParkArmsAction,
