@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
 from typing import Self, List
@@ -16,22 +17,52 @@ from semantic_digital_twin.datastructures.definitions import (
     StaticJointState,
     GripperState,
 )
+from semantic_digital_twin.datastructures.field_of_view import FieldOfView
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.robot_part_mixins import (
     HasLeftRightArm,
     HasTwoFingers,
+    HasSensors,
 )
 from semantic_digital_twin.robots.robot_parts import (
     AbstractRobot,
     Arm,
     EndEffector,
     Finger,
+    Camera,
 )
 from semantic_digital_twin.spatial_types import Quaternion, Vector3
 from semantic_digital_twin.world_description.world_entity import (
     KinematicStructureEntity,
 )
+
+
+class DAiSyJoint(StrEnum):
+    """
+    Names of the DAiSy's commandable connections, as spelled in its URDF.
+
+    Members are usable wherever a connection name is expected, so a configuration keyed
+    by them stays a plain mapping of names to positions.
+    """
+
+    LEFT_SHOULDER_PAN = "left_shoulder_pan_joint"
+    LEFT_SHOULDER_LIFT = "left_shoulder_lift_joint"
+    LEFT_ELBOW = "left_elbow_joint"
+    LEFT_WRIST_1 = "left_wrist_1_joint"
+    LEFT_WRIST_2 = "left_wrist_2_joint"
+    LEFT_WRIST_3 = "left_wrist_3_joint"
+    LEFT_GRIPPER_FINGER = "left_gripper_finger_joint"
+    LEFT_GRIPPER_RIGHT_FINGER = "left_gripper_right_finger_joint"
+
+    RIGHT_SHOULDER_PAN = "right_shoulder_pan_joint"
+    RIGHT_SHOULDER_LIFT = "right_shoulder_lift_joint"
+    RIGHT_ELBOW = "right_elbow_joint"
+    RIGHT_WRIST_1 = "right_wrist_1_joint"
+    RIGHT_WRIST_2 = "right_wrist_2_joint"
+    RIGHT_WRIST_3 = "right_wrist_3_joint"
+    RIGHT_GRIPPER_FINGER = "right_gripper_finger_joint"
+    RIGHT_GRIPPER_RIGHT_FINGER = "right_gripper_right_finger_joint"
 
 
 @dataclass(eq=False)
@@ -49,10 +80,10 @@ class DAiSyLeftGripperLeftFinger(Finger):
     ) -> Self:
         return cls(
             root=robot_root._world.get_body_in_branch_by_name(
-                robot_root, "left_gripper_left_finger_link"
+                robot_root, DAiSyJoint.LEFT_GRIPPER_FINGER
             ),
             tip=robot_root._world.get_body_in_branch_by_name(
-                robot_root, "left_gripper_left_finger_tip_link"
+                robot_root, DAiSyJoint.RIGHT_GRIPPER_FINGER
             ),
         )
 
@@ -249,7 +280,9 @@ class DAiSyLeftArm(Arm[DAiSyLeftGripper]):
         cls, robot_root: KinematicStructureEntity
     ) -> Self:
         return cls(
-            root=robot_root._world.get_body_in_branch_by_name(robot_root, "table"),
+            root=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "table_center"
+            ),
             tip=robot_root._world.get_body_in_branch_by_name(
                 robot_root, "left_wrist_3_link"
             ),
@@ -288,10 +321,41 @@ class DAiSyRightArm(Arm[DAiSyRightGripper]):
         cls, robot_root: KinematicStructureEntity
     ) -> Self:
         return cls(
-            root=robot_root._world.get_body_in_branch_by_name(robot_root, "table"),
+            root=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "table_center"
+            ),
             tip=robot_root._world.get_body_in_branch_by_name(
                 robot_root, "right_wrist_3_link"
             ),
+        )
+
+
+class DAiSyCamera(Camera):
+    """
+    DAiSy does not currently have a dedicated camera.
+
+    Setup a fake camera link in URDF to satisfy SemDT
+    """
+
+    def setup_hardware_interfaces(self):
+        pass
+
+    def setup_joint_states(self) -> List[JointState]:
+        return []
+
+    @classmethod
+    def setup_default_configuration_in_world_below_robot_root(
+        cls, robot_root: KinematicStructureEntity
+    ) -> Self:
+        return cls(
+            root=robot_root._world.get_body_in_branch_by_name(
+                robot_root, "camera_link"
+            ),
+            forward_facing_axis=Vector3.Z(),
+            field_of_view=FieldOfView(horizontal_angle=1.047, vertical_angle=0.785),
+            minimal_height=1.4,
+            maximal_height=1.4,
+            default_camera=True,
         )
 
 
@@ -372,7 +436,7 @@ class DAiSy(AbstractRobot, HasLeftRightArm[DAiSyLeftArm, DAiSyRightArm]):
         )
 
     def _setup_velocity_limits(self):
-        self.tighten_dof_velocity_limits_proportionally(maximum_velocity=1.0)
+        self.tighten_dof_velocity_limits_proportionally(maximum_velocity=0.2)
 
     def get_end_effectors(self) -> list[EndEffector]:
         return [self.left_arm.end_effector, self.right_arm.end_effector]
