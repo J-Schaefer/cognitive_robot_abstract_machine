@@ -80,10 +80,10 @@ class DAiSyLeftGripperLeftFinger(Finger):
     ) -> Self:
         return cls(
             root=robot_root._world.get_body_in_branch_by_name(
-                robot_root, DAiSyJoint.LEFT_GRIPPER_FINGER
+                robot_root, "left_gripper_left_finger_link"
             ),
             tip=robot_root._world.get_body_in_branch_by_name(
-                robot_root, DAiSyJoint.RIGHT_GRIPPER_FINGER
+                robot_root, "left_gripper_left_finger_tip_link"
             ),
         )
 
@@ -167,7 +167,7 @@ class DAiSyLeftGripper(
 
     def setup_joint_states(self) -> List[JointState]:
         left_gripper_joints = [
-            self._world.get_connection_by_name("left_gripper_finger_joint"),
+            self._world.get_connection_by_name(DAiSyJoint.LEFT_GRIPPER_FINGER),
         ]
 
         gripper_open = JointState.from_mapping(
@@ -216,7 +216,7 @@ class DAiSyRightGripper(
 
     def setup_joint_states(self) -> List[JointState]:
         right_gripper_joints = [
-            self._world.get_connection_by_name("right_gripper_finger_joint"),
+            self._world.get_connection_by_name(DAiSyJoint.RIGHT_GRIPPER_FINGER),
         ]
 
         gripper_open = JointState.from_mapping(
