@@ -2,7 +2,9 @@ from typing import Any
 
 from coraplex.datastructures.dataclasses import Context
 from giskardpy.middleware.ros2 import rospy
-from semantic_digital_twin.adapters.ros.visualization.viz_marker import VizMarkerPublisher
+from semantic_digital_twin.adapters.ros.visualization.viz_marker import (
+    VizMarkerPublisher,
+)
 from semantic_digital_twin.adapters.urdf import URDFParser
 from semantic_digital_twin.robots.daisy import DAiSy
 
@@ -16,7 +18,6 @@ def setup_sim_daisy(
 ) -> tuple[Any, World, DAiSy, Context]:
 
     rospy.init_node("demo_node")
-
 
     # %% Robot Setup
     daisy = "package://iai_daisy_description/robots/daisy.urdf.xacro"
