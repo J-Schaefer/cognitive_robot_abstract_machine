@@ -46,6 +46,7 @@ class DAiSyVelocityInterface(RobotInterfaceConfig):
         )
 
 
+@dataclass
 class WorldWithDAiSyConfig(WorldWithFixedRobot):
     """
     A world containing only DAiSy, whose base is fixed to the world root.
