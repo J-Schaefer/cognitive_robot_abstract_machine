@@ -71,36 +71,10 @@ else:
 
 # %% Define Additional Objects
 
-# try:
-#     cup = world.get_bodies_by_name(PrefixedName("jeroen_cup.stl"))[0]
-# except (WorldEntityNotFoundError, IndexError):#cup = STLParser(
-#    os.path.join(
-#        os.path.dirname(__file__),
-#        "..",
-#        "..",
-#        "resources",
-#        "objects",
-#             "jeroen_cup.stl",
-#         )
-#     ).parse()
-#     cup_root = cup.root
-#
-#     with world.modify_world():
-#         world.merge_world(
-#             cup,
-#             FixedConnection(
-#                 world.root,
-#                 cup_root,
-#                 parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_quaternion(
-#                     -0.6, -0.1, 0.61, reference_frame=world.root
-#                 ),
-#             ),
-#         )
-
 try:
     cable_post = world.get_bodies_by_name(PrefixedName("item_profile_8_40x40_720.stl"))[
         0
-    ]
+    ]  # is_body_in_world_by_name
 except (WorldEntityNotFoundError, IndexError):
     cable_post = STLParser(
         os.path.join(
@@ -277,18 +251,8 @@ else:
 sleep(3)
 
 # %% Demo Plan
-pick_up_grasp = GraspDescription(
-    approach_direction=ApproachDirection.LEFT,
-    vertical_alignment=VerticalAlignment.NoAlignment,
-    end_effector=context.robot.get_right_arm_if_specified().end_effector,
-    manipulation_offset=0.05,
-)
-
 plan = sequential(
     [
-        # PickUpAction(
-        #     object_designator=cup_root, arm=Arms.RIGHT, grasp_description=pick_up_grasp
-        # ),
         CableGraspAction(
             cable_annotation=cable_annotation,
             hanger_body=hanger_body,
