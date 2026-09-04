@@ -45,6 +45,7 @@ from semantic_digital_twin.exceptions import (
     BrokenWorldModificationHistoryError,
     WorldHasMultipleSynchronizersError,
     WorldHasNoSynchronizerError,
+    WorldEntityWithIDNotInKwargs,
 )
 from semantic_digital_twin.orm.ormatic_interface import WorldMappingDAO
 from semantic_digital_twin.robots.pr2 import PR2
@@ -2643,6 +2644,45 @@ def test_several_synchronizers_leave_the_stream_of_a_world_undecided(rclpy_node)
     finally:
         first.close()
         second.close()
+
+
+def test_deserialize_connection_with_parent_not_in_world_raises():
+    """
+    When a ModificationBlock contains a connection whose parent was added in an earlier
+    (already-published) block, and the receiver's world has not received that earlier
+    block, the connection's :meth:`Connection._from_json` raises
+    :class:`WorldEntityWithIDNotInKwargs` because the parent body is neither in the
+    tracker nor in the receiver's world.
+
+    This reproduces the scenario where separate ``modify_world`` blocks arrive at the
+    receiver in the wrong order (for example because one process has not yet received
+    the earlier block).
+    """
+    sender = World(name="sender")
+    parent = Body(name=PrefixedName("parent"))
+    with sender.modify_world():
+        sender.add_body(parent)
+
+    child = Body(name=PrefixedName("child"))
+    with sender.modify_world():
+        sender.add_body(child)
+        sender.add_connection(FixedConnection(parent=parent, child=child))
+
+    modification_block = ModificationBlock(
+        meta_data=MetaData(node_name="test", process_id=0),
+        modifications=sender.get_world_model_manager().model_modification_blocks[-1],
+    )
+    world_update = WorldUpdate(
+        meta_data=MetaData(node_name="test", process_id=0),
+        modification_block=modification_block,
+    )
+    serialized = json.dumps(to_json(world_update))
+
+    receiver = World(name="receiver")
+    tracker = WorldEntityWithIDKwargsTracker.from_world(receiver)
+
+    with pytest.raises(WorldEntityWithIDNotInKwargs):
+        from_json(json.loads(serialized), **tracker.create_kwargs())
 
 
 if __name__ == "__main__":
