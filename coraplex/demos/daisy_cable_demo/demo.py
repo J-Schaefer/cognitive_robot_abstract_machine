@@ -58,8 +58,8 @@ from define_sim_daisy import setup_sim_daisy
 
 verbose = True
 collision_avoidance = False
-execution_mode = ExecutionType.REAL
-# execution_mode = ExecutionType.SEMI_REAL
+# execution_mode = ExecutionType.REAL
+execution_mode = ExecutionType.SEMI_REAL
 
 print(f"Running in: {execution_mode}")
 
@@ -121,10 +121,11 @@ except (WorldEntityNotFoundError, IndexError):
                 world.get_semantic_annotations_by_type(DAiSy)[0].root,
                 cable_post_root,
                 parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                    x=-0.42,
-                    y=0.025,
+                    x=0.625,
+                    y=0.42,
                     z=0.8477,
                     roll=pi / 2,
+                    yaw=-pi / 2,
                     reference_frame=world.get_semantic_annotations_by_type(DAiSy)[
                         0
                     ].root,
