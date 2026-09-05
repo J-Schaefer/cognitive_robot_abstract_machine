@@ -403,7 +403,7 @@ class CableGraspAction(ActionDescription):
                     scoop_pose,
                     scoop_arm,
                     movement_type=MovementType.STRAIGHT_TRANSLATION,
-                    threshold=0.001,
+                    position_threshold=0.001,
                 ),
                 DAiSyFlexGripMotion(
                     motion=GripperState.FLEXCLOSE,
@@ -422,7 +422,7 @@ class CableGraspAction(ActionDescription):
                     post_scoop_pose,
                     scoop_arm,
                     movement_type=MovementType.CARTESIAN,
-                    threshold=0.001,
+                    position_threshold=0.001,
                 ),
                 MoveToolCenterPointMotion(
                     approach_grasp_pose,
@@ -452,7 +452,7 @@ class CableGraspAction(ActionDescription):
                     grasp_pose,
                     grasp_arm,
                     movement_type=MovementType.CARTESIAN,
-                    threshold=0.001,
+                    position_threshold=0.001,
                 ),
                 DAiSyFlexGripMotion(
                     motion=GripperState.FLEXCLOSE,
@@ -513,7 +513,7 @@ class CableGraspAction(ActionDescription):
                     free_cable_pose,
                     scoop_arm,
                     movement_type=MovementType.STRAIGHT_TRANSLATION,
-                    threshold=0.001,
+                    position_threshold=0.001,
                 ),
                 DAiSyFlexGripMotion(
                     motion=GripperState.FLEXCLOSE,
@@ -975,7 +975,7 @@ class CableRegraspAction(ActionDescription):
                     free_grasp_pose,
                     free_arm,
                     movement_type=MovementType.CARTESIAN,
-                    threshold=0.001,
+                    position_threshold=0.001,
                 ),
                 DAiSyFlexGripMotion(
                     motion=GripperState.FLEXCLOSE,
@@ -1200,13 +1200,13 @@ class CableRehangAction(ActionDescription):
                     target=pre_hang_pose,
                     arm=holding_arm,
                     movement_type=MovementType.CARTESIAN,
-                    threshold=0.001,
+                    position_threshold=0.001,
                 ),
                 MoveToolCenterPointMotion(
                     target=hang_pose,
                     arm=holding_arm,
                     movement_type=MovementType.STRAIGHT_TRANSLATION,
-                    threshold=0.001,
+                    position_threshold=0.001,
                 ),
                 AttachNode(
                     body=self.cable_annotation.root,
