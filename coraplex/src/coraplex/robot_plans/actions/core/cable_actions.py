@@ -1046,7 +1046,7 @@ class CableRegraspAction(ActionDescription):
         )
 
         position = (
-            front_world * self.table_depth / 2
+            front_world * (self.table_depth / 2) * self.approach_sign
             + side_world * (self.approach_sign * self.table_width / 2)
             + up_world * (up_offset - 0.0477)
             + front_world * front_offset
@@ -1091,7 +1091,7 @@ class CableRegraspAction(ActionDescription):
         )
 
         position = (
-            -front_world * self.approach_sign * self.table_depth / 2
+            front_world * self.approach_sign * self.table_depth / 2
             - side_world * (self.table_width / 2 - half_length * side_sign)
             + up_world * (z - 0.0477)
         )
