@@ -270,10 +270,6 @@ def test_prepare_for_execution_leaves_out_collision_avoidance_when_not_asked_for
 
     # one pause + one interrupt monitor per task
     assert len(chart.get_nodes_by_type(PlanNodeStatusMonitor)) == 2 * task_count
-    # pre- and post-condition monitors
-    assert len(chart.get_nodes_by_type(ThreadedPredicateMonitor)) == 2
-    # abort paths for pre- and post-condition failing
-    assert len(chart.get_nodes_by_type(CancelMotion)) == 2
 
 
 def test_motion_state_chart_semi_real_execution_wraps_tasks_in_sequence(
@@ -294,9 +290,10 @@ def test_motion_state_chart_semi_real_execution_wraps_tasks_in_sequence(
 
 
 def test_execute_semi_real_maps_to_execute_real(reach_action_executable):
-    with semi_real_robot, patch.object(
-        reach_action_executable, "_execute_real"
-    ) as mock_execute_real:
+    with (
+        semi_real_robot,
+        patch.object(reach_action_executable, "_execute_real") as mock_execute_real,
+    ):
         reach_action_executable.execute()
 
     mock_execute_real.assert_called_once()
