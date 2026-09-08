@@ -73,11 +73,6 @@ class Executable:
         Executes the unit.
         """
         for executable in self.execution_list:
-            if GiskardExecutable.execution_type in (
-                ExecutionType.REAL,
-                ExecutionType.SEMI_REAL,
-            ):
-                time.sleep(self.synchronize_time_delta.seconds)
             executable.execute()
 
 
