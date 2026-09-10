@@ -122,7 +122,11 @@ class ReachAction(
         ]
         if self.open_gripper_at_pre_pose:
             children.append(
-                MoveGripperMotion(motion=GripperState.OPEN, gripper=self.arm)
+                MoveGripperMotion(
+                    specification=ViewManager.get_end_effector_view(
+                        self.arm, self.robot
+                    ).default_specification(GripperState.OPEN)
+                )
             )
         if self.perceive_before_grasp:
             children.extend(
@@ -265,10 +269,12 @@ class PickUpAction(
                     perceive_before_grasp=self.perceive_before_grasp,
                 ),
                 MoveGripperMotion(
-                    motion=GripperState.CLOSE,
-                    gripper=self.arm,
-                    allow_gripper_collision=True,
-                    finger_velocity=self.grasp_closing_velocity,
+                    specification=ViewManager.get_end_effector_view(
+                        self.arm, self.robot
+                    ).default_specification(
+                        GripperState.CLOSE,
+                        allow_gripper_collision=True,finger_velocity=self.grasp_closing_velocity,
+                    ),
                     stall_minimum_time=self.grasp_stall_minimum_time,
                     tolerate_stall=self.tolerate_grasp_stall,
                 ),
@@ -382,7 +388,11 @@ class GraspingAction(ActionDescription, HasTcpGoalThresholds):
                     orientation_threshold=self.orientation_threshold,
                     allow_gripper_collision=True,
                 ),
-                MoveGripperMotion(GripperState.OPEN, self.arm),
+                MoveGripperMotion(
+                    specification=ViewManager.get_end_effector_view(
+                        self.arm, self.robot
+                    ).default_specification(GripperState.OPEN)
+                ),
                 MoveToolCenterPointMotion(
                     grasp_pose,
                     self.arm,
@@ -391,7 +401,10 @@ class GraspingAction(ActionDescription, HasTcpGoalThresholds):
                     orientation_threshold=self.orientation_threshold,
                 ),
                 MoveGripperMotion(
-                    GripperState.CLOSE, self.arm, allow_gripper_collision=True
+                    specification=ViewManager.get_end_effector_view(
+                        self.arm, self.robot
+                    ).default_specification(GripperState.CLOSE),
+                    allow_gripper_collision=True,
                 ),
             ]
         )
