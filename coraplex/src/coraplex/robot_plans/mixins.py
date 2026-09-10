@@ -2,8 +2,6 @@ from dataclasses import dataclass, field
 
 from typing_extensions import Optional
 
-from semantic_digital_twin.robots.gripper_configurations import GripperConfiguration
-
 
 @dataclass
 class HasMaxJointVelocity:
@@ -162,14 +160,7 @@ class PlaceTuningParameters:
 @dataclass
 class GripperStallToleranceParameters:
     """
-    Adds an optional finger speed and stall-tolerance to a gripper open/close motion.
-    """
-
-    finger_velocity: Optional[float] = field(default=None, kw_only=True)
-    """
-    Maximum finger joint velocity (in m/s), enforced via
-    :class:`~giskardpy.motion_statechart.tasks.joint_tasks.JointVelocityLimit`. ``None``
-    leaves the speed unconstrained.
+    Adds optional stall-tolerance to a gripper open/close motion.
     """
 
     stall_minimum_time: Optional[float] = field(default=None, kw_only=True)
@@ -253,32 +244,3 @@ class HasTcpGoalThresholds:
         if self.orientation_threshold is not None:
             return self.orientation_threshold
         return self.context.motion_tolerances.tool_orientation_threshold
-
-
-@dataclass
-class HasGripperConfiguration:
-    """
-    Adds an optional hardware-specific gripper configuration to a gripper motion,
-    falling back to the configuration attached to the moved end effector when left
-    unset.
-    """
-
-    gripper_configuration: Optional[GripperConfiguration] = field(
-        default=None, kw_only=True
-    )
-    """
-    Hardware-specific parameters for this motion. ``None`` falls back to the
-    configuration attached to the end effector of the moved arm.
-    """
-
-    def resolved_gripper_configuration(self) -> Optional[GripperConfiguration]:
-        """
-        :return: :attr:`gripper_configuration` if set, otherwise the configuration
-            attached to the end effector of the moved arm.
-        """
-        from coraplex.view_manager import ViewManager
-
-        if self.gripper_configuration is not None:
-            return self.gripper_configuration
-        end_effector = ViewManager().get_end_effector_view(self.gripper, self.robot)
-        return end_effector.gripper_configuration

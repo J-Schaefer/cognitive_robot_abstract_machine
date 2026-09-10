@@ -73,7 +73,8 @@ class OpenAction(ActionDescription):
                 GraspingAction(self.object_designator, self.arm, grasp_description),
                 OpeningMotion(self.object_designator, self.arm),
                 MoveGripperMotion(
-                    GripperState.OPEN, self.arm, allow_gripper_collision=True
+                    specification=end_effector.default_specification(GripperState.OPEN),
+                    allow_gripper_collision=True,
                 ),
             ]
         )
@@ -171,7 +172,8 @@ class CloseAction(ActionDescription):
                 GraspingAction(self.object_designator, self.arm, grasp_description),
                 ClosingMotion(self.object_designator, self.arm),
                 MoveGripperMotion(
-                    GripperState.OPEN, self.arm, allow_gripper_collision=True
+                    specification=end_effector.default_specification(GripperState.OPEN),
+                    allow_gripper_collision=True,
                 ),
             ]
         )
