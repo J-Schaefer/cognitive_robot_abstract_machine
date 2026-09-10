@@ -29,8 +29,14 @@ from krrood.class_diagrams.attribute_introspector import (
 )
 from krrood.entity_query_language.factories import variable, contains, a, entity
 from krrood.utils import get_generic_type_parameters
-from semantic_digital_twin.datastructures.definitions import JointStateType
+from semantic_digital_twin.datastructures.definitions import (
+    JointStateType,
+    GripperState,
+)
 from semantic_digital_twin.datastructures.field_of_view import FieldOfView
+from semantic_digital_twin.datastructures.gripper_specification import (
+    GripperStateSpecification,
+)
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.exceptions import (
     NoJointStateWithType,
@@ -38,7 +44,6 @@ from semantic_digital_twin.exceptions import (
     DuplicateRobotAssignmentsError,
     MissingDefaultCameraError,
 )
-from semantic_digital_twin.robots.gripper_configurations import GripperConfiguration
 from semantic_digital_twin.robots.robot_part_mixins import (
     HasEndEffector,
     HasMobileBase,
@@ -526,16 +531,23 @@ class EndEffector(AbstractRobotPart, ABC):
     The axis of the end_effector's tool frame that is facing forward.
     """
 
-    gripper_configuration: Optional[GripperConfiguration] = field(
-        kw_only=True, default=None
-    )
-    """
-    Hardware-specific parameters the gripper needs to execute an open/close motion.
+    def default_specification(
+        self,
+        state_type: GripperState,
+        finger_velocity: Optional[float] = None,
+    ) -> GripperStateSpecification:
+        """
+        Build the default gripper specification for a state this end effector declares.
 
-    ``None`` for grippers whose motion needs no extra parameters; an end effector whose
-    motion mapping reads these parameters attaches the matching subclass at
-    construction.
-    """
+        :param state_type: The state type to build the specification for.
+        :param finger_velocity: Optional maximum finger joint velocity (in m/s) to
+            enforce during the motion.
+        :return: The specification carrying the declared joint state for that type.
+        """
+        specification = GripperStateSpecification.from_state_type(self, state_type)
+        if finger_velocity is not None:
+            specification.finger_velocity = finger_velocity
+        return specification
 
     def __post_init__(self):
         super().__post_init__()
