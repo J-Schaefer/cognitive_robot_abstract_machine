@@ -251,7 +251,14 @@ def test_navigate_multi(immutable_multiple_robot_apartment, rclpy_node):
 def test_move_gripper_multi(immutable_multiple_robot_apartment):
     world, view, context = immutable_multiple_robot_apartment
 
-    plan = execute_single(SetGripperAction(Arms.LEFT, GripperState.OPEN), context)
+    plan = execute_single(
+        SetGripperAction(
+            specification=ViewManager.get_end_effector_view(
+                Arms.LEFT, view
+            ).default_specification(GripperState.OPEN)
+        ),
+        context,
+    )
 
     with simulated_robot:
         plan.perform()
@@ -263,7 +270,14 @@ def test_move_gripper_multi(immutable_multiple_robot_apartment):
     for connection, target in open_state.items():
         assert connection.position == pytest.approx(target, abs=0.02)
 
-    plan = execute_single(SetGripperAction(Arms.LEFT, GripperState.CLOSE), context)
+    plan = execute_single(
+        SetGripperAction(
+            specification=ViewManager.get_end_effector_view(
+                Arms.LEFT, view
+            ).default_specification(GripperState.CLOSE)
+        ),
+        context,
+    )
 
     with simulated_robot:
         plan.perform()
