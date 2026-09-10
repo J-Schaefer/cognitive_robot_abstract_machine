@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from abc import ABC
 from dataclasses import dataclass
 from enum import StrEnum
 from importlib.resources import files
@@ -18,11 +19,12 @@ from semantic_digital_twin.datastructures.definitions import (
     GripperState,
 )
 from semantic_digital_twin.datastructures.field_of_view import FieldOfView
+from semantic_digital_twin.datastructures.gripper_specification import (
+    WPGFlexSpecification,
+    WPGPresetSpecification,
+)
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
-from semantic_digital_twin.robots.gripper_configurations import (
-    WPGGripperConfiguration,
-)
 from semantic_digital_twin.robots.robot_part_mixins import (
     HasLeftRightArm,
     HasTwoFingers,
@@ -161,8 +163,29 @@ class DAiSyRightGripperRightFinger(Finger):
 
 
 @dataclass(eq=False)
+class WPGGripper(EndEffector, ABC):
+    """
+    An end effector driven by a WEISS WPG gripper controller.
+
+    Builds WPG-specific specifications so generic actions and demos produce robot-
+    appropriate specifications without naming the robot.
+    """
+
+    def default_specification(self, state_type, finger_velocity=None):
+        if state_type in (GripperState.OPEN, GripperState.CLOSE):
+            specification = WPGPresetSpecification.from_state_type(self, state_type)
+        elif state_type in (GripperState.FLEXOPEN, GripperState.FLEXCLOSE):
+            specification = WPGFlexSpecification.from_state_type(self, state_type)
+        else:
+            return super().default_specification(state_type, finger_velocity)
+        if finger_velocity is not None:
+            specification.finger_velocity = finger_velocity
+        return specification
+
+
+@dataclass(eq=False)
 class DAiSyLeftGripper(
-    EndEffector, HasTwoFingers[DAiSyLeftGripperLeftFinger, DAiSyLeftGripperRightFinger]
+    WPGGripper, HasTwoFingers[DAiSyLeftGripperLeftFinger, DAiSyLeftGripperRightFinger]
 ):
 
     def setup_hardware_interfaces(self):
@@ -205,14 +228,12 @@ class DAiSyLeftGripper(
                 robot_root, "left_gripper_tool_frame"
             ),
             front_facing_orientation=Quaternion(0, 0, 0, 1),
-            gripper_configuration=WPGGripperConfiguration(),
         )
 
 
 @dataclass(eq=False)
 class DAiSyRightGripper(
-    EndEffector,
-    HasTwoFingers[DAiSyRightGripperLeftFinger, DAiSyRightGripperRightFinger],
+    WPGGripper, HasTwoFingers[DAiSyRightGripperLeftFinger, DAiSyRightGripperRightFinger]
 ):
 
     def setup_hardware_interfaces(self):
@@ -249,7 +270,6 @@ class DAiSyRightGripper(
                 robot_root, "right_gripper_tool_frame"
             ),
             front_facing_orientation=Quaternion(0, 0, 0, 1),
-            gripper_configuration=WPGGripperConfiguration(),
         )
 
 
