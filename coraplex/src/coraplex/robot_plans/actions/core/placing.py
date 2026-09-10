@@ -118,9 +118,10 @@ class PlaceAction(ActionDescription, PlaceTuningParameters, HasGraspDetectionThr
                     max_linear_velocity=self.placing_linear_velocity,
                 ),
                 MoveGripperMotion(
-                    GripperState.OPEN,
-                    self.arm,
-                    finger_velocity=self.release_opening_velocity,
+                    specification=end_effector.default_specification(
+                        GripperState.OPEN,
+                        finger_velocity=self.release_opening_velocity,
+                    )
                 ),
                 self._retract_plan(retract_pose),
             ],
