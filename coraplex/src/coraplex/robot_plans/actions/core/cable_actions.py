@@ -121,15 +121,38 @@ def _gripper_orientation_from_z_axis(
 # %% shared action helpers
 
 
+def _hanger_local_axes(
+    approach_direction: int, approach_sign: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return the hanger's front, side, and up axes in hanger frame coordinates.
+
+    ``approach_direction`` is the frame axis index the hanger faces along
+    (0=X, 1=Y); ``approach_sign`` is +1/-1 if the front points along the
+    positive/negative axis. Up is the frame's +Z. The frame is right-handed:
+    front x side = up, i.e., side = up x front.
+
+    :param approach_direction: Index of the hanger's local axis that is the
+        front-facing axis.
+    :param approach_sign: +1 if the front axis points toward the approach
+        direction, -1 if opposite.
+    """
+    front = np.zeros(3)
+    front[approach_direction] = float(approach_sign)
+    up = np.array([0.0, 0.0, 1.0])
+    side = np.cross(up, front)
+
+    return front, side, up
+
+
 def _hanger_axes(
     global_transform: HomogeneousTransformationMatrix,
     approach_direction: int,
     approach_sign: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Return world-frame unit vectors (front, side, up) for a hanger frame.
+    """Return the hanger's front, side, and up axes expressed in world coordinates.
 
-    ``approach_direction`` is the frame axis index the hanger faces along
-    (0=X, 1=Y, 2=Z); ``approach_sign`` is +1/-1 if the front points along the
+    ``approach_direction`` is the hanger frame axis index the hanger faces along
+    (0=X, 1=Y); ``approach_sign`` is +1/-1 if the front points along the
     positive/negative axis. Up is the frame's +Z. The frame is right-handed:
     front x side = up, i.e., side = up x front.
 
@@ -139,13 +162,12 @@ def _hanger_axes(
     :param approach_sign: +1 if the front axis points toward the approach
         direction, -1 if opposite.
     """
-    rot_np = np.array(global_transform.to_np()[:3, :3], dtype=float)
+    rotation = np.array(global_transform.to_np()[:3, :3], dtype=float)
+    front_local, side_local, up_local = _hanger_local_axes(
+        approach_direction, approach_sign
+    )
 
-    front = approach_sign * rot_np[:, approach_direction]
-    up = rot_np[:, 2]
-    side = np.cross(up, front)
-
-    return front, side, up
+    return rotation @ front_local, rotation @ side_local, rotation @ up_local
 
 
 def _determine_holding_arm(cable_body: Body, robot: Any) -> Arms:
@@ -1128,17 +1150,20 @@ class CableRehangAction(ActionDescription):
 
     side_offset: float = field(default=0.1)
     """
-    Distance in metres to offset the hang arm to the side of the hanging point.
+    Distance in metres between the hanging point and the hanger origin along the
+    hanger's side axis.
     """
 
     front_offset: float = field(default=0.05)
     """
-    Distance in metres to offset the hang arm in front of the hanging point.
+    Distance in metres between the hanging point and the hanger origin along the
+    hanger's front axis.
     """
 
     up_offset: float = field(default=0.12)
     """
-    Distance in metres to offset the hang arm above the cable hanger.
+    Distance in metres between the hanging point and the hanger origin along the
+    hanger's up axis.
     """
 
     approach_direction: int = 0
@@ -1169,7 +1194,7 @@ class CableRehangAction(ActionDescription):
         hang_poses = self._calculate_hang_pose(holding_arm)
 
         front_world, side_world, up_world = _hanger_axes(
-            self.cable_annotation.hanging_from.global_transform,
+            self.hanger_body.global_transform,
             self.approach_direction,
             self.approach_sign,
         )
@@ -1234,7 +1259,7 @@ class CableRehangAction(ActionDescription):
         poses = {}
 
         front_world, side_world, up_world = _hanger_axes(
-            self.cable_annotation.hanging_from.global_transform,
+            self.hanger_body.global_transform,
             self.approach_direction,
             self.approach_sign,
         )
@@ -1307,21 +1332,25 @@ class CableRehangAction(ActionDescription):
         return poses
 
     def _hanging_point_position(self) -> Point3:
+        """
+        Calculate the position of the hanging point relative to the hanger.
+
+        The side, front, and up offsets are applied along the hanger's side, front, and
+        up axes in the hanger frame.
+        """
         parent_global = self.hanger_body.global_transform
-        front_world, side_world, up_world = _hanger_axes(
-            self.cable_annotation.hanging_from.global_transform,
-            self.approach_direction,
-            self.approach_sign,
+        front_local, side_local, up_local = _hanger_local_axes(
+            self.approach_direction, self.approach_sign
         )
 
-        offset = (
-            front_world * self.front_offset
-            + side_world * self.side_offset
-            + up_world * self.up_offset
+        offset_local = (
+            front_local * self.front_offset
+            + side_local * self.side_offset
+            + up_local * self.up_offset
         )
         local_offset = HomogeneousTransformationMatrix.from_xyz_rpy(
-            x=offset[0],
-            y=offset[1],
-            z=offset[2],
+            x=offset_local[0],
+            y=offset_local[1],
+            z=offset_local[2],
         )
         return (parent_global @ local_offset).to_position()
