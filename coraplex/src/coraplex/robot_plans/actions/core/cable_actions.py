@@ -924,7 +924,7 @@ class CableRegraspAction(ActionDescription):
             orientation=_gripper_orientation_from_z_axis(
                 gripper_z_axis=-up_world,
                 fallback_direction=np.array([0.0, 0.0, 1.0]),
-                z_rotation=3 * pi / 2,
+                z_rotation=2 * pi,
             ),
         )
 
