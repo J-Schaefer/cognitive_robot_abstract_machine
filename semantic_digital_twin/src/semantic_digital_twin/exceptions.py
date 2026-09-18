@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from semantic_digital_twin.robots.robot_parts import (
         AbstractRobot,
         AbstractRobotPart,
+        EndEffector,
     )
     from semantic_digital_twin.world import World
     from semantic_digital_twin.world_description.geometry import Scale
@@ -1561,6 +1562,37 @@ class MergedRobotAnnotationNotFound(UsageError):
         return (
             "check that merging the robot world replays its semantic annotations into "
             "the target world."
+        )
+
+
+@dataclass
+class ConnectionsOutsideEndEffector(UsageError):
+    """
+    Raised when a gripper specification's joint state moves connections that do not
+    belong to the specification's end effector.
+    """
+
+    end_effector: "EndEffector"
+    """
+    The end effector the specification was built for.
+    """
+
+    foreign_connection_names: List[str]
+    """
+    The names of the connections in the joint state that are not active connections of
+    the end effector.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"The joint state moves connections that do not belong to the end effector "
+            f"'{self.end_effector.name}': {self.foreign_connection_names}."
+        )
+
+    def suggest_correction(self) -> str:
+        return (
+            "build the specification from a joint state whose connections are all "
+            "active connections of the same end effector."
         )
 
 

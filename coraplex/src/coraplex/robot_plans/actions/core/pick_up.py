@@ -97,7 +97,11 @@ class ReachAction(ActionDescription, ReachTuningParameters, HasGraspDetectionThr
         ]
         if self.open_gripper_at_pre_pose:
             children.append(
-                MoveGripperMotion(motion=GripperState.OPEN, gripper=self.arm)
+                MoveGripperMotion(
+                    specification=ViewManager.get_end_effector_view(
+                        self.arm, self.robot
+                    ).default_specification(GripperState.OPEN)
+                )
             )
         children.append(
             MoveToolCenterPointMotion(
@@ -211,9 +215,12 @@ class PickUpAction(
                     open_gripper_at_pre_pose=True,
                 ),
                 MoveGripperMotion(
-                    motion=GripperState.CLOSE,
-                    gripper=self.arm,
-                    finger_velocity=self.grasp_closing_velocity,
+                    specification=ViewManager.get_end_effector_view(
+                        self.arm, self.robot
+                    ).default_specification(
+                        GripperState.CLOSE,
+                        finger_velocity=self.grasp_closing_velocity,
+                    ),
                     stall_minimum_time=self.grasp_stall_minimum_time,
                     tolerate_stall=self.tolerate_grasp_stall,
                 ),
@@ -319,12 +326,19 @@ class GraspingAction(ActionDescription):
         return sequential(
             [
                 MoveToolCenterPointMotion(pre_pose, self.arm),
-                MoveGripperMotion(GripperState.OPEN, self.arm),
+                MoveGripperMotion(
+                    specification=ViewManager.get_end_effector_view(
+                        self.arm, self.robot
+                    ).default_specification(GripperState.OPEN)
+                ),
                 MoveToolCenterPointMotion(
                     grasp_pose, self.arm, allow_gripper_collision=True
                 ),
                 MoveGripperMotion(
-                    GripperState.CLOSE, self.arm, allow_gripper_collision=True
+                    specification=ViewManager.get_end_effector_view(
+                        self.arm, self.robot
+                    ).default_specification(GripperState.CLOSE),
+                    allow_gripper_collision=True,
                 ),
             ]
         )
