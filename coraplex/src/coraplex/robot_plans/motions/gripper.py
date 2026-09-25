@@ -202,12 +202,18 @@ class MoveGripperMotion(
         Whether this alternative can be built from the given motion's specification.
 
         :return: True if the motion's specification is an instance of the specification
-            type this alternative is bound to.
+            type this alternative is bound to. Also True when this class binds no
+            concrete specification type.
         """
         bound_specification = cls.get_generic_type_parameters()
         if not bound_specification:
             return True
-        return isinstance(motion.specification, bound_specification[0])
+        specification_type = bound_specification[0]
+        if not isinstance(specification_type, type):
+            # The generic parameter is still an unresolved type variable, so this class
+            # binds no concrete specification type it could check against.
+            return True
+        return isinstance(motion.specification, specification_type)
 
 
 @dataclass

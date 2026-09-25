@@ -273,8 +273,9 @@ class PickUpAction(
                         self.arm, self.robot
                     ).default_specification(
                         GripperState.CLOSE,
-                        allow_gripper_collision=True,finger_velocity=self.grasp_closing_velocity,
+                        finger_velocity=self.grasp_closing_velocity,
                     ),
+                    allow_gripper_collision=True,
                     stall_minimum_time=self.grasp_stall_minimum_time,
                     tolerate_stall=self.tolerate_grasp_stall,
                 ),

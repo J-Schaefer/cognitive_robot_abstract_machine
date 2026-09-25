@@ -960,12 +960,13 @@ class AbstractRobot(Agent, HasRobotParts, ABC):
             self._world._world_entity_hash_table.keys()
         )
 
-        assert (
-            self_world_copy.get_semantic_annotations_by_type(AbstractRobot)[
-                0
-            ].get_default_camera()
-            is not None
-        )
+        declared_cameras = [
+            part for part in self._robot_parts if isinstance(part, Camera)
+        ]
+        if declared_cameras:
+            assert self.get_default_camera() is not None, (
+                "A robot with cameras must mark one as its default camera."
+            )
 
         for part in self._robot_parts:
             assert part._robot == self, f"Part {part} refers to wrong robot"

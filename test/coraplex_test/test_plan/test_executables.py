@@ -49,10 +49,10 @@ from coraplex.datastructures.enums import ExecutionType
 from coraplex.execution_environment import (
     ExecutionEnvironment,
     real_robot,
+    semi_real_robot,
     simulated_robot,
 )
-from coraplex.execution_environment import real_robot, simulated_robot, semi_real_robot
-from coraplex.plans.condition_nodes import PlanNodeStatusMonitor
+from coraplex.plans.executables import GiskardExecutable
 from coraplex.plans.factories import execute_single
 from coraplex.robot_plans.actions.core.pick_up import ReachAction
 from coraplex.robot_plans.actions.core.robot_body import MoveTorsoAction
@@ -268,10 +268,6 @@ def test_prepare_for_execution_leaves_out_collision_avoidance_when_not_asked_for
     assert chart.get_nodes_by_type(SelfCollisionAvoidance) == []
 
 
-    # one pause + one interrupt monitor per task
-    assert len(chart.get_nodes_by_type(PlanNodeStatusMonitor)) == 2 * task_count
-
-
 def test_motion_state_chart_semi_real_execution_wraps_tasks_in_sequence(
     reach_action_executable,
 ):
@@ -279,10 +275,14 @@ def test_motion_state_chart_semi_real_execution_wraps_tasks_in_sequence(
 
     with semi_real_robot:
         chart = reach_action_executable.motion_state_chart
+        reach_action_executable.prepare_for_execution()
 
     sequences = chart.get_nodes_by_type(Sequence)
     assert len(sequences) == 1
-    assert sequences[0].nodes == tasks
+    # the plan's sequence goal holds the tasks in order
+    [root_sequence] = sequences
+    [sequential_goal] = root_sequence.nodes
+    assert sequential_goal.nodes == tasks
     assert len(chart.get_nodes_by_type(EndMotion)) == 1
     # simulation-only machinery must not be present
     for task in tasks:

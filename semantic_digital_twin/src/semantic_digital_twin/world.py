@@ -1976,6 +1976,9 @@ class World(HasSimulatorProperties):
         branch_root: KinematicStructureEntity,
         new_parent: KinematicStructureEntity,
         enable_unsafe_inside_world_block: bool = False,
+        parent_T_connection_expression: Optional[
+            HomogeneousTransformationMatrix
+        ] = None,
     ) -> None:
         """
         Move ``branch_root`` under ``new_parent``, recreating its parent connection so
@@ -1996,6 +1999,10 @@ class World(HasSimulatorProperties):
             :meth:`_manually_compute_world_root_T_self` instead of the forward kinematics manager. This
             skips the FK recompile and lets the move happen within a single still-open ``modify_world``
             block (used when attaching freshly created entities). It is slower than the FK manager.
+        :param parent_T_connection_expression: If given, used directly as the transform
+            from ``new_parent`` to the moved branch root instead of the computed
+            world-pose-preserving one, so the branch is placed at an explicitly chosen
+            pose relative to ``new_parent``.
         """
         if branch_root._world != new_parent._world:
             raise MismatchingWorld(branch_root._world, new_parent._world)
@@ -2011,9 +2018,12 @@ class World(HasSimulatorProperties):
         old_connection = branch_root.parent_connection
 
         if isinstance(old_connection, Connection6DoF):
-            new_parent_T_branch_root = self.compute_forward_kinematics(
-                new_parent, branch_root, enable_unsafe_inside_world_block
-            )
+            if parent_T_connection_expression is not None:
+                new_parent_T_branch_root = parent_T_connection_expression
+            else:
+                new_parent_T_branch_root = self.compute_forward_kinematics(
+                    new_parent, branch_root, enable_unsafe_inside_world_block
+                )
             # The pose lives entirely in the degrees of freedom, so the connection sits
             # right on the new parent and the offset below is set from it afterwards.
             new_connection = old_connection.copy_with_new_parent(
@@ -2022,16 +2032,19 @@ class World(HasSimulatorProperties):
         else:
             # Relocate the connection frame so the branch keeps its world pose, then let the connection
             # copy itself under the new parent (preserving its type and degree of freedom).
-            new_parent_T_connection = HomogeneousTransformationMatrix(
-                (
-                    self.compute_forward_kinematics(
-                        new_parent,
-                        old_connection.parent,
-                        enable_unsafe_inside_world_block,
-                    )
-                    @ old_connection.parent_T_connection_expression
-                ).evaluate()
-            )
+            if parent_T_connection_expression is not None:
+                new_parent_T_connection = parent_T_connection_expression
+            else:
+                new_parent_T_connection = HomogeneousTransformationMatrix(
+                    (
+                        self.compute_forward_kinematics(
+                            new_parent,
+                            old_connection.parent,
+                            enable_unsafe_inside_world_block,
+                        )
+                        @ old_connection.parent_T_connection_expression
+                    ).evaluate()
+                )
             new_connection = old_connection.copy_with_new_parent(
                 new_parent, new_parent_T_connection
             )

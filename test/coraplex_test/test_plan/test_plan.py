@@ -599,11 +599,16 @@ def test_motion_order_pick_up(mutable_model_world):
 
     motion_names = [motion.name for motion in all_motions]
 
+    end_effector = robot_view.left_arm.end_effector
+    open_state_name = end_effector.get_joint_state_by_type(GripperState.OPEN).name.name
+    close_state_name = end_effector.get_joint_state_by_type(
+        GripperState.CLOSE
+    ).name.name
     assert motion_names == [
         "MoveTCP",
-        "OpenGripper",
+        open_state_name,
         "MoveTCP",
-        "CloseGripper",
+        close_state_name,
         "MoveTCP",
     ]
 
@@ -656,10 +661,12 @@ def test_motion_order_place(mutable_model_world):
 
     motion_names = [motion.name for motion in all_motions]
 
+    end_effector = robot_view.left_arm.end_effector
+    open_state_name = end_effector.get_joint_state_by_type(GripperState.OPEN).name.name
     assert motion_names == [
         "MoveTCP",
         "MoveTCP",
-        "OpenGripper",
+        open_state_name,
         "MoveTCP",
     ]
 

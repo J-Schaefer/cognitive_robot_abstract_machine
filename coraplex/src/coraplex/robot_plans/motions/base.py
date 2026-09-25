@@ -95,11 +95,7 @@ class BaseMotion(Designator):
         return [
             UpdateTemporaryCollisionRules(
                 temporary_rules=[
-                    AllowCollisionForEndEffector(
-                        end_effector=ViewManager().get_end_effector_view(
-                            arm, self.robot
-                        )
-                    )
+                    AllowCollisionForEndEffector(end_effector=end_effector)
                 ]
             )
         ]

@@ -149,8 +149,9 @@ class PlaceAction(
                 MoveGripperMotion(
                     specification=end_effector.default_specification(
                         GripperState.OPEN,
-                        allow_gripper_collision=True,finger_velocity=self.release_opening_velocity,
-                    )
+                        finger_velocity=self.release_opening_velocity,
+                    ),
+                    allow_gripper_collision=True,
                 ),
                 self._retract_plan(retract_pose),
             ],

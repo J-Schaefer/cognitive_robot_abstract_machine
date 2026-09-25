@@ -1991,6 +1991,73 @@ def test_move_branch_preserves_connection_type_and_pose():
     assert np.allclose(free_child.global_transform, free_child_pose)
 
 
+def test_move_branch_uses_explicit_parent_T_connection_expression():
+    """
+    When an explicit ``parent_T_connection_expression`` is given, move_branch must use
+    it as the transform from the new parent to the moved branch root instead of
+    computing the world-pose-preserving one.
+    """
+    world = World()
+    root = Body(name=PrefixedName("root"))
+    new_parent = Body(name=PrefixedName("new_parent"))
+    fixed_child = Body(name=PrefixedName("fixed_child"))
+    free_child = Body(name=PrefixedName("free_child"))
+    with world.modify_world():
+        for body in [root, new_parent, fixed_child, free_child]:
+            world.add_kinematic_structure_entity(body)
+        world.add_connection(
+            FixedConnection(
+                parent=root,
+                child=new_parent,
+                parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
+                    x=1.0, y=2.0, yaw=0.5
+                ),
+            )
+        )
+        world.add_connection(
+            FixedConnection(
+                parent=root,
+                child=fixed_child,
+                parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
+                    x=0.3, z=0.4
+                ),
+            )
+        )
+        world.add_connection(
+            Connection6DoF.create_with_dofs(parent=root, child=free_child, world=world)
+        )
+
+    explicit_transform = HomogeneousTransformationMatrix.from_xyz_rpy(
+        x=1.5, y=0.2, yaw=0.7
+    )
+
+    with world.modify_world():
+        world.move_branch(
+            fixed_child,
+            new_parent,
+            parent_T_connection_expression=explicit_transform,
+        )
+    assert fixed_child.parent_kinematic_structure_entity == new_parent
+    assert isinstance(fixed_child.parent_connection, FixedConnection)
+    assert np.allclose(
+        fixed_child.parent_connection.parent_T_connection_expression,
+        explicit_transform,
+    )
+
+    with world.modify_world():
+        world.move_branch(
+            free_child,
+            new_parent,
+            parent_T_connection_expression=explicit_transform,
+        )
+    assert free_child.parent_kinematic_structure_entity == new_parent
+    assert isinstance(free_child.parent_connection, Connection6DoF)
+    assert np.allclose(
+        free_child.global_transform,
+        new_parent.global_transform @ explicit_transform,
+    )
+
+
 def test_memoization_clears_only_last_modification_block():
     world = World()
     b1 = Body(name=PrefixedName("b1"))

@@ -19,14 +19,11 @@ if TYPE_CHECKING:
     from semantic_digital_twin.robots.robot_parts import EndEffector
 
 
-TEndEffector = TypeVar("TEndEffector", bound="EndEffector")
-
-
 # %% Base specification
 
 
 @dataclass(eq=False)
-class GripperSpecification(Generic[TEndEffector], SubClassSafeGeneric, ABC):
+class GripperSpecification(SubClassSafeGeneric, ABC):
     """
     A configuration a gripper can be commanded into.
 
@@ -35,7 +32,7 @@ class GripperSpecification(Generic[TEndEffector], SubClassSafeGeneric, ABC):
     resolving the end effector and looking up the joint state independently.
     """
 
-    end_effector: TEndEffector
+    end_effector: "EndEffector"
     """
     The end effector this specification configures.
     """
@@ -53,6 +50,10 @@ class GripperSpecification(Generic[TEndEffector], SubClassSafeGeneric, ABC):
     """
 
     def __post_init__(self):
+        if self.end_effector._world is None:
+            # The end effector is being reconstructed detached from a world (e.g. from
+            # the database), so its connections cannot be looked up yet.
+            return
         foreign = set(self.joint_state.connections) - set(
             self.end_effector.active_connections
         )
@@ -67,7 +68,7 @@ class GripperSpecification(Generic[TEndEffector], SubClassSafeGeneric, ABC):
 
 
 @dataclass(eq=False)
-class GripperStateSpecification(GripperSpecification["EndEffector"]):
+class GripperStateSpecification(GripperSpecification):
     """
     The configuration a robot description already declares for a gripper, selected by
     its :class:`~semantic_digital_twin.datastructures.definitions.GripperState`.
@@ -137,7 +138,7 @@ def _flex_joint_state(
 
 
 @dataclass(eq=False)
-class WPGPresetSpecification(GripperSpecification["EndEffector"]):
+class WPGPresetSpecification(GripperSpecification):
     """
     A WPG gripper motion driven by a stored grip preset, used for ``Grip``/``Release``
     actions.
@@ -169,7 +170,7 @@ class WPGPresetSpecification(GripperSpecification["EndEffector"]):
 
 
 @dataclass(eq=False)
-class WPGFlexSpecification(GripperSpecification["EndEffector"]):
+class WPGFlexSpecification(GripperSpecification):
     """
     A WPG gripper motion driven by a commanded opening width, used for
     ``Flexgrip``/``Flexrelease`` actions.

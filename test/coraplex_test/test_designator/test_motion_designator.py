@@ -659,7 +659,10 @@ def test_move_gripper_motion_frees_the_fingers_it_closes(immutable_model_world):
     world, view, context = immutable_model_world
 
     close_motion = MoveGripperMotion(
-        motion=GripperState.CLOSE, gripper=Arms.LEFT, allow_gripper_collision=True
+        specification=ViewManager.get_end_effector_view(
+            Arms.LEFT, view
+        ).default_specification(GripperState.CLOSE),
+        allow_gripper_collision=True,
     )
     execute_single(close_motion, context=context)
 
@@ -676,7 +679,11 @@ def test_move_gripper_motion_keeps_the_fingers_clear_by_default(immutable_model_
     """
     world, view, context = immutable_model_world
 
-    close_motion = MoveGripperMotion(motion=GripperState.CLOSE, gripper=Arms.LEFT)
+    close_motion = MoveGripperMotion(
+        specification=ViewManager.get_end_effector_view(
+            Arms.LEFT, view
+        ).default_specification(GripperState.CLOSE)
+    )
     execute_single(close_motion, context=context)
 
     assert _collision_rule_nodes(close_motion.motion_chart) == []
@@ -1142,9 +1149,7 @@ class TestDAiSyGripperSpecificationRouting:
         end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
         motion = self._motion_through_dispatch(
             immutable_daisy_world,
-            WPGFlexSpecification.from_state_type(
-                end_effector, GripperState.FLEXCLOSE
-            ),
+            WPGFlexSpecification.from_state_type(end_effector, GripperState.FLEXCLOSE),
         )
         with real_robot:
             assert motion.get_alternative_motion() is DAiSyFlexGripMotion
