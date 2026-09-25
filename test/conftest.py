@@ -9,17 +9,9 @@ import numpy as np
 import pytest
 from xdist import get_xdist_worker_id, is_xdist_controller, is_xdist_worker
 
-from semantic_digital_twin.api import (
-    ConnectionSpecification,
-    ActiveConnection1DOFSpecification,
-)
 from semantic_digital_twin.predetermined_maps.building_floor import BuildingFloor
 from semantic_digital_twin.callbacks.callback import Callback
 from semantic_digital_twin.robots.daisy import DAiSy
-from semantic_digital_twin.semantic_annotations.mixins import (
-    HasRootBody,
-    HasRootKinematicStructureEntity,
-)
 from semantic_digital_twin.spatial_types.derivatives import DerivativeMap
 from semantic_digital_twin.world_description.degree_of_freedom import (
     DegreeOfFreedomLimits,
@@ -101,7 +93,6 @@ from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Elevator,
     Slider,
     Door,
-    Hinge,
     Floor,
     GroundFloor,
     FirstFloor,
@@ -112,7 +103,6 @@ from semantic_digital_twin.spatial_types import (
     HomogeneousTransformationMatrix,
     Vector3,
     Point3,
-    Pose,
 )
 from semantic_digital_twin.utils import (
     rclpy_installed,
@@ -1093,9 +1083,9 @@ def pr2_apartment_world(_pr2_world_setup, _apartment_world_setup):
     apartment_copy = deepcopy(_apartment_world_setup)
 
     pr2_copy.merge_world(apartment_copy)
-    pr2_copy.get_body_by_name("base_footprint").parent_connection.origin = (
-        HomogeneousTransformationMatrix.from_xyz_rpy(1.3, 2, 0)
-    )
+    pr2_copy.get_body_by_name(
+        "base_footprint"
+    ).parent_connection.origin = HomogeneousTransformationMatrix.from_xyz_rpy(1.3, 2, 0)
     return pr2_copy
 
 

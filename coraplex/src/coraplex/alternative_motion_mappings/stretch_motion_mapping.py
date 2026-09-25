@@ -3,7 +3,6 @@ from __future__ import annotations
 from copy import deepcopy
 
 from giskardpy.motion_statechart.binding_policy import GoalBindingPolicy
-from giskardpy.motion_statechart.data_types import DefaultWeights
 from giskardpy.motion_statechart.goals.cartesian_goals import (
     DifferentialDriveBaseGoal,
     CartesianPoseStraight,
@@ -17,7 +16,6 @@ from giskardpy.motion_statechart.tasks.cartesian_tasks import (
     CartesianOrientation,
 )
 from giskardpy.motion_statechart.tasks.joint_tasks import JointPositionList
-from giskardpy.motion_statechart.tasks.pointing import Pointing
 from coraplex.datastructures.enums import ExecutionType
 from coraplex.robot_plans import (
     MoveToolCenterPointMotion,
@@ -30,11 +28,9 @@ from coraplex.view_manager import ViewManager
 from semantic_digital_twin.datastructures.gripper_specification import (
     GripperSpecification,
 )
-from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.robots.stretch import Stretch
 from semantic_digital_twin.spatial_types import (
     Vector3,
-    HomogeneousTransformationMatrix,
     RotationMatrix,
 )
 from semantic_digital_twin.spatial_types.spatial_types import Pose

@@ -18,15 +18,14 @@ from semantic_digital_twin.spatial_types.spatial_types import Pose
 from coraplex.datastructures.enums import AxisIdentifier, Arms
 
 from coraplex.datastructures.trajectory import PoseTrajectory
-from coraplex.plans.factories import execute_single, sequential
-from coraplex.robot_plans.actions.base import ActionDescription, DescriptionType
+from coraplex.plans.factories import execute_single
+from coraplex.robot_plans.actions.base import ActionDescription
 from coraplex.robot_plans.mixins import HasMaxJointVelocity, HasTcpGoalThresholds
 from coraplex.robot_plans.motions.gripper import (
     MoveGripperMotion,
     MoveTCPWaypointsMotion,
 )
 from coraplex.robot_plans.motions.robot_body import MoveJointsMotion
-from coraplex.validation.goal_validator import create_multiple_joint_goal_validator
 from coraplex.view_manager import ViewManager
 from semantic_digital_twin.datastructures.definitions import (
     TorsoState,

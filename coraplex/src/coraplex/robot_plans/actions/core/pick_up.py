@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from typing_extensions import Any, Dict, Optional
 
-from coraplex.locations.pose_validator import AreReachableBy, IsObjectReachableBy
+from coraplex.locations.pose_validator import IsObjectReachableBy
 from coraplex.plans.attachment_nodes import ReAttachNode
 from coraplex.plans.plan_node import PlanNode
 from coraplex.robot_plans.actions.core.misc import DetectAction
@@ -43,7 +43,6 @@ from coraplex.view_manager import ViewManager
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.reasoning.predicates import allclose
 from semantic_digital_twin.reasoning.robot_predicates import is_body_gripped
-from semantic_digital_twin.robots.robot_part_mixins import HasMobileBase
 from semantic_digital_twin.semantic_annotations.mixins import HasRootBody
 from semantic_digital_twin.spatial_types.spatial_types import Pose
 from semantic_digital_twin.world_description.world_entity import Body

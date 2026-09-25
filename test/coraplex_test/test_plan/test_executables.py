@@ -26,7 +26,6 @@ from giskardpy.motion_statechart.graph_node import (
     EndMotion,
     Goal,
     MotionStatechartNode,
-    Task,
 )
 from giskardpy.motion_statechart.monitors.payload_monitors import (
     ThreadedPredicateMonitor,
@@ -307,6 +306,7 @@ def test_execute_with_empty_motion_mappings_is_noop(reach_action_executable):
             reach_action_executable.execute()  # must not raise
     finally:
         reach_action_executable.motion_mappings = original_mappings
+
 
 @pytest.mark.parametrize("holds_a_body", [False, True])
 def test_a_robot_keeps_moving_while_it_holds_a_body(_tiago_world_setup, holds_a_body):

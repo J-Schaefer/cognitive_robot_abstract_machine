@@ -53,18 +53,14 @@ from giskardpy.motion_statechart.tasks.joint_tasks import (
 )
 from giskardpy.motion_statechart.tasks.pointing import Pointing
 from semantic_digital_twin.datastructures.definitions import GripperState, TorsoState
-from semantic_digital_twin.datastructures.definitions import TorsoState, GripperState
 from semantic_digital_twin.datastructures.gripper_specification import (
-    GripperStateSpecification,
     WPGFlexSpecification,
     WPGPresetSpecification,
 )
-from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.robots.gripper_configurations import (
     WPGGripperConfiguration,
     WPGGripPreset,
 )
-from semantic_digital_twin.robots.pr2 import PR2
 from semantic_digital_twin.semantic_annotations.semantic_annotations import Milk
 from semantic_digital_twin.spatial_types import Point3, Quaternion
 from semantic_digital_twin.spatial_types.spatial_types import Pose
@@ -1065,9 +1061,9 @@ class TestDAiSyFlexGripMotion:
             lower = connection.dof.limits.lower.position or 0.0
             upper = connection.dof.limits.upper.position or 0.0
             expected = lower + 0.5 * (upper - lower)
-            assert (
-                abs(target - expected) < 0.001
-            ), f"Expected ~{expected} for grip_position=60, got {target}"
+            assert abs(target - expected) < 0.001, (
+                f"Expected ~{expected} for grip_position=60, got {target}"
+            )
 
     def test_semi_real_full_open_maps_to_lower_limit(self, immutable_daisy_world):
         motion = self._flex_motion(
@@ -1079,9 +1075,9 @@ class TestDAiSyFlexGripMotion:
             chart = motion._motion_chart
         for connection, target in chart.goal_state.items():
             lower = connection.dof.limits.lower.position or 0.0
-            assert (
-                abs(target - lower) < 0.001
-            ), f"Expected lower limit {lower} for grip_position=120, got {target}"
+            assert abs(target - lower) < 0.001, (
+                f"Expected lower limit {lower} for grip_position=120, got {target}"
+            )
 
     def test_semi_real_full_close_maps_to_upper_limit(self, immutable_daisy_world):
         motion = self._flex_motion(
@@ -1093,9 +1089,9 @@ class TestDAiSyFlexGripMotion:
             chart = motion._motion_chart
         for connection, target in chart.goal_state.items():
             upper = connection.dof.limits.upper.position or 0.0
-            assert (
-                abs(target - upper) < 0.001
-            ), f"Expected upper limit {upper} for grip_position=0, got {target}"
+            assert abs(target - upper) < 0.001, (
+                f"Expected upper limit {upper} for grip_position=0, got {target}"
+            )
 
     def test_real_returns_wpg_action_server_task(self, immutable_daisy_world):
         motion = self._flex_motion(immutable_daisy_world)

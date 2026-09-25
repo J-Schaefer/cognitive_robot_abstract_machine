@@ -654,8 +654,8 @@ class AmbiguousPart(UsageError):
 
     def suggest_correction(self) -> str:
         return (
-            f"consider if its practical to use the 'field_name' keyword argument for the `add` method to"
-            f" disambiguate the matching cases."
+            "consider if its practical to use the 'field_name' keyword argument for the `add` method to"
+            " disambiguate the matching cases."
         )
 
 
@@ -690,8 +690,7 @@ class UnknownPartWholeRelationshipField(UsageError):
 
     def suggest_correction(self) -> str:
         return (
-            f"the available fields are:"
-            f" {', '.join(self.available_fields) or '(none)'}"
+            f"the available fields are: {', '.join(self.available_fields) or '(none)'}"
         )
 
 
@@ -781,7 +780,7 @@ class MechanicalJointAlreadyMounted(UsageError):
         )
 
     def suggest_correction(self) -> str:
-        return f"if you think that you found a case where this error does not apply, please contact @LucaKro"
+        return "if you think that you found a case where this error does not apply, please contact @LucaKro"
 
 
 @dataclass

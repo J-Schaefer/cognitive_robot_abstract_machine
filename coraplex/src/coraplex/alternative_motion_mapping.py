@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from abc import ABC
-from dataclasses import dataclass
 from inspect import isabstract
 
 from typing_extensions import (
@@ -32,7 +31,6 @@ AbstractRobotType = TypeVar("AbstractRobotType", bound=AbstractRobot)
 BaseMotionType = TypeVar("BaseMotionType", bound=BaseMotion)
 
 
-@dataclass
 class AlternativeMotion(HasGeneric[AbstractRobotType], ABC):
     execution_type: ClassVar[Union[ExecutionType, Iterable[ExecutionType]]]
     """

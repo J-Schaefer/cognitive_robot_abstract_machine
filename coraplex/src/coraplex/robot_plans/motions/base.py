@@ -11,7 +11,6 @@ from giskardpy.motion_statechart.goals.collision_avoidance import (
 )
 from giskardpy.motion_statechart.graph_node import Task, MotionStatechartNode
 from coraplex.plans.designator import Designator
-from coraplex.view_manager import ViewManager
 from semantic_digital_twin.collision_checking.collision_rules import (
     AllowCollisionForEndEffector,
 )

@@ -259,8 +259,10 @@ def immutable_multiple_robot_apartment(
         if isinstance(view, HasMobileBase)
         else False
     )
-    yield world, view, Context(
-        world, view, alternative_motion_mappings=ALTERNATIVE_MOTION_MAPPINGS
+    yield (
+        world,
+        view,
+        Context(world, view, alternative_motion_mappings=ALTERNATIVE_MOTION_MAPPINGS),
     )
     view.mobile_base.full_body_controlled = full_body_controlled
     world.state._data[:] = state

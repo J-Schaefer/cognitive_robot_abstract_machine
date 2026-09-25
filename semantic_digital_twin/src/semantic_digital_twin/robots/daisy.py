@@ -28,7 +28,6 @@ from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.robot_part_mixins import (
     HasLeftRightArm,
     HasTwoFingers,
-    HasSensors,
 )
 from semantic_digital_twin.robots.robot_parts import (
     AbstractRobot,
@@ -72,7 +71,6 @@ class DAiSyJoint(StrEnum):
 
 @dataclass(eq=False)
 class DAiSyLeftGripperLeftFinger(Finger):
-
     def setup_hardware_interfaces(self):
         pass
 
@@ -95,7 +93,6 @@ class DAiSyLeftGripperLeftFinger(Finger):
 
 @dataclass(eq=False)
 class DAiSyLeftGripperRightFinger(Finger):
-
     def setup_hardware_interfaces(self):
         pass
 
@@ -118,7 +115,6 @@ class DAiSyLeftGripperRightFinger(Finger):
 
 @dataclass(eq=False)
 class DAiSyRightGripperLeftFinger(Finger):
-
     def setup_hardware_interfaces(self):
         pass
 
@@ -141,7 +137,6 @@ class DAiSyRightGripperLeftFinger(Finger):
 
 @dataclass(eq=False)
 class DAiSyRightGripperRightFinger(Finger):
-
     def setup_hardware_interfaces(self):
         pass
 
@@ -187,7 +182,6 @@ class WPGGripper(EndEffector, ABC):
 class DAiSyLeftGripper(
     WPGGripper, HasTwoFingers[DAiSyLeftGripperLeftFinger, DAiSyLeftGripperRightFinger]
 ):
-
     def setup_hardware_interfaces(self):
         self._setup_hardware_interfaces_for_active_connections()
 
@@ -235,7 +229,6 @@ class DAiSyLeftGripper(
 class DAiSyRightGripper(
     WPGGripper, HasTwoFingers[DAiSyRightGripperLeftFinger, DAiSyRightGripperRightFinger]
 ):
-
     def setup_hardware_interfaces(self):
         self._setup_hardware_interfaces_for_active_connections()
 
@@ -275,7 +268,6 @@ class DAiSyRightGripper(
 
 @dataclass(eq=False)
 class DAiSyLeftArm(Arm[DAiSyLeftGripper]):
-
     def setup_hardware_interfaces(self):
         self._setup_hardware_interfaces_for_active_connections()
 
@@ -316,7 +308,6 @@ class DAiSyLeftArm(Arm[DAiSyLeftGripper]):
 
 @dataclass(eq=False)
 class DAiSyRightArm(Arm[DAiSyRightGripper]):
-
     def setup_hardware_interfaces(self):
         self._setup_hardware_interfaces_for_active_connections()
 

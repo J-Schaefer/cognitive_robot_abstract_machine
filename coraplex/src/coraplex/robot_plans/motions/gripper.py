@@ -25,7 +25,6 @@ from semantic_digital_twin.datastructures.alignment import AlignmentPair
 from semantic_digital_twin.datastructures.gripper_specification import (
     GripperSpecification,
 )
-from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.robots.justin import Justin
 from semantic_digital_twin.robots.robot_part_mixins import HasMobileBase
 from semantic_digital_twin.robots.robot_parts import EndEffector
@@ -60,8 +59,9 @@ class ReachMotion(BaseMotion, HasTcpGoalThresholds):
 
     object_designator: Body
     """
-    Object designator_description describing the object that should be picked up
+    Object designator_description describing the object that should be picked up.
     """
+
     arm: Arms
     """
     The arm that should be used for pick up.
@@ -69,8 +69,9 @@ class ReachMotion(BaseMotion, HasTcpGoalThresholds):
 
     grasp_description: GraspDescription
     """
-    The grasp description that should be used for picking up the object
+    The grasp description that should be used for picking up the object.
     """
+
     movement_type: MovementType = MovementType.CARTESIAN
     """
     The type of movement that should be performed.
@@ -308,7 +309,9 @@ class MoveToolCenterPointMotion(
         )
         if self.allow_gripper_collision:
             accompanying_nodes.extend(
-                self._only_allow_gripper_collision_rules(self.arm)
+                self._only_allow_gripper_collision_rules(
+                    ViewManager().get_end_effector_view(self.arm, self.robot)
+                )
             )
         if not accompanying_nodes:
             return task

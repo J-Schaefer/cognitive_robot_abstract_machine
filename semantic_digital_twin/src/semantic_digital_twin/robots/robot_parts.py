@@ -76,7 +76,6 @@ from semantic_digital_twin.world_description.connections import (
     PrismaticConnection,
 )
 from semantic_digital_twin.world_description.degree_of_freedom import (
-    DegreeOfFreedomLimits,
     DegreeOfFreedom,
 )
 from semantic_digital_twin.world_description.geometry import (
@@ -949,7 +948,7 @@ class AbstractRobot(Agent, HasRobotParts, ABC):
             The validation process includes:
             1. Deepcopy the resulting world to ensure that all parts of the robot are initialized in the correct order
             2. Assert that the copied world is the same as the original world
-            3. Assert that the robot semantic annotation has a default camera.
+            3. Assert that a robot that declares cameras marks one as its default camera.
             4. Call validate method on all robot parts inheriting froma RobotPartMixin
 
         :return: True if the robot semantic annotation is valid, False otherwise.

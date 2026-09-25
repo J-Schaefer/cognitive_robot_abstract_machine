@@ -32,7 +32,6 @@ from krrood.entity_query_language.backends import ProbabilisticBackend
 from krrood.entity_query_language.factories import (
     variable_from,
     a,
-    an,
     variable,
 )
 from krrood.parametrization.model_registries import (
@@ -40,7 +39,7 @@ from krrood.parametrization.model_registries import (
 )
 from krrood.parametrization.parameterizer import UnderspecifiedParameters
 from semantic_digital_twin.adapters.urdf import URDFParser
-from semantic_digital_twin.datastructures.definitions import TorsoState
+from semantic_digital_twin.datastructures.definitions import GripperState, TorsoState
 from semantic_digital_twin.orm.model import (
     Point3Mapping,
     QuaternionMapping,
@@ -622,7 +621,6 @@ def test_motion_order_place(mutable_model_world):
     ).global_pose.to_homogeneous_matrix()
 
     with world.modify_world():
-
         world.move_branch_with_fixed_connection(
             world.get_body_by_name("milk.stl"),
             world.get_body_by_name("l_gripper_tool_frame"),
