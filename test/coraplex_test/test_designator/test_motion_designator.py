@@ -25,6 +25,7 @@ from coraplex.robot_plans.actions.core.pick_up import GraspingAction, PickUpActi
 from coraplex.robot_plans.actions.core.placing import PlaceAction
 from coraplex.robot_plans.actions.core.robot_body import MoveTorsoAction
 from coraplex.view_manager import ViewManager
+from coraplex.robot_plans import LookingMotion, MoveMotion, MoveToolCenterPointMotion
 from coraplex.robot_plans.motions.container import ClosingMotion, OpeningMotion
 from coraplex.robot_plans.motions.gripper import (
     MoveGripperMotion,
@@ -66,7 +67,10 @@ from semantic_digital_twin.spatial_types import Point3, Quaternion
 from semantic_digital_twin.spatial_types.spatial_types import Pose
 
 try:
-    from coraplex.alternative_motion_mappings.hsrb_motion_mapping import *
+    from coraplex.alternative_motion_mappings.hsrb_motion_mapping import (
+        HSRBMoveMotion,
+    )
+    from coraplex.alternative_motion_mappings.hsrb_motion_mapping import *  # noqa: F403
     from giskardpy.motion_statechart.ros2_nodes.ros_tasks import (
         NavigateActionServerTask,
     )
@@ -743,6 +747,7 @@ def test_place_action_lets_the_carried_object_touch_what_it_lands_on(
     assert release_nodes[0].designator.allow_gripper_collision is True
 
 
+@pytest.mark.skipif(skip_tests, reason="Alternative motion mappings not available")
 def test_alternative_mapping(hsr_apartment_world):
     world, view, context = hsr_apartment_world
     context.alternative_motion_mappings = [HSRBMoveMotion]
