@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from griplink_interfaces.action import Grip, Release
 from griplink_interfaces.action import Flexgrip, Flexrelease
 
-from typing_extensions import Generic, TypeVar
+from typing import Generic
 
 from giskardpy.motion_statechart.context import MotionStatechartContext
 from giskardpy.motion_statechart.data_types import ObservationStateValues
@@ -57,6 +57,13 @@ class WPGActionServerTask(
     """
 
     def on_tick(self, context: MotionStatechartContext) -> ObservationStateValues:
+        """
+        Observes the gripper status the server reports once its result arrived.
+
+        :param context: The motion statechart context the task runs in.
+        :return:``TRUE`` when the server reported success, ``FALSE`` otherwise, and
+            ``UNKNOWN`` while no result has arrived yet.
+        """
         if self._result:
             gripper_status = self._result.result.status
             logger.info(f"Gripper status: {gripper_status}")
@@ -90,6 +97,10 @@ class WPGGripActionServerTask(
     def build_msg(self, context: MotionStatechartContext):
         """
         Builds the ``Grip`` or ``Release`` goal selecting the configured preset.
+
+        :param context: The motion statechart context the task runs in.
+        :return: None; the goal is stored for :meth:`on_start` to send.
+        :raises ValueError: If the task was built for neither ``Grip`` nor ``Release``.
         """
         if self.message_type is Grip:
             self._msg = Grip.Goal(
@@ -152,6 +163,11 @@ class WPGFlexActionServerTask(
         """
         Builds the ``Flexgrip`` or ``Flexrelease`` goal, filling unset parameters with
         the defaults of the commanded action.
+
+        :param context: The motion statechart context the task runs in.
+        :return: None; the goal is stored for :meth:`on_start` to send.
+        :raises ValueError: If the task was built for neither ``Flexgrip`` nor
+            ``Flexrelease``.
         """
         if self.message_type is Flexgrip:
             position = (

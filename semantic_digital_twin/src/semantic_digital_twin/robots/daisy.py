@@ -7,6 +7,7 @@ from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
 from typing import Self, List
+from typing_extensions import Optional
 
 from semantic_digital_twin.collision_checking.collision_rules import (
     SelfCollisionMatrixRule,
@@ -20,6 +21,7 @@ from semantic_digital_twin.datastructures.definitions import (
 )
 from semantic_digital_twin.datastructures.field_of_view import FieldOfView
 from semantic_digital_twin.datastructures.robots.gripper_specification import (
+    GripperSpecification,
     WPGFlexSpecification,
     WPGPresetSpecification,
 )
@@ -166,7 +168,26 @@ class WPGGripper(EndEffector, ABC):
     appropriate specifications without naming the robot.
     """
 
-    def default_specification(self, state_type, finger_velocity=None):
+    def default_specification(
+        self,
+        state_type: GripperState,
+        finger_velocity: Optional[float] = None,
+    ) -> GripperSpecification:
+        """
+        Build the WPG specification for a state this gripper declares.
+
+        Preset states (``OPEN``/``CLOSE``) build a
+        :class:`~semantic_digital_twin.datastructures.robots.gripper_specification.WPGPresetSpecification`,
+        flex states (``FLEXOPEN``/``FLEXCLOSE``) a
+        :class:`~semantic_digital_twin.datastructures.robots.gripper_specification.WPGFlexSpecification`.
+
+        :param state_type: The state type to build the specification for.
+        :param finger_velocity: Optional maximum finger joint velocity (in m/s) to
+            enforce during the motion.
+        :return: The WPG specification for that state type, or the specification the
+            base implementation builds for state types a WPG controller does not
+            command.
+        """
         if state_type in (GripperState.OPEN, GripperState.CLOSE):
             specification = WPGPresetSpecification.from_state_type(self, state_type)
         elif state_type in (GripperState.FLEXOPEN, GripperState.FLEXCLOSE):

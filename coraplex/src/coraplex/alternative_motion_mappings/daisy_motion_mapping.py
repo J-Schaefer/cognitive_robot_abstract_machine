@@ -84,11 +84,19 @@ class DAiSyGripperMotion(MoveGripperMotion[TSpecification], Generic[TSpecificati
     """
 
     def perform(self):
+        """
+        Logs the performed motion; the action server execution itself is started by the
+        motion chart.
+        """
         logger.info(f"Performing action {self.__class__.__name__}")
         return
 
     @property
     def _motion_chart(self) -> MotionStatechartNode:
+        """
+        :return: The joint position goal for semi-real and simulated execution, or the
+            griplink action server task for real execution.
+        """
         if (
             GiskardExecutable.execution_type == ExecutionType.SEMI_REAL
             or GiskardExecutable.execution_type == ExecutionType.SIMULATED
@@ -119,6 +127,8 @@ class DAiSyGripperMotion(MoveGripperMotion[TSpecification], Generic[TSpecificati
     def _action_server_task(self) -> MotionStatechartNode:
         """
         The griplink action server task this motion builds its chart from.
+
+        :return: The task configured from this motion's specification and endpoint.
         """
         ...
 

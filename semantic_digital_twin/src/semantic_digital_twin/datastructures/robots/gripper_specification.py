@@ -89,6 +89,8 @@ class GripperStateSpecification(GripperSpecification):
         cls, end_effector: EndEffector, state_type: GripperState
     ) -> Self:
         """
+        :param end_effector: The end effector whose declared state is used.
+        :param state_type: The state type to build the specification for.
         :return: The specification for the declared state of the given type.
         :raises NoJointStateWithType: If the end effector declares no such state.
         """
@@ -100,6 +102,7 @@ class GripperStateSpecification(GripperSpecification):
     @classmethod
     def opened(cls, end_effector: EndEffector) -> Self:
         """
+        :param end_effector: The end effector to build the specification for.
         :return: The specification for the end effector's open state.
         """
         return cls.from_state_type(end_effector, GripperState.OPEN)
@@ -107,6 +110,7 @@ class GripperStateSpecification(GripperSpecification):
     @classmethod
     def closed(cls, end_effector: EndEffector) -> Self:
         """
+        :param end_effector: The end effector to build the specification for.
         :return: The specification for the end effector's closed state.
         """
         return cls.from_state_type(end_effector, GripperState.CLOSE)
@@ -138,6 +142,10 @@ class WPGPresetSpecification(GripperSpecification):
         configuration: Optional[WPGGripperConfiguration] = None,
     ) -> Self:
         """
+        :param end_effector: The WPG gripper to build the preset specification for.
+        :param state_type: The declared open/close state the preset executes.
+        :param configuration: Hardware parameters forwarded to the griplink action
+            server; ``None`` uses the default configuration.
         :return: The preset specification for the declared open/close state.
         """
         return cls(
@@ -203,6 +211,11 @@ class WPGFlexSpecification(GripperSpecification):
         configuration: Optional[WPGGripperConfiguration] = None,
     ) -> Self:
         """
+        :param end_effector: The WPG gripper to build the flex specification for.
+        :param state_type: The flex state type the specification is labelled with.
+        :param configuration: Hardware parameters forwarded to the griplink action
+            server; its opening width drives the joint state; ``None`` uses the
+            default configuration.
         :return: The flex specification for the given flex state type, with the joint
             state interpolated from the configuration's grip position.
         """

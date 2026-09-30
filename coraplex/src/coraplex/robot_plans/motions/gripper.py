@@ -154,6 +154,11 @@ class MoveGripperMotion(
 
     @property
     def _motion_chart(self):
+        """
+        :return: The chart driving the gripper's connections to the joint state the
+            specification commands, with the velocity limit and collision rules the
+            specification and parameters ask for.
+        """
         goal_state = self.specification.joint_state
         name = goal_state.name.name
         joint_task = JointPositionList(goal_state=goal_state, name=name)
@@ -202,6 +207,7 @@ class MoveGripperMotion(
         """
         Whether this alternative can be built from the given motion's specification.
 
+        :param motion: The motion whose specification is checked.
         :return: True if the motion's specification is an instance of the specification
             type this alternative is bound to. Also True when this class binds no
             concrete specification type.
