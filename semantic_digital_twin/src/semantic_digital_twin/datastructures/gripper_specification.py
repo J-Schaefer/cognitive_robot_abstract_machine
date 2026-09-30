@@ -105,38 +105,6 @@ class GripperStateSpecification(GripperSpecification):
 # %% WPG specifications
 
 
-def _flex_joint_state(
-    end_effector: EndEffector,
-    grip_position: Optional[int],
-    state_type: GripperState,
-) -> JointState:
-    """
-    Build the joint state a WPG flex motion commands, from the opening width the
-    controller accepts.
-
-    :param end_effector: The WPG gripper whose connections are commanded.
-    :param grip_position: Opening width in millimetres [-5..120]; ``None`` defaults to
-        fully open (120).
-    :param state_type: The flex state type the joint state is labelled with.
-    :return: The joint state driving the gripper's connections to the interpolated
-        position.
-    """
-    position = grip_position if grip_position is not None else 120
-    open_state = end_effector.get_joint_state_by_type(GripperState.OPEN)
-    fraction = (120 - position) / 120
-    target_values = []
-    for connection in open_state.connections:
-        lower = connection.dof.limits.lower.position or 0.0
-        upper = connection.dof.limits.upper.position or 0.0
-        target_values.append(lower + fraction * (upper - lower))
-    return JointState(
-        connections=open_state.connections,
-        target_values=target_values,
-        state_type=state_type,
-        name=PrefixedName("flexgrip", prefix=end_effector.name.name),
-    )
-
-
 @dataclass(eq=False)
 class WPGPresetSpecification(GripperSpecification):
     """
@@ -185,9 +153,41 @@ class WPGFlexSpecification(GripperSpecification):
     :attr:`~grip_speed` and :attr:`~grip_acceleration`.
     """
 
+    def _flex_joint_state(
+        end_effector: EndEffector,
+        grip_position: Optional[int],
+        state_type: GripperState,
+    ) -> JointState:
+        """
+        Build the joint state a WPG flex motion commands, from the opening width the
+        controller accepts.
+
+        :param end_effector: The WPG gripper whose connections are commanded.
+        :param grip_position: Opening width in millimetres [-5..120]; ``None`` defaults
+            to fully open (120).
+        :param state_type: The flex state type the joint state is labelled with.
+        :return: The joint state driving the gripper's connections to the interpolated
+            position.
+        """
+        position = grip_position if grip_position is not None else 120
+        open_state = end_effector.get_joint_state_by_type(GripperState.OPEN)
+        fraction = (120 - position) / 120
+        target_values = []
+        for connection in open_state.connections:
+            lower = connection.dof.limits.lower.position or 0.0
+            upper = connection.dof.limits.upper.position or 0.0
+            target_values.append(lower + fraction * (upper - lower))
+        return JointState(
+            connections=open_state.connections,
+            target_values=target_values,
+            state_type=state_type,
+            name=PrefixedName("flexgrip", prefix=end_effector.name.name),
+        )
+
     @classmethod
     def from_state_type(
         cls,
+        self,
         end_effector: EndEffector,
         state_type: GripperState,
         configuration: Optional[WPGGripperConfiguration] = None,
@@ -199,7 +199,7 @@ class WPGFlexSpecification(GripperSpecification):
         configuration = configuration or WPGGripperConfiguration()
         return cls(
             end_effector=end_effector,
-            joint_state=_flex_joint_state(
+            joint_state=self._flex_joint_state(
                 end_effector, configuration.grip_position, state_type
             ),
             configuration=configuration,
