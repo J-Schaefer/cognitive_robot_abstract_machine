@@ -265,9 +265,6 @@ class WPGGripperActionServerTask(
             context: MotionStatechartContext
                 The context from which the message is built. It contains information
                 necessary to construct the message.
-
-        Returns:
-            str: The constructed message based on the provided context.
         """
         super().build_msg(context)
 
@@ -320,26 +317,8 @@ class WPGGripperActionServerTask(
     def on_tick(self, context: MotionStatechartContext) -> ObservationStateValues:
         if self._result:
             gripper_status = self._result.result.status
-            print(self._result)
-            if self.message_type == Flexgrip:
-                return (
-                    ObservationStateValues.TRUE
-                    if gripper_status == 0
-                    else ObservationStateValues.FALSE
-                )
-            elif self.message_type == Flexrelease:
-                return (
-                    ObservationStateValues.TRUE
-                    if gripper_status == 0
-                    else ObservationStateValues.FALSE
-                )
-            elif self.message_type == Grip:
-                return (
-                    ObservationStateValues.TRUE
-                    if gripper_status == 0
-                    else ObservationStateValues.FALSE
-                )
-            elif self.message_type == Release:
+            logger.info(f"Gripper status: {gripper_status}")
+            if self.message_type in [Flexgrip, Flexrelease, Grip, Release]:
                 return (
                     ObservationStateValues.TRUE
                     if gripper_status == 0
