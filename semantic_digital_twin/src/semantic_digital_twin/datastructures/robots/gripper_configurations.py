@@ -58,7 +58,7 @@ class WPGGripperConfiguration(GripperConfiguration):
     ``Flexrelease``.
 
     ``None`` defers to the per-motion default
-    :class:`~giskardpy.motion_statechart.ros2_nodes.ros_tasks.WPGGripperActionServerTask`
+    :class:`~giskardpy.motion_statechart.ros2_nodes.wpg_gripper.wpg_action_server_tasks.WPGFlexActionServerTask`
     picks in ``build_msg`` (0 for ``Flexgrip``, 120 for ``Flexrelease``).
     """
 
@@ -68,7 +68,7 @@ class WPGGripperConfiguration(GripperConfiguration):
     only (ignored for ``Flexrelease``).
 
     ``None`` defers to the default
-    :class:`~giskardpy.motion_statechart.ros2_nodes.ros_tasks.WPGGripperActionServerTask`
+    :class:`~giskardpy.motion_statechart.ros2_nodes.wpg_gripper.wpg_action_server_tasks.WPGFlexActionServerTask`
     picks in ``build_msg`` (90).
     """
 
@@ -78,7 +78,7 @@ class WPGGripperConfiguration(GripperConfiguration):
     ``Flexgrip``/``Flexrelease``.
 
     ``None`` defers to the per-motion default
-    :class:`~giskardpy.motion_statechart.ros2_nodes.ros_tasks.WPGGripperActionServerTask`
+    :class:`~giskardpy.motion_statechart.ros2_nodes.wpg_gripper.wpg_action_server_tasks.WPGFlexActionServerTask`
     picks in ``build_msg`` (150 for ``Flexgrip``, 250 for ``Flexrelease``).
     """
 
@@ -88,6 +88,6 @@ class WPGGripperConfiguration(GripperConfiguration):
     used by ``Flexgrip``/``Flexrelease``.
 
     ``None`` defers to the per-motion default
-    :class:`~giskardpy.motion_statechart.ros2_nodes.ros_tasks.WPGGripperActionServerTask`
+    :class:`~giskardpy.motion_statechart.ros2_nodes.wpg_gripper.wpg_action_server_tasks.WPGFlexActionServerTask`
     picks in ``build_msg`` (600 for ``Flexgrip``, 2000 for ``Flexrelease``).
     """

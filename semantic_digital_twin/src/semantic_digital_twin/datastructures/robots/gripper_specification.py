@@ -50,17 +50,27 @@ class GripperSpecification(SubClassSafeGeneric, ABC):
     """
 
     def __post_init__(self):
+        """
+        Validates that the joint state only commands connections inside the end
+        effector.
+
+        :return: None
+        :raises ConnectionsOutsideEndEffector: If the joint state commands a connection
+            outside the end effector.
+        """
         if self.end_effector._world is None:
             # The end effector is being reconstructed detached from a world (e.g. from
             # the database), so its connections cannot be looked up yet.
             return
-        foreign = set(self.joint_state.connections) - set(
+        connections_outside_end_effector = set(self.joint_state.connections) - set(
             self.end_effector.active_connections
         )
-        if foreign:
+        if connections_outside_end_effector:
             raise ConnectionsOutsideEndEffector(
                 end_effector=self.end_effector,
-                foreign_connection_names=[str(c.name) for c in foreign],
+                foreign_connection_names=[
+                    str(c.name) for c in connections_outside_end_effector
+                ],
             )
 
 
@@ -153,6 +163,7 @@ class WPGFlexSpecification(GripperSpecification):
     :attr:`~grip_speed` and :attr:`~grip_acceleration`.
     """
 
+    @staticmethod
     def _flex_joint_state(
         end_effector: EndEffector,
         grip_position: Optional[int],
@@ -187,7 +198,6 @@ class WPGFlexSpecification(GripperSpecification):
     @classmethod
     def from_state_type(
         cls,
-        self,
         end_effector: EndEffector,
         state_type: GripperState,
         configuration: Optional[WPGGripperConfiguration] = None,
@@ -199,7 +209,7 @@ class WPGFlexSpecification(GripperSpecification):
         configuration = configuration or WPGGripperConfiguration()
         return cls(
             end_effector=end_effector,
-            joint_state=self._flex_joint_state(
+            joint_state=cls._flex_joint_state(
                 end_effector, configuration.grip_position, state_type
             ),
             configuration=configuration,

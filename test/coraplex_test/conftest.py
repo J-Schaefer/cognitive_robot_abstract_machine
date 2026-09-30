@@ -8,6 +8,7 @@ from ..orm_interface_build import regenerate_orm_interfaces
 regenerate_orm_interfaces()
 
 
+from copy import deepcopy
 from functools import partial
 
 import pytest

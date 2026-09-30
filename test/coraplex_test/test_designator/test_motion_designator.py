@@ -78,8 +78,9 @@ except (ImportError, ModuleNotFoundError, AttributeError):
     skip_tests = True
 
 try:
-    from giskardpy.motion_statechart.ros2_nodes.ros_tasks import (
-        WPGGripperActionServerTask,
+    from giskardpy.motion_statechart.ros2_nodes.wpg_gripper.wpg_action_server_tasks import (
+        WPGGripActionServerTask,
+        WPGFlexActionServerTask,
     )
     from coraplex.alternative_motion_mappings.daisy_motion_mapping import (
         DAiSyGripMotion,
@@ -1008,7 +1009,7 @@ class TestDAiSyGripMotion:
             chart = motion._motion_chart
         assert isinstance(chart, Parallel)
         assert len(chart.nodes) == 1
-        assert isinstance(chart.nodes[0], WPGGripperActionServerTask)
+        assert isinstance(chart.nodes[0], WPGGripActionServerTask)
 
 
 @pytest.mark.skipif(
@@ -1101,7 +1102,7 @@ class TestDAiSyFlexGripMotion:
             chart = motion._motion_chart
         assert isinstance(chart, Parallel)
         assert len(chart.nodes) == 1
-        assert isinstance(chart.nodes[0], WPGGripperActionServerTask)
+        assert isinstance(chart.nodes[0], WPGFlexActionServerTask)
 
 
 # %% DAiSy specification routing and parameter forwarding
@@ -1160,7 +1161,7 @@ class TestDAiSyGripperSpecificationRouting:
         with real_robot:
             chart = motion.motion_chart
         task = chart.nodes[0]
-        assert isinstance(task, WPGGripperActionServerTask)
+        assert isinstance(task, WPGGripActionServerTask)
         assert task.grip_preset is specification.configuration.grip_preset
 
     def test_grip_motion_explicit_configuration_overrides_default(
@@ -1176,7 +1177,7 @@ class TestDAiSyGripperSpecificationRouting:
         with real_robot:
             chart = motion.motion_chart
         task = chart.nodes[0]
-        assert isinstance(task, WPGGripperActionServerTask)
+        assert isinstance(task, WPGGripActionServerTask)
         assert task.grip_preset is override.grip_preset
 
     def test_flexgrip_motion_forwards_position_force_speed_acceleration(
@@ -1197,7 +1198,7 @@ class TestDAiSyGripperSpecificationRouting:
         with real_robot:
             chart = motion.motion_chart
         task = chart.nodes[0]
-        assert isinstance(task, WPGGripperActionServerTask)
+        assert isinstance(task, WPGFlexActionServerTask)
         assert task.grip_position == config.grip_position
         assert task.grip_force == config.grip_force
         assert task.grip_speed == config.grip_speed
@@ -1220,7 +1221,7 @@ class TestDAiSyGripperSpecificationRouting:
         with real_robot:
             chart = motion.motion_chart
         task = chart.nodes[0]
-        assert isinstance(task, WPGGripperActionServerTask)
+        assert isinstance(task, WPGFlexActionServerTask)
         assert task.grip_position == config.grip_position
         assert task.grip_speed == config.grip_speed
         assert task.grip_acceleration == config.grip_acceleration
