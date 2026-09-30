@@ -24,8 +24,6 @@ from coraplex.robot_plans.actions.core.navigation import NavigateAction
 from coraplex.robot_plans.actions.core.pick_up import GraspingAction, PickUpAction
 from coraplex.robot_plans.actions.core.placing import PlaceAction
 from coraplex.robot_plans.actions.core.robot_body import MoveTorsoAction
-from coraplex.view_manager import ViewManager
-from coraplex.robot_plans import LookingMotion, MoveMotion, MoveToolCenterPointMotion
 from coraplex.robot_plans.motions.container import ClosingMotion, OpeningMotion
 from coraplex.robot_plans.motions.gripper import (
     MoveGripperMotion,
@@ -54,11 +52,11 @@ from giskardpy.motion_statechart.tasks.joint_tasks import (
 )
 from giskardpy.motion_statechart.tasks.pointing import Pointing
 from semantic_digital_twin.datastructures.definitions import GripperState, TorsoState
-from semantic_digital_twin.datastructures.gripper_specification import (
+from semantic_digital_twin.datastructures.robots.gripper_specification import (
     WPGFlexSpecification,
     WPGPresetSpecification,
 )
-from semantic_digital_twin.robots.gripper_configurations import (
+from semantic_digital_twin.datastructures.robots.gripper_configurations import (
     WPGGripperConfiguration,
     WPGGripPreset,
 )
@@ -1065,9 +1063,9 @@ class TestDAiSyFlexGripMotion:
             lower = connection.dof.limits.lower.position or 0.0
             upper = connection.dof.limits.upper.position or 0.0
             expected = lower + 0.5 * (upper - lower)
-            assert abs(target - expected) < 0.001, (
-                f"Expected ~{expected} for grip_position=60, got {target}"
-            )
+            assert (
+                abs(target - expected) < 0.001
+            ), f"Expected ~{expected} for grip_position=60, got {target}"
 
     def test_semi_real_full_open_maps_to_lower_limit(self, immutable_daisy_world):
         motion = self._flex_motion(
@@ -1079,9 +1077,9 @@ class TestDAiSyFlexGripMotion:
             chart = motion._motion_chart
         for connection, target in chart.goal_state.items():
             lower = connection.dof.limits.lower.position or 0.0
-            assert abs(target - lower) < 0.001, (
-                f"Expected lower limit {lower} for grip_position=120, got {target}"
-            )
+            assert (
+                abs(target - lower) < 0.001
+            ), f"Expected lower limit {lower} for grip_position=120, got {target}"
 
     def test_semi_real_full_close_maps_to_upper_limit(self, immutable_daisy_world):
         motion = self._flex_motion(
@@ -1093,9 +1091,9 @@ class TestDAiSyFlexGripMotion:
             chart = motion._motion_chart
         for connection, target in chart.goal_state.items():
             upper = connection.dof.limits.upper.position or 0.0
-            assert abs(target - upper) < 0.001, (
-                f"Expected upper limit {upper} for grip_position=0, got {target}"
-            )
+            assert (
+                abs(target - upper) < 0.001
+            ), f"Expected upper limit {upper} for grip_position=0, got {target}"
 
     def test_real_returns_wpg_action_server_task(self, immutable_daisy_world):
         motion = self._flex_motion(immutable_daisy_world)
@@ -1115,9 +1113,9 @@ class TestDAiSyFlexGripMotion:
 )
 class TestDAiSyGripperSpecificationRouting:
     """
-    A base :class:`MoveGripperMotion` with both DAiSy alternatives registered routes
-    to the correct alternative by specification type, and the specification's
-    configuration reaches the WPG action server task.
+    A base :class:`MoveGripperMotion` with both DAiSy alternatives registered routes to
+    the correct alternative by specification type, and the specification's configuration
+    reaches the WPG action server task.
     """
 
     def _motion_through_dispatch(

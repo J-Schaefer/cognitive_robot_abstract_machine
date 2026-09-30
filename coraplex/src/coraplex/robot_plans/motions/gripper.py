@@ -22,7 +22,7 @@ from giskardpy.motion_statechart.tasks.joint_tasks import (
 from giskardpy.motion_statechart.monitors.monitors import LocalMinimumReached
 from krrood.patterns.subclass_safe_generic import SubClassSafeGeneric
 from semantic_digital_twin.datastructures.alignment import AlignmentPair
-from semantic_digital_twin.datastructures.gripper_specification import (
+from semantic_digital_twin.datastructures.robots.gripper_specification import (
     GripperSpecification,
 )
 from semantic_digital_twin.robots.justin import Justin

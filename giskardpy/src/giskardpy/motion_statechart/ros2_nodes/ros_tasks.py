@@ -13,7 +13,9 @@ from geometry_msgs.msg import (
 
 from griplink_interfaces.action import Grip, Release, Flexgrip, Flexrelease
 
-from semantic_digital_twin.robots.gripper_configurations import WPGGripPreset
+from semantic_digital_twin.datastructures.robots.gripper_configurations import (
+    WPGGripPreset,
+)
 
 try:
     from nav2_msgs.action import NavigateToPose

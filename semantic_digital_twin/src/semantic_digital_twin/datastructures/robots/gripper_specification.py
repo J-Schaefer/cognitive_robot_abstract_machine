@@ -11,7 +11,7 @@ from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.exceptions import ConnectionsOutsideEndEffector
-from semantic_digital_twin.robots.gripper_configurations import (
+from semantic_digital_twin.datastructures.robots.gripper_configurations import (
     WPGGripperConfiguration,
 )
 

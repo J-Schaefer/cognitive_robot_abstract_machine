@@ -35,7 +35,7 @@ from semantic_digital_twin.datastructures.definitions import (
     GripperState,
 )
 from semantic_digital_twin.datastructures.field_of_view import FieldOfView
-from semantic_digital_twin.datastructures.gripper_specification import (
+from semantic_digital_twin.datastructures.robots.gripper_specification import (
     GripperStateSpecification,
 )
 from semantic_digital_twin.datastructures.joint_state import JointState
@@ -963,9 +963,9 @@ class AbstractRobot(Agent, HasRobotParts, ABC):
             part for part in self._robot_parts if isinstance(part, Camera)
         ]
         if declared_cameras:
-            assert self.get_default_camera() is not None, (
-                "A robot with cameras must mark one as its default camera."
-            )
+            assert (
+                self.get_default_camera() is not None
+            ), "A robot with cameras must mark one as its default camera."
 
         for part in self._robot_parts:
             assert part._robot == self, f"Part {part} refers to wrong robot"

@@ -10,7 +10,7 @@ from giskardpy.motion_statechart.ros2_nodes.ros_tasks import (
 )
 from griplink_interfaces.action import Flexgrip, Flexrelease, Grip, Release
 from semantic_digital_twin.datastructures.definitions import GripperState
-from semantic_digital_twin.datastructures.gripper_specification import (
+from semantic_digital_twin.datastructures.robots.gripper_specification import (
     WPGFlexSpecification,
     WPGPresetSpecification,
 )
@@ -19,7 +19,9 @@ from semantic_digital_twin.robots.daisy import (
     DAiSyLeftGripper,
     DAiSyRightGripper,
 )
-from semantic_digital_twin.robots.gripper_configurations import WPGGripperConfiguration
+from semantic_digital_twin.datastructures.robots.gripper_configurations import (
+    WPGGripperConfiguration,
+)
 from semantic_digital_twin.robots.robot_parts import EndEffector
 
 from coraplex.datastructures.enums import ExecutionType

@@ -25,7 +25,7 @@ from coraplex.robot_plans import (
 )
 from coraplex.robot_plans.motions.base import AlternativeMotion
 from coraplex.view_manager import ViewManager
-from semantic_digital_twin.datastructures.gripper_specification import (
+from semantic_digital_twin.datastructures.robots.gripper_specification import (
     GripperSpecification,
 )
 from semantic_digital_twin.robots.stretch import Stretch

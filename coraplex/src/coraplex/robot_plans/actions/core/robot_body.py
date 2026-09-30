@@ -31,7 +31,7 @@ from semantic_digital_twin.datastructures.definitions import (
     TorsoState,
     StaticJointState,
 )
-from semantic_digital_twin.datastructures.gripper_specification import (
+from semantic_digital_twin.datastructures.robots.gripper_specification import (
     GripperSpecification,
 )
 

@@ -1,5 +1,5 @@
 from semantic_digital_twin.datastructures.definitions import GripperState
-from semantic_digital_twin.datastructures.gripper_specification import (
+from semantic_digital_twin.datastructures.robots.gripper_specification import (
     WPGFlexSpecification,
     WPGPresetSpecification,
 )
