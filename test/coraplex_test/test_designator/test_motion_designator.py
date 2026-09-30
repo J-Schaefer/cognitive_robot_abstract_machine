@@ -1003,6 +1003,20 @@ class TestDAiSyGripMotion:
         assert isinstance(chart, JointPositionList)
         assert chart.name == "left_gripper_open"
 
+    def test_simulated_returns_joint_position_list(self, immutable_daisy_world):
+        motion = self._grip_motion(immutable_daisy_world)
+        with simulated_robot:
+            chart = motion._motion_chart
+        assert isinstance(chart, JointPositionList)
+        assert chart.name == "left_gripper_close"
+
+    def test_simulated_open_returns_joint_position_list(self, immutable_daisy_world):
+        motion = self._grip_motion(immutable_daisy_world, state_type=GripperState.OPEN)
+        with simulated_robot:
+            chart = motion._motion_chart
+        assert isinstance(chart, JointPositionList)
+        assert chart.name == "left_gripper_open"
+
     def test_real_returns_wpg_action_server_task(self, immutable_daisy_world):
         motion = self._grip_motion(immutable_daisy_world)
         with real_robot:
@@ -1048,6 +1062,13 @@ class TestDAiSyFlexGripMotion:
             immutable_daisy_world, state_type=GripperState.FLEXOPEN
         )
         with semi_real_robot:
+            chart = motion._motion_chart
+        assert isinstance(chart, JointPositionList)
+        assert chart.name == "flexgrip"
+
+    def test_simulated_returns_joint_position_list(self, immutable_daisy_world):
+        motion = self._flex_motion(immutable_daisy_world)
+        with simulated_robot:
             chart = motion._motion_chart
         assert isinstance(chart, JointPositionList)
         assert chart.name == "flexgrip"
@@ -1152,6 +1173,38 @@ class TestDAiSyGripperSpecificationRouting:
         )
         with real_robot:
             assert motion.get_alternative_motion() is DAiSyFlexGripMotion
+
+    def test_simulated_dispatch_builds_joint_position_goal(
+        self, immutable_daisy_world
+    ):
+        """
+        The full dispatch, not only the alternative's own chart, routes to the joint
+        position goal for simulated execution.
+        """
+        _, robot, _ = immutable_daisy_world
+        end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
+        motion = self._motion_through_dispatch(
+            immutable_daisy_world,
+            end_effector.default_specification(GripperState.CLOSE),
+        )
+        with simulated_robot:
+            chart = motion.motion_chart
+        assert isinstance(chart, JointPositionList)
+        assert chart.name == "left_gripper_close"
+
+    def test_semi_real_dispatch_builds_joint_position_goal(
+        self, immutable_daisy_world
+    ):
+        _, robot, _ = immutable_daisy_world
+        end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
+        motion = self._motion_through_dispatch(
+            immutable_daisy_world,
+            end_effector.default_specification(GripperState.CLOSE),
+        )
+        with semi_real_robot:
+            chart = motion.motion_chart
+        assert isinstance(chart, JointPositionList)
+        assert chart.name == "left_gripper_close"
 
     def test_grip_motion_forwards_default_preset(self, immutable_daisy_world):
         _, robot, _ = immutable_daisy_world
