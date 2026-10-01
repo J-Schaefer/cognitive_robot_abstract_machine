@@ -28,6 +28,7 @@ from semantic_digital_twin.robots.daisy import (
 )
 
 from coraplex.datastructures.enums import ExecutionType
+from coraplex.exceptions import NoGriplinkEndpoint
 from coraplex.plans.executables import GiskardExecutable
 from coraplex.robot_plans import MoveGripperMotion
 from coraplex.robot_plans.motions.base import AlternativeMotion
@@ -110,17 +111,17 @@ class DAiSyGripperMotion(MoveGripperMotion[TSpecification], Generic[TSpecificati
         """
         :return: The endpoint the griplink server for this motion's gripper and state
             listens on.
-        :raises ValueError: If the gripper or state has no endpoint in
+        :raises NoGriplinkEndpoint: If the gripper or state has no endpoint in
             :attr:`_griplink_endpoints`.
         """
         state_type = self.specification.joint_state.state_type
         gripper_type = type(self.specification.end_effector)
-        try:
-            return self._griplink_endpoints[(gripper_type, state_type)]
-        except KeyError:
-            raise ValueError(
-                f"Gripper action {state_type} not supported for {gripper_type.__name__}"
+        endpoint = self._griplink_endpoints.get((gripper_type, state_type))
+        if endpoint is None:
+            raise NoGriplinkEndpoint(
+                end_effector=self.specification.end_effector, state_type=state_type
             )
+        return endpoint
 
     @property
     @abstractmethod

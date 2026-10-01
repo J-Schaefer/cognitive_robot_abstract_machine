@@ -86,6 +86,7 @@ try:
         DAiSyGripMotion,
         DAiSyFlexGripMotion,
     )
+    from coraplex.exceptions import NoGriplinkEndpoint
 
     daisy_mappings_available = True
 except (ImportError, ModuleNotFoundError, AttributeError):
@@ -1024,6 +1025,23 @@ class TestDAiSyGripMotion:
         assert isinstance(chart, Parallel)
         assert len(chart.nodes) == 1
         assert isinstance(chart.nodes[0], WPGGripActionServerTask)
+
+    def test_flex_state_raises_no_griplink_endpoint(self, immutable_daisy_world):
+        """
+        The preset motion commands no flex states, so building its chart for one raises
+        the endpoint exception instead of silently building a wrong task.
+        """
+        _, robot, _ = immutable_daisy_world
+        end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
+        motion = DAiSyGripMotion(
+            specification=WPGFlexSpecification.from_state_type(
+                end_effector, GripperState.FLEXCLOSE
+            )
+        )
+        with real_robot, pytest.raises(NoGriplinkEndpoint) as caught:
+            motion._motion_chart
+        assert caught.value.end_effector is end_effector
+        assert caught.value.state_type is GripperState.FLEXCLOSE
 
 
 @pytest.mark.skipif(
