@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
+from semantic_digital_twin.world_description.world_entity import (
+    KinematicStructureEntity,
+)
+
 from coraplex.plans.executables import (
     MoveBranchExecutable,
 )
-from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from coraplex.plans.plan_node import ExecutionBoundaryNode
 from semantic_digital_twin.world_description.world_entity import (
     KinematicStructureEntity,
@@ -39,9 +43,10 @@ class ReAttachNode(ExecutionBoundaryNode):
     def notify(self):
         pass
 
-    def parse(self) -> ModelChangeExecutable:
-        return ModelChangeExecutable(
-            context=self.plan.context,
+    def parse(self) -> MoveBranchExecutable:
+        return MoveBranchExecutable(
+            context=self.context,
             body=self.body,
             new_parent=self.new_parent,
             execution_scope=self.execution_scope,
+        )
