@@ -6,13 +6,35 @@ from math import pi
 from typing import Any
 
 import numpy as np
-
-from coraplex.alternative_motion_mappings.daisy_motion_mapping import (
-    DAiSyFlexGripMotion,
+from krrood.entity_query_language.core.variable import Variable
+from krrood.entity_query_language.factories import (
+    ConditionType,
+    and_,
+    or_,
+    variable_from,
 )
+from semantic_digital_twin.datastructures.definitions import GripperState
+from semantic_digital_twin.datastructures.robots.gripper_configurations import (
+    WPGGripperConfiguration,
+)
+from semantic_digital_twin.datastructures.robots.gripper_specification import (
+    WPGFlexSpecification,
+)
+from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
+from semantic_digital_twin.robots.robot_parts import EndEffector
+from semantic_digital_twin.semantic_annotations.cable import Cable
+from semantic_digital_twin.spatial_types.spatial_types import (
+    HomogeneousTransformationMatrix,
+    Point3,
+    Pose,
+    Quaternion,
+    RotationMatrix,
+)
+from semantic_digital_twin.world_description.world_entity import Body
+
 from coraplex.datastructures.dataclasses import Context
 from coraplex.datastructures.enums import Arms, MovementType
-from coraplex.plans.attachment_nodes import AttachNode
+from coraplex.plans.attachment_nodes import ReAttachNode
 from coraplex.plans.factories import sequential
 from coraplex.plans.plan_node import PlanNode
 from coraplex.querying.gripper_verification import (
@@ -28,25 +50,6 @@ from coraplex.robot_plans.motions.gripper import (
 )
 from coraplex.utils import translate_pose_along_local_axis
 from coraplex.view_manager import ViewManager
-from krrood.entity_query_language.core.variable import Variable
-from krrood.entity_query_language.factories import (
-    ConditionType,
-    and_,
-    or_,
-    variable_from,
-)
-from semantic_digital_twin.datastructures.definitions import GripperState
-from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
-from semantic_digital_twin.robots.robot_parts import EndEffector
-from semantic_digital_twin.semantic_annotations.cable import Cable
-from semantic_digital_twin.spatial_types.spatial_types import (
-    HomogeneousTransformationMatrix,
-    Point3,
-    Pose,
-    Quaternion,
-    RotationMatrix,
-)
-from semantic_digital_twin.world_description.world_entity import Body
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +206,48 @@ def _attachment_transform(
         z=0.0,
         roll=-pi / 2,
         reference_frame=end_effector.tool_frame,
+    )
+
+
+def _open_gripper_motion(end_effector: EndEffector) -> MoveGripperMotion:
+    """
+    Build the motion that opens the given end effector.
+    """
+    return MoveGripperMotion(
+        specification=end_effector.default_specification(GripperState.OPEN)
+    )
+
+
+def _flex_gripper_motion(
+    end_effector: EndEffector,
+    state_type: GripperState,
+    grip_position: int | None = None,
+    grip_force: int | None = None,
+    grip_speed: int | None = None,
+    grip_acceleration: int | None = None,
+) -> MoveGripperMotion:
+    """
+    Build the motion that commands a WPG gripper into a flex state.
+
+    :param state_type: The flex state to command, either :attr:`GripperState.FLEXCLOSE`
+        or :attr:`GripperState.FLEXOPEN`.
+    :param grip_position: Opening width of the gripper in millimetres [-5..120].
+    :param grip_force: Force the gripper applies in newtons [30..300].
+    :param grip_speed: Motion speed of the gripper in millimetres per second [5..350].
+    :param grip_acceleration: Motion acceleration of the gripper in millimetres per
+        second squared [100..4000].
+    """
+    return MoveGripperMotion(
+        specification=WPGFlexSpecification.from_state_type(
+            end_effector,
+            state_type,
+            WPGGripperConfiguration(
+                grip_position=grip_position,
+                grip_force=grip_force,
+                grip_speed=grip_speed,
+                grip_acceleration=grip_acceleration,
+            ),
+        )
     )
 
 
@@ -408,8 +453,8 @@ class CableGraspAction(ActionDescription):
 
         return sequential(
             children=[
-                MoveGripperMotion(motion=GripperState.OPEN, gripper=scoop_arm),
-                MoveGripperMotion(motion=GripperState.OPEN, gripper=grasp_arm),
+                _open_gripper_motion(scoop_end_effector),
+                _open_gripper_motion(grasp_end_effector),
                 ParkArmsAction(arm=scoop_arm),
                 MoveToolCenterPointMotion(
                     approach_pose,
@@ -427,13 +472,13 @@ class CableGraspAction(ActionDescription):
                     movement_type=MovementType.STRAIGHT_TRANSLATION,
                     position_threshold=0.001,
                 ),
-                DAiSyFlexGripMotion(
-                    motion=GripperState.FLEXCLOSE,
-                    gripper=scoop_arm,
+                _flex_gripper_motion(
+                    scoop_end_effector,
+                    GripperState.FLEXCLOSE,
                     grip_position=0,
                     grip_speed=150,
                 ),
-                AttachNode(
+                ReAttachNode(
                     body=self.cable_annotation.root,
                     new_parent=scoop_end_effector.tool_frame,
                     parent_T_connection_expression=_attachment_transform(
@@ -456,16 +501,16 @@ class CableGraspAction(ActionDescription):
                     grasp_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
-                DAiSyFlexGripMotion(
-                    motion=GripperState.FLEXCLOSE,
-                    gripper=grasp_arm,
+                _flex_gripper_motion(
+                    grasp_end_effector,
+                    GripperState.FLEXCLOSE,
                     grip_position=70,
                     grip_speed=300,
                     grip_acceleration=2000,
                 ),
-                DAiSyFlexGripMotion(
-                    motion=GripperState.FLEXOPEN,
-                    gripper=grasp_arm,
+                _flex_gripper_motion(
+                    grasp_end_effector,
+                    GripperState.FLEXOPEN,
                     grip_position=75,
                     grip_speed=300,
                     grip_acceleration=2000,
@@ -476,13 +521,13 @@ class CableGraspAction(ActionDescription):
                     movement_type=MovementType.CARTESIAN,
                     position_threshold=0.001,
                 ),
-                DAiSyFlexGripMotion(
-                    motion=GripperState.FLEXCLOSE,
-                    gripper=grasp_arm,
+                _flex_gripper_motion(
+                    grasp_end_effector,
+                    GripperState.FLEXCLOSE,
                     grip_position=0,
                     grip_force=180,
                 ),
-                AttachNode(
+                ReAttachNode(
                     body=self.cable_annotation.root,
                     new_parent=grasp_end_effector.tool_frame,
                     parent_T_connection_expression=_attachment_transform(
@@ -503,7 +548,7 @@ class CableGraspAction(ActionDescription):
                     scoop_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
-                MoveGripperMotion(motion=GripperState.OPEN, gripper=scoop_arm),
+                _open_gripper_motion(scoop_end_effector),
                 MoveToolCenterPointMotion(
                     return_scoop_pose,
                     scoop_arm,
@@ -537,9 +582,9 @@ class CableGraspAction(ActionDescription):
                     movement_type=MovementType.STRAIGHT_TRANSLATION,
                     position_threshold=0.001,
                 ),
-                DAiSyFlexGripMotion(
-                    motion=GripperState.FLEXCLOSE,
-                    gripper=scoop_arm,
+                _flex_gripper_motion(
+                    scoop_end_effector,
+                    GripperState.FLEXCLOSE,
                     grip_position=0,
                     grip_force=30,
                     grip_speed=120,
@@ -547,7 +592,7 @@ class CableGraspAction(ActionDescription):
                 MoveToolCenterPointMotion(
                     pre_free_cable_pose, scoop_arm, movement_type=MovementType.CARTESIAN
                 ),
-                MoveGripperMotion(motion=GripperState.OPEN, gripper=scoop_arm),
+                _open_gripper_motion(scoop_end_effector),
                 MoveToolCenterPointMotion(
                     translate_pose_along_local_axis(
                         pose=grasp_pose, axis=[0, 1, 0], distance=0.07
@@ -918,6 +963,9 @@ class CableRegraspAction(ActionDescription):
         target_z = table_z + self.regrasp_height
 
         free_arm_end_effector = ViewManager.get_end_effector_view(free_arm, self.robot)
+        holding_arm_end_effector = ViewManager.get_end_effector_view(
+            holding_arm, self.robot
+        )
 
         holding_pose = self._build_mid_pose(
             up_offset=target_z,
@@ -979,7 +1027,7 @@ class CableRegraspAction(ActionDescription):
 
         return sequential(
             children=[
-                MoveGripperMotion(motion=GripperState.OPEN, gripper=free_arm),
+                _open_gripper_motion(free_arm_end_effector),
                 ParkArmsAction(holding_arm),
                 MoveToolCenterPointMotion(
                     holding_pose,
@@ -999,13 +1047,13 @@ class CableRegraspAction(ActionDescription):
                     movement_type=MovementType.CARTESIAN,
                     position_threshold=0.001,
                 ),
-                DAiSyFlexGripMotion(
-                    motion=GripperState.FLEXCLOSE,
-                    gripper=free_arm,
+                _flex_gripper_motion(
+                    free_arm_end_effector,
+                    GripperState.FLEXCLOSE,
                     grip_position=0,
                     grip_force=20,
                 ),
-                AttachNode(
+                ReAttachNode(
                     body=self.cable_annotation.root,
                     new_parent=free_arm_end_effector.tool_frame,
                     parent_T_connection_expression=_attachment_transform(
@@ -1044,7 +1092,7 @@ class CableRegraspAction(ActionDescription):
                     holding_arm,
                     movement_type=MovementType.CARTESIAN,
                 ),
-                MoveGripperMotion(motion=GripperState.OPEN, gripper=holding_arm),
+                _open_gripper_motion(holding_arm_end_effector),
             ],
         )
 
@@ -1191,6 +1239,10 @@ class CableRehangAction(ActionDescription):
         free_arm = Arms.RIGHT if holding_arm == Arms.LEFT else Arms.LEFT
         print(f"Holding with {holding_arm.name}, Free arm {free_arm.name}")
 
+        holding_arm_end_effector = ViewManager.get_end_effector_view(
+            holding_arm, self.robot
+        )
+
         hang_poses = self._calculate_hang_pose(holding_arm)
 
         front_world, side_world, up_world = _hanger_axes(
@@ -1233,7 +1285,7 @@ class CableRehangAction(ActionDescription):
                     movement_type=MovementType.STRAIGHT_TRANSLATION,
                     position_threshold=0.001,
                 ),
-                AttachNode(
+                ReAttachNode(
                     body=self.cable_annotation.root,
                     new_parent=self.hanger_body,
                     parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
@@ -1243,7 +1295,7 @@ class CableRehangAction(ActionDescription):
                         reference_frame=self.hanger_body,
                     ),
                 ),
-                MoveGripperMotion(gripper=holding_arm, motion=GripperState.OPEN),
+                _open_gripper_motion(holding_arm_end_effector),
                 MoveToolCenterPointMotion(
                     target=pre_hang_pose,
                     arm=holding_arm,

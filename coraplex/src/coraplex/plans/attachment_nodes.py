@@ -2,17 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from typing_extensions import Optional
-
-from coraplex.plans.executables import (
-    MoveBranchExecutable,
-)
-from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
-from coraplex.plans.plan_node import ExecutionBoundaryNode
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.world_entity import (
     KinematicStructureEntity,
 )
+
+from coraplex.plans.executables import (
+    MoveBranchExecutable,
+)
+from coraplex.plans.plan_node import ExecutionBoundaryNode
 
 
 @dataclass
@@ -36,15 +34,15 @@ class ReAttachNode(ExecutionBoundaryNode):
     New parent to which the body should be attached to.
     """
 
-    parent_T_connection_expression: Optional[HomogeneousTransformationMatrix] = field(
+    parent_T_connection_expression: HomogeneousTransformationMatrix | None = field(
         default=None, kw_only=True
     )
     """
     Explicit transform from ``new_parent`` to the body.
 
     When ``None`` (default), the transform is computed to preserve the body's current
-    global pose. When provided, it is used directly as the transform from
-    ``new_parent`` to the body.
+    global pose. When provided, it is used directly as the transform from ``new_parent``
+    to the body.
     """
 
     def __post_init__(self):
@@ -53,10 +51,11 @@ class ReAttachNode(ExecutionBoundaryNode):
     def notify(self):
         pass
 
-    def parse(self) -> ModelChangeExecutable:
-        return ModelChangeExecutable(
-            context=self.plan.context,
+    def parse(self) -> MoveBranchExecutable:
+        return MoveBranchExecutable(
+            context=self.context,
             body=self.body,
             new_parent=self.new_parent,
             parent_T_connection_expression=self.parent_T_connection_expression,
             execution_scope=self.execution_scope,
+        )

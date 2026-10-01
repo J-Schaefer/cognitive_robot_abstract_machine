@@ -9,7 +9,11 @@ from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.semantic_annotations.mixins import HasRootBody
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import FixedConnection
-from semantic_digital_twin.world_description.geometry import Color, Scale
+from semantic_digital_twin.world_description.geometry import (
+    Color,
+    Scale,
+    VolumetricBoundingBox,
+)
 from semantic_digital_twin.world_description.shape_collection import (
     BoundingBoxCollection,
     ShapeCollection,
@@ -177,7 +181,9 @@ class Cable(HasRootBody):
         """
         scale = Scale(cable_thickness, cable_thickness, length)
         geometry_event = scale.to_simple_event().as_composite_set()
-        bounding_boxes = BoundingBoxCollection.from_event(cable_body, geometry_event)
+        bounding_boxes = BoundingBoxCollection.from_event(
+            VolumetricBoundingBox, cable_body, geometry_event
+        )
         if cable_shape is CableShape.CYLINDER:
             return ShapeCollection(
                 [

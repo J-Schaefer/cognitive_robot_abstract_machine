@@ -4,57 +4,49 @@
 
 # General import
 import os
-import time
 from math import pi
 from time import sleep
-import numpy as np
-
-from coraplex.alternative_motion_mappings.daisy_motion_mapping import (
-    DAiSyGripMotion,
-    DAiSyFlexGripMotion,
-)
 
 # Monorepo imports
 from coraplex.datastructures.enums import (
-    ApproachDirection,
     Arms,
-    VerticalAlignment,
-    WPGGripPreset,
     ExecutionType,
 )
-from coraplex.datastructures.grasp import GraspDescription
-from coraplex.execution_environment import real_robot, simulated_robot, semi_real_robot
-from coraplex.plans.factories import sequential
+from coraplex.execution_environment import real_robot, semi_real_robot, simulated_robot
+from coraplex.plans.factories import parallel, sequential
 from coraplex.robot_plans import MoveGripperMotion, MoveJointsMotion
 from coraplex.robot_plans.actions.core.cable_actions import (
     CableGraspAction,
     CableRegraspAction,
     CableRehangAction,
 )
-from coraplex.robot_plans.actions.core.pick_up import PickUpAction
 from coraplex.robot_plans.actions.core.robot_body import (
     ParkArmsAction,
-    SetGripperAction,
 )
+from coraplex.view_manager import ViewManager
+
+# Custom imports
+from define_real_daisy import setup_real_daisy
+from define_sim_daisy import setup_sim_daisy
 from semantic_digital_twin.adapters.mesh import STLParser
-from semantic_digital_twin.collision_checking.collision_matrix import CollisionRule
 from semantic_digital_twin.collision_checking.collision_rules import (
     AllowCollisionForBodies,
 )
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
-from semantic_digital_twin.exceptions import WorldEntityNotFoundError
-from semantic_digital_twin.orm.ormatic_interface import (
-    AllowCollisionForAdjacentPairsDAO,
+from semantic_digital_twin.datastructures.robots.gripper_configurations import (
+    WPGGripperConfiguration,
+    WPGGripPreset,
 )
+from semantic_digital_twin.datastructures.robots.gripper_specification import (
+    WPGFlexSpecification,
+    WPGPresetSpecification,
+)
+from semantic_digital_twin.exceptions import WorldEntityNotFoundError
 from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.semantic_annotations.cable import Cable
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import FixedConnection
-
-# Custom imports
-from define_real_daisy import setup_real_daisy
-from define_sim_daisy import setup_sim_daisy
 
 verbose = True
 collision_avoidance = False
@@ -214,25 +206,69 @@ daisy_safe_right_arm_positions = [
 ]
 
 
+left_gripper = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
+right_gripper = ViewManager.get_end_effector_view(Arms.RIGHT, context.robot)
+
+
+def _both_grippers(state_type: GripperState) -> MoveGripperMotion:
+    """
+    Open or close both WPG grippers simultaneously.
+    """
+    return parallel(
+        [
+            MoveGripperMotion(
+                specification=left_gripper.default_specification(state_type)
+            ),
+            MoveGripperMotion(
+                specification=right_gripper.default_specification(state_type)
+            ),
+        ]
+    )
+
+
 plan_home = sequential(
     [
-        MoveGripperMotion(motion=GripperState.OPEN, gripper=Arms.BOTH),
-        MoveGripperMotion(motion=GripperState.CLOSE, gripper=Arms.BOTH),
-        DAiSyGripMotion(motion=GripperState.OPEN, gripper=Arms.BOTH),
+        _both_grippers(GripperState.OPEN),
+        _both_grippers(GripperState.CLOSE),
+        parallel(
+            [
+                MoveGripperMotion(
+                    specification=WPGPresetSpecification.from_state_type(
+                        left_gripper,
+                        GripperState.OPEN,
+                        WPGGripperConfiguration(grip_preset=WPGGripPreset.PRESET_0),
+                    )
+                ),
+                MoveGripperMotion(
+                    specification=WPGPresetSpecification.from_state_type(
+                        right_gripper,
+                        GripperState.OPEN,
+                        WPGGripperConfiguration(grip_preset=WPGGripPreset.PRESET_0),
+                    )
+                ),
+            ]
+        ),
         ParkArmsAction(arm=Arms.RIGHT),
         MoveJointsMotion(  # TODO Move this motion to the CableGraspAction and add generic version depending on the arm
             names=daisy_left_arm_names, positions=daisy_safe_left_arm_positions
         ),
-        DAiSyFlexGripMotion(
-            motion=GripperState.FLEXCLOSE,
-            gripper=Arms.BOTH,
-            grip_position=70,
-            grip_speed=300,
-        ),
-        DAiSyGripMotion(
-            motion=GripperState.OPEN,
-            gripper=Arms.BOTH,
-            grip_preset=WPGGripPreset.PRESET_0,
+        parallel(
+            [
+                MoveGripperMotion(
+                    specification=WPGFlexSpecification.from_state_type(
+                        left_gripper,
+                        GripperState.FLEXCLOSE,
+                        WPGGripperConfiguration(grip_position=70, grip_speed=300),
+                    )
+                ),
+                MoveGripperMotion(
+                    specification=WPGFlexSpecification.from_state_type(
+                        right_gripper,
+                        GripperState.FLEXCLOSE,
+                        WPGGripperConfiguration(grip_position=70, grip_speed=300),
+                    )
+                ),
+            ]
         ),
     ],
     context,
