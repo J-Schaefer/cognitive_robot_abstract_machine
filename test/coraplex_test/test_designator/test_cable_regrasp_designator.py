@@ -1,23 +1,18 @@
 from __future__ import annotations
 
-import pytest
-
 from coraplex.datastructures.enums import Arms
 from coraplex.execution_environment import simulated_robot
 from coraplex.plans.factories import sequential
 from coraplex.robot_plans.actions.core.cable_actions import (
     CableGraspAction,
     CableRegraspAction,
+    _determine_holding_arm,
 )
 from coraplex.robot_plans.actions.core.robot_body import ParkArmsAction
 from coraplex.view_manager import ViewManager
+from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
 from semantic_digital_twin.semantic_annotations.cable import Cable
-
-from .test_cable_grasp_designator import (
-    cable_hanger_world,
-    mutable_cable_hanger_world,
-)
 
 
 def test_regrasp_identifies_holding_arm(mutable_cable_hanger_world):
@@ -29,8 +24,9 @@ def test_regrasp_identifies_holding_arm(mutable_cable_hanger_world):
 
     grasp_action = CableGraspAction(
         cable_annotation=cable_annotation,
+        hanger_body=world.get_body_by_name(PrefixedName("hanger")),
         grasp_offset=0.1,
-        approach_offset=0.1,
+        front_offset=0.1,
     )
     plan = sequential(
         [ParkArmsAction(arm=Arms.BOTH), grasp_action],
@@ -42,6 +38,7 @@ def test_regrasp_identifies_holding_arm(mutable_cable_hanger_world):
 
     regrasp_action = CableRegraspAction(
         cable_annotation=cable_annotation,
+        hanger_body=world.get_body_by_name(PrefixedName("hanger")),
     )
     regrasp_plan = sequential(
         [regrasp_action],
@@ -51,7 +48,7 @@ def test_regrasp_identifies_holding_arm(mutable_cable_hanger_world):
     with simulated_robot:
         regrasp_plan.perform()
 
-    holding_arm = regrasp_action._determine_holding_arm()
+    holding_arm = _determine_holding_arm(cable_annotation.root, view)
     free_arm = Arms.RIGHT if holding_arm == Arms.LEFT else Arms.LEFT
 
     assert holding_arm != free_arm
@@ -74,11 +71,13 @@ def test_regrasp_cable_held_by_both_arms(mutable_cable_hanger_world):
             ParkArmsAction(arm=Arms.BOTH),
             CableGraspAction(
                 cable_annotation=cable_annotation,
+                hanger_body=world.get_body_by_name(PrefixedName("hanger")),
                 grasp_offset=0.1,
-                approach_offset=0.1,
+                front_offset=0.1,
             ),
             CableRegraspAction(
                 cable_annotation=cable_annotation,
+                hanger_body=world.get_body_by_name(PrefixedName("hanger")),
             ),
         ],
         context=context,
