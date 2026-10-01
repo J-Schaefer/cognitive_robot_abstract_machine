@@ -60,8 +60,6 @@ class WPGGripperEndpoint:
 
 
 # %% DAiSy griplink motions
-
-
 @dataclass
 class DAiSyGripperMotion(MoveGripperMotion[TSpecification], Generic[TSpecification]):
     """
@@ -131,12 +129,9 @@ class DAiSyGripperMotion(MoveGripperMotion[TSpecification], Generic[TSpecificati
 
         :return: The task configured from this motion's specification and endpoint.
         """
-        ...
 
 
 # %% DAiSy grip motion
-
-
 @dataclass
 class DAiSyGripMotion(
     AlternativeMotion[DAiSy], DAiSyGripperMotion[WPGPresetSpecification]
@@ -176,8 +171,6 @@ class DAiSyGripMotion(
 
 
 # %% DAiSy flex grip motion
-
-
 @dataclass
 class DAiSyFlexGripMotion(
     AlternativeMotion[DAiSy], DAiSyGripperMotion[WPGFlexSpecification]

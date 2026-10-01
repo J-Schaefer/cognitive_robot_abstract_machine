@@ -162,7 +162,7 @@ class DAiSyRightGripperRightFinger(Finger):
 @dataclass(eq=False)
 class WPGGripper(EndEffector, ABC):
     """
-    An end effector driven by a WEISS WPG gripper controller.
+    An `WEISS WPG gripper <https://weiss-robotics.com/servo-electric/wpg-series/>`_ driven by the Griplink interface.
 
     Builds WPG-specific specifications so generic actions and demos produce robot-
     appropriate specifications without naming the robot.
