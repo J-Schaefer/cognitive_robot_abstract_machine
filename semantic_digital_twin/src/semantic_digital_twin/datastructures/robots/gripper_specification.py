@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from abc import ABC
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generic, Optional
 
-from typing_extensions import Optional, Self
+from typing_extensions import Self, TypeVar
 
 from krrood.patterns.subclass_safe_generic import SubClassSafeGeneric
 from semantic_digital_twin.datastructures.definitions import GripperState
@@ -12,18 +12,24 @@ from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.exceptions import ConnectionsOutsideEndEffector
 from semantic_digital_twin.datastructures.robots.gripper_configurations import (
-    WPGGripperConfiguration,
+    GriplinkGripperConfiguration,
 )
 
 if TYPE_CHECKING:
     from semantic_digital_twin.robots.robot_parts import EndEffector
 
 
+TGripperSpecification = TypeVar("TGripperSpecification", bound="GripperSpecification")
+"""
+The specification type a motion or mapping is bound to; concrete consumers bind it to
+one specification subclass.
+"""
+
 # %% Base specification
 
 
 @dataclass(eq=False)
-class GripperSpecification(SubClassSafeGeneric, ABC):
+class GripperSpecification(Generic[TGripperSpecification], SubClassSafeGeneric, ABC):
     """
     A configuration a gripper can be commanded into.
 
@@ -32,7 +38,7 @@ class GripperSpecification(SubClassSafeGeneric, ABC):
     resolving the end effector and looking up the joint state independently.
     """
 
-    end_effector: "EndEffector"
+    end_effector: EndEffector
     """
     The end effector this specification configures.
     """
@@ -48,6 +54,21 @@ class GripperSpecification(SubClassSafeGeneric, ABC):
 
     ``None`` leaves the speed unconstrained.
     """
+
+    @classmethod
+    def from_state_type(
+        cls, end_effector: EndEffector, state_type: GripperState
+    ) -> Self:
+        """
+        :param end_effector: The end effector whose declared state is used.
+        :param state_type: The state type to build the specification for.
+        :return: The specification for the declared state of the given type.
+        :raises NoJointStateWithType: If the end effector declares no such state.
+        """
+        return cls(
+            end_effector=end_effector,
+            joint_state=end_effector.get_joint_state_by_type(state_type),
+        )
 
     def __post_init__(self):
         """
@@ -85,21 +106,6 @@ class GripperStateSpecification(GripperSpecification):
     """
 
     @classmethod
-    def from_state_type(
-        cls, end_effector: EndEffector, state_type: GripperState
-    ) -> Self:
-        """
-        :param end_effector: The end effector whose declared state is used.
-        :param state_type: The state type to build the specification for.
-        :return: The specification for the declared state of the given type.
-        :raises NoJointStateWithType: If the end effector declares no such state.
-        """
-        return cls(
-            end_effector=end_effector,
-            joint_state=end_effector.get_joint_state_by_type(state_type),
-        )
-
-    @classmethod
     def opened(cls, end_effector: EndEffector) -> Self:
         """
         :param end_effector: The end effector to build the specification for.
@@ -116,22 +122,22 @@ class GripperStateSpecification(GripperSpecification):
         return cls.from_state_type(end_effector, GripperState.CLOSE)
 
 
-# %% WPG specifications
+# %% Griplink specifications
 
 
 @dataclass(eq=False)
-class WPGPresetSpecification(GripperSpecification):
+class GriplinkPresetSpecification(GripperSpecification):
     """
-    A WPG gripper motion driven by a stored grip preset, used for ``Grip``/``Release``
-    actions.
+    A griplink gripper motion driven by a stored grip preset, used for ``Grip``/
+    ``Release`` actions.
     """
 
-    configuration: WPGGripperConfiguration = field(
-        default_factory=WPGGripperConfiguration
+    configuration: GriplinkGripperConfiguration = field(
+        default_factory=GriplinkGripperConfiguration
     )
     """
     Hardware parameters forwarded to the griplink action server; the alternative reads
-    :attr:`~WPGGripperConfiguration.grip_preset`.
+    :attr:`~GriplinkGripperConfiguration.grip_preset`.
     """
 
     @classmethod
@@ -139,10 +145,10 @@ class WPGPresetSpecification(GripperSpecification):
         cls,
         end_effector: EndEffector,
         state_type: GripperState,
-        configuration: Optional[WPGGripperConfiguration] = None,
+        configuration: Optional[GriplinkGripperConfiguration] = None,
     ) -> Self:
         """
-        :param end_effector: The WPG gripper to build the preset specification for.
+        :param end_effector: The griplink gripper to build the preset specification for.
         :param state_type: The declared open/close state the preset executes.
         :param configuration: Hardware parameters forwarded to the griplink action
             server; ``None`` uses the default configuration.
@@ -151,23 +157,23 @@ class WPGPresetSpecification(GripperSpecification):
         return cls(
             end_effector=end_effector,
             joint_state=end_effector.get_joint_state_by_type(state_type),
-            configuration=configuration or WPGGripperConfiguration(),
+            configuration=configuration or GriplinkGripperConfiguration(),
         )
 
 
 @dataclass(eq=False)
-class WPGFlexSpecification(GripperSpecification):
+class GriplinkFlexSpecification(GripperSpecification):
     """
-    A WPG gripper motion driven by a commanded opening width, used for
+    A griplink gripper motion driven by a commanded opening width, used for
     ``Flexgrip``/``Flexrelease`` actions.
     """
 
-    configuration: WPGGripperConfiguration = field(
-        default_factory=WPGGripperConfiguration
+    configuration: GriplinkGripperConfiguration = field(
+        default_factory=GriplinkGripperConfiguration
     )
     """
     Hardware parameters forwarded to the griplink action server; the alternative reads
-    :attr:`~WPGGripperConfiguration.grip_position`, :attr:`~grip_force`,
+    :attr:`~GriplinkGripperConfiguration.grip_position`, :attr:`~grip_force`,
     :attr:`~grip_speed` and :attr:`~grip_acceleration`.
     """
 
@@ -178,10 +184,10 @@ class WPGFlexSpecification(GripperSpecification):
         state_type: GripperState,
     ) -> JointState:
         """
-        Build the joint state a WPG flex motion commands, from the opening width the
-        controller accepts.
+        Build the joint state a griplink flex motion commands, from the opening width
+        the controller accepts.
 
-        :param end_effector: The WPG gripper whose connections are commanded.
+        :param end_effector: The griplink gripper whose connections are commanded.
         :param grip_position: Opening width in millimetres [-5..120]; ``None`` defaults
             to fully open (120).
         :param state_type: The flex state type the joint state is labelled with.
@@ -208,10 +214,10 @@ class WPGFlexSpecification(GripperSpecification):
         cls,
         end_effector: EndEffector,
         state_type: GripperState,
-        configuration: Optional[WPGGripperConfiguration] = None,
+        configuration: Optional[GriplinkGripperConfiguration] = None,
     ) -> Self:
         """
-        :param end_effector: The WPG gripper to build the flex specification for.
+        :param end_effector: The griplink gripper to build the flex specification for.
         :param state_type: The flex state type the specification is labelled with.
         :param configuration: Hardware parameters forwarded to the griplink action
             server; its opening width drives the joint state; ``None`` uses the
@@ -219,7 +225,7 @@ class WPGFlexSpecification(GripperSpecification):
         :return: The flex specification for the given flex state type, with the joint
             state interpolated from the configuration's grip position.
         """
-        configuration = configuration or WPGGripperConfiguration()
+        configuration = configuration or GriplinkGripperConfiguration()
         return cls(
             end_effector=end_effector,
             joint_state=cls._flex_joint_state(

@@ -45,6 +45,8 @@ from semantic_digital_twin.exceptions import (
     UselessConceptError,
     DuplicateRobotAssignmentsError,
     MissingDefaultCameraError,
+    CopiedWorldDiffersFromOriginalError,
+    RobotPartBelongsToAnotherRobotError,
 )
 from semantic_digital_twin.robots.robot_part_mixins import (
     HasEndEffector,
@@ -947,28 +949,38 @@ class AbstractRobot(Agent, HasRobotParts, ABC):
         Validates the robot semantic annotation.
             The validation process includes:
             1. Deepcopy the resulting world to ensure that all parts of the robot are initialized in the correct order
-            2. Assert that the copied world is the same as the original world
-            3. Assert that a robot that declares cameras marks one as its default camera.
+            2. Check that the copied world is the same as the original world
+            3. Check that a robot that declares cameras marks one as its default camera.
             4. Call validate method on all robot parts inheriting froma RobotPartMixin
 
         :return: True if the robot semantic annotation is valid, False otherwise.
+        :raises CopiedWorldDiffersFromOriginalError: If deepcopying the world does not
+            reproduce the original world's entities.
+        :raises MissingDefaultCameraError: If the robot declares cameras but marks none
+            of them as its default camera.
+        :raises RobotPartBelongsToAnotherRobotError: If a robot part refers to a robot
+            other than this one.
         """
         self_world_copy = deepcopy(self._world)
 
-        assert set(self_world_copy._world_entity_hash_table.keys()) == set(
-            self._world._world_entity_hash_table.keys()
-        )
+        differing_entity_hashes = set(
+            self_world_copy._world_entity_hash_table.keys()
+        ) ^ set(self._world._world_entity_hash_table.keys())
+        if differing_entity_hashes:
+            raise CopiedWorldDiffersFromOriginalError(
+                world=self._world,
+                differing_entity_hashes=sorted(differing_entity_hashes),
+            )
 
         declared_cameras = [
             part for part in self._robot_parts if isinstance(part, Camera)
         ]
-        if declared_cameras:
-            assert (
-                self.get_default_camera() is not None
-            ), "A robot with cameras must mark one as its default camera."
+        if declared_cameras and self.get_default_camera() is None:
+            raise MissingDefaultCameraError(robot=type(self))
 
         for part in self._robot_parts:
-            assert part._robot == self, f"Part {part} refers to wrong robot"
+            if part._robot != self:
+                raise RobotPartBelongsToAnotherRobotError(robot_part=part, robot=self)
 
             if isinstance(part, RobotPartMixin):
                 part.validate()

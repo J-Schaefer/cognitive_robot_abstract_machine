@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Generic, Optional, List, TypeVar
+from typing import Generic, Optional, List
 
 from giskardpy.motion_statechart.data_types import DefaultWeights
 from giskardpy.motion_statechart.goals.templates import Parallel, Sequence
@@ -23,7 +23,7 @@ from giskardpy.motion_statechart.monitors.monitors import LocalMinimumReached
 from krrood.patterns.subclass_safe_generic import SubClassSafeGeneric
 from semantic_digital_twin.datastructures.alignment import AlignmentPair
 from semantic_digital_twin.datastructures.robots.gripper_specification import (
-    GripperSpecification,
+    TGripperSpecification,
 )
 from semantic_digital_twin.robots.justin import Justin
 from semantic_digital_twin.robots.robot_part_mixins import HasMobileBase
@@ -46,8 +46,6 @@ from coraplex.datastructures.enums import (
 from coraplex.datastructures.grasp import GraspDescription
 from coraplex.view_manager import ViewManager
 from coraplex.utils import translate_pose_along_local_axis
-
-TGripperSpecification = TypeVar("TGripperSpecification", bound=GripperSpecification)
 
 
 @dataclass

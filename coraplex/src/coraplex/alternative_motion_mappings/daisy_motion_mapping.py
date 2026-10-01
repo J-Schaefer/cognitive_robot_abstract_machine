@@ -2,30 +2,32 @@ from __future__ import annotations
 
 import logging
 from abc import abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing_extensions import ClassVar, Generic, TypeVar
+from typing import ClassVar
 
 from giskardpy.motion_statechart.goals.templates import Parallel
 from giskardpy.motion_statechart.graph_node import MotionStatechartNode
-from giskardpy.motion_statechart.ros2_nodes.wpg_gripper.wpg_action_server_tasks import (
-    WPGFlexActionServerTask,
-    WPGGripActionServerTask,
+from giskardpy.motion_statechart.ros2_nodes.griplink import (
+    GriplinkFlexActionServerTask,
+    GriplinkPresetActionServerTask,
 )
 from griplink_interfaces.action import Flexgrip, Flexrelease, Grip, Release
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.robots.gripper_configurations import (
-    WPGGripperConfiguration,
+    GriplinkGripperConfiguration,
 )
 from semantic_digital_twin.datastructures.robots.gripper_specification import (
-    GripperSpecification,
-    WPGFlexSpecification,
-    WPGPresetSpecification,
+    GriplinkFlexSpecification,
+    GriplinkPresetSpecification,
+    TGripperSpecification,
 )
 from semantic_digital_twin.robots.daisy import (
     DAiSy,
     DAiSyLeftGripper,
     DAiSyRightGripper,
 )
+from semantic_digital_twin.robots.robot_parts import EndEffector
 
 from coraplex.datastructures.enums import ExecutionType
 from coraplex.exceptions import NoGriplinkEndpoint
@@ -35,16 +37,14 @@ from coraplex.robot_plans.motions.base import AlternativeMotion
 
 logger = logging.getLogger(__name__)
 
-TSpecification = TypeVar("TSpecification", bound=GripperSpecification)
 
-
-# %% WPG endpoint resolution
+# %% griplink endpoint resolution
 
 
 @dataclass(frozen=True)
-class WPGGripperEndpoint:
+class GriplinkEndpoint:
     """
-    A griplink action server endpoint a single WPG gripper is reached on.
+    A griplink action server endpoint a single gripper is reached on.
     """
 
     action_topic: str
@@ -61,25 +61,34 @@ class WPGGripperEndpoint:
 
 # %% DAiSy griplink motions
 @dataclass
-class DAiSyGripperMotion(MoveGripperMotion[TSpecification], Generic[TSpecification]):
+class DAiSyGripperMotion(MoveGripperMotion[TGripperSpecification]):
     """
-    Moves a WPG gripper of real DAiSy on its griplink action server, or commands a joint
-    position goal for semi-real and simulated execution.
+    Moves a griplink gripper of real DAiSy on its griplink action server, or commands a
+    joint position goal for semi-real and simulated execution.
 
     Concrete motions are alternative motions for DAiSy and declare the griplink
     endpoints of the states they command.
     """
 
-    execution_type: ClassVar[tuple[ExecutionType, ...]] = (
+    execution_type: tuple[ExecutionType, ...] = (
         ExecutionType.REAL,
         ExecutionType.SEMI_REAL,
         ExecutionType.SIMULATED,
     )
-
-    _griplink_endpoints: ClassVar[dict[tuple[type, GripperState], WPGGripperEndpoint]]
     """
-    Griplink endpoints the griplink server of each DAiSy WPG gripper and state listens
-    on; concrete motions declare the table for the states they command.
+    Execution types this alternative applies to.
+
+    Real execution drives the griplink action server; semi-real and simulated execution
+    fall back to the joint position goal the specification describes.
+    """
+
+    _griplink_endpoints: ClassVar[
+        Mapping[type[EndEffector], Mapping[GripperState, GriplinkEndpoint]]
+    ]
+    """
+    Griplink endpoints the griplink server of each DAiSy gripper listens on, by the
+    state the endpoint commands; concrete motions declare the table for the states they
+    command.
     """
 
     def perform(self):
@@ -105,7 +114,7 @@ class DAiSyGripperMotion(MoveGripperMotion[TSpecification], Generic[TSpecificati
         return Parallel([self._action_server_task])
 
     @property
-    def _griplink_endpoint(self) -> WPGGripperEndpoint:
+    def _griplink_endpoint(self) -> GriplinkEndpoint:
         """
         :return: The endpoint the griplink server for this motion's gripper and state
             listens on.
@@ -114,7 +123,7 @@ class DAiSyGripperMotion(MoveGripperMotion[TSpecification], Generic[TSpecificati
         """
         state_type = self.specification.joint_state.state_type
         gripper_type = type(self.specification.end_effector)
-        endpoint = self._griplink_endpoints.get((gripper_type, state_type))
+        endpoint = self._griplink_endpoints.get(gripper_type, {}).get(state_type)
         if endpoint is None:
             raise NoGriplinkEndpoint(
                 end_effector=self.specification.end_effector, state_type=state_type
@@ -134,36 +143,40 @@ class DAiSyGripperMotion(MoveGripperMotion[TSpecification], Generic[TSpecificati
 # %% DAiSy grip motion
 @dataclass
 class DAiSyGripMotion(
-    AlternativeMotion[DAiSy], DAiSyGripperMotion[WPGPresetSpecification]
+    AlternativeMotion[DAiSy], DAiSyGripperMotion[GriplinkPresetSpecification]
 ):
     """
-    Uses the griplink action server to grip or release with the WPG grippers of real
-    DAiSy, or a joint position goal for semi-real execution.
+    Uses the griplink action server to grip or release with the griplink grippers of
+    real DAiSy, or a joint position goal for semi-real execution.
     """
 
     _griplink_endpoints = {
-        (DAiSyLeftGripper, GripperState.OPEN): WPGGripperEndpoint(
-            action_topic="/left_gripper/release", message_type=Release
-        ),
-        (DAiSyLeftGripper, GripperState.CLOSE): WPGGripperEndpoint(
-            action_topic="/left_gripper/grip", message_type=Grip
-        ),
-        (DAiSyRightGripper, GripperState.OPEN): WPGGripperEndpoint(
-            action_topic="/right_gripper/release", message_type=Release
-        ),
-        (DAiSyRightGripper, GripperState.CLOSE): WPGGripperEndpoint(
-            action_topic="/right_gripper/grip", message_type=Grip
-        ),
+        DAiSyLeftGripper: {
+            GripperState.OPEN: GriplinkEndpoint(
+                action_topic="/left_gripper/release", message_type=Release
+            ),
+            GripperState.CLOSE: GriplinkEndpoint(
+                action_topic="/left_gripper/grip", message_type=Grip
+            ),
+        },
+        DAiSyRightGripper: {
+            GripperState.OPEN: GriplinkEndpoint(
+                action_topic="/right_gripper/release", message_type=Release
+            ),
+            GripperState.CLOSE: GriplinkEndpoint(
+                action_topic="/right_gripper/grip", message_type=Grip
+            ),
+        },
     }
 
     @property
-    def _action_server_task(self) -> WPGGripActionServerTask:
+    def _action_server_task(self) -> GriplinkPresetActionServerTask:
         """
         :return: The griplink task executing the preset of this motion's specification.
         """
-        configuration: WPGGripperConfiguration = self.specification.configuration
+        configuration: GriplinkGripperConfiguration = self.specification.configuration
         endpoint = self._griplink_endpoint
-        return WPGGripActionServerTask(
+        return GriplinkPresetActionServerTask(
             action_topic=endpoint.action_topic,
             message_type=endpoint.message_type,
             grip_preset=configuration.grip_preset,
@@ -173,37 +186,41 @@ class DAiSyGripMotion(
 # %% DAiSy flex grip motion
 @dataclass
 class DAiSyFlexGripMotion(
-    AlternativeMotion[DAiSy], DAiSyGripperMotion[WPGFlexSpecification]
+    AlternativeMotion[DAiSy], DAiSyGripperMotion[GriplinkFlexSpecification]
 ):
     """
-    Uses flex grip and release motions for the WPG grippers of real DAiSy, or a joint
-    position goal for semi-real execution.
+    Uses flex grip and release motions for the griplink grippers of real DAiSy, or a
+    joint position goal for semi-real execution.
     """
 
     _griplink_endpoints = {
-        (DAiSyLeftGripper, GripperState.FLEXCLOSE): WPGGripperEndpoint(
-            action_topic="/left_gripper/flexgrip", message_type=Flexgrip
-        ),
-        (DAiSyLeftGripper, GripperState.FLEXOPEN): WPGGripperEndpoint(
-            action_topic="/left_gripper/flexrelease", message_type=Flexrelease
-        ),
-        (DAiSyRightGripper, GripperState.FLEXCLOSE): WPGGripperEndpoint(
-            action_topic="/right_gripper/flexgrip", message_type=Flexgrip
-        ),
-        (DAiSyRightGripper, GripperState.FLEXOPEN): WPGGripperEndpoint(
-            action_topic="/right_gripper/flexrelease", message_type=Flexrelease
-        ),
+        DAiSyLeftGripper: {
+            GripperState.FLEXCLOSE: GriplinkEndpoint(
+                action_topic="/left_gripper/flexgrip", message_type=Flexgrip
+            ),
+            GripperState.FLEXOPEN: GriplinkEndpoint(
+                action_topic="/left_gripper/flexrelease", message_type=Flexrelease
+            ),
+        },
+        DAiSyRightGripper: {
+            GripperState.FLEXCLOSE: GriplinkEndpoint(
+                action_topic="/right_gripper/flexgrip", message_type=Flexgrip
+            ),
+            GripperState.FLEXOPEN: GriplinkEndpoint(
+                action_topic="/right_gripper/flexrelease", message_type=Flexrelease
+            ),
+        },
     }
 
     @property
-    def _action_server_task(self) -> WPGFlexActionServerTask:
+    def _action_server_task(self) -> GriplinkFlexActionServerTask:
         """
         :return: The griplink task executing the commanded opening width of this
             motion's specification.
         """
-        configuration: WPGGripperConfiguration = self.specification.configuration
+        configuration: GriplinkGripperConfiguration = self.specification.configuration
         endpoint = self._griplink_endpoint
-        return WPGFlexActionServerTask(
+        return GriplinkFlexActionServerTask(
             action_topic=endpoint.action_topic,
             message_type=endpoint.message_type,
             grip_position=configuration.grip_position,

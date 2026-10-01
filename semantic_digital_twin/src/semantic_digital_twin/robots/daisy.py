@@ -22,8 +22,8 @@ from semantic_digital_twin.datastructures.definitions import (
 from semantic_digital_twin.datastructures.field_of_view import FieldOfView
 from semantic_digital_twin.datastructures.robots.gripper_specification import (
     GripperSpecification,
-    WPGFlexSpecification,
-    WPGPresetSpecification,
+    GriplinkFlexSpecification,
+    GriplinkPresetSpecification,
 )
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
@@ -160,11 +160,11 @@ class DAiSyRightGripperRightFinger(Finger):
 
 
 @dataclass(eq=False)
-class WPGGripper(EndEffector, ABC):
+class GriplinkGripper(EndEffector, ABC):
     """
     An `WEISS WPG gripper <https://weiss-robotics.com/servo-electric/wpg-series/>`_ driven by the Griplink interface.
 
-    Builds WPG-specific specifications so generic actions and demos produce robot-
+    Builds griplink-specific specifications so generic actions and demos produce robot-
     appropriate specifications without naming the robot.
     """
 
@@ -174,24 +174,26 @@ class WPGGripper(EndEffector, ABC):
         finger_velocity: Optional[float] = None,
     ) -> GripperSpecification:
         """
-        Build the WPG specification for a state this gripper declares.
+        Build the griplink specification for a state this gripper declares.
 
         Preset states (``OPEN``/``CLOSE``) build a
-        :class:`~semantic_digital_twin.datastructures.robots.gripper_specification.WPGPresetSpecification`,
+        :class:`~semantic_digital_twin.datastructures.robots.gripper_specification.GriplinkPresetSpecification`,
         flex states (``FLEXOPEN``/``FLEXCLOSE``) a
-        :class:`~semantic_digital_twin.datastructures.robots.gripper_specification.WPGFlexSpecification`.
+        :class:`~semantic_digital_twin.datastructures.robots.gripper_specification.GriplinkFlexSpecification`.
 
         :param state_type: The state type to build the specification for.
         :param finger_velocity: Optional maximum finger joint velocity (in m/s) to
             enforce during the motion.
-        :return: The WPG specification for that state type, or the specification the
-            base implementation builds for state types a WPG controller does not
-            command.
+        :return: The griplink specification for that state type, or the specification
+            the base implementation builds for state types a griplink controller does
+            not command.
         """
         if state_type in (GripperState.OPEN, GripperState.CLOSE):
-            specification = WPGPresetSpecification.from_state_type(self, state_type)
+            specification = GriplinkPresetSpecification.from_state_type(
+                self, state_type
+            )
         elif state_type in (GripperState.FLEXOPEN, GripperState.FLEXCLOSE):
-            specification = WPGFlexSpecification.from_state_type(self, state_type)
+            specification = GriplinkFlexSpecification.from_state_type(self, state_type)
         else:
             return super().default_specification(state_type, finger_velocity)
         if finger_velocity is not None:
@@ -201,7 +203,8 @@ class WPGGripper(EndEffector, ABC):
 
 @dataclass(eq=False)
 class DAiSyLeftGripper(
-    WPGGripper, HasTwoFingers[DAiSyLeftGripperLeftFinger, DAiSyLeftGripperRightFinger]
+    GriplinkGripper,
+    HasTwoFingers[DAiSyLeftGripperLeftFinger, DAiSyLeftGripperRightFinger],
 ):
     def setup_hardware_interfaces(self):
         self._setup_hardware_interfaces_for_active_connections()
@@ -248,7 +251,8 @@ class DAiSyLeftGripper(
 
 @dataclass(eq=False)
 class DAiSyRightGripper(
-    WPGGripper, HasTwoFingers[DAiSyRightGripperLeftFinger, DAiSyRightGripperRightFinger]
+    GriplinkGripper,
+    HasTwoFingers[DAiSyRightGripperLeftFinger, DAiSyRightGripperRightFinger],
 ):
     def setup_hardware_interfaces(self):
         self._setup_hardware_interfaces_for_active_connections()

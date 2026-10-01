@@ -477,6 +477,99 @@ class WorldEntityWithIDBelongsToAnotherWorld(WorldValidationError):
 
 
 @dataclass
+class WorldHasNoUniqueRootError(WorldValidationError):
+    """
+    Raised when a non-empty world has none or more than one root.
+    """
+
+    possible_roots: List[KinematicStructureEntity]
+    """
+    The kinematic structure entities without incoming connections that were found.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"A world must have exactly one root, but found {len(self.possible_roots)}: "
+            f"{self.possible_roots}."
+        )
+
+    def suggest_correction(self) -> str:
+        return ""
+
+
+@dataclass
+class CopiedWorldDiffersFromOriginalError(WorldValidationError):
+    """
+    Raised when deepcopying a world does not reproduce the original world's entities.
+    """
+
+    differing_entity_hashes: List[int]
+    """
+    Hashes of the entities that are only in the original world or only in the copy.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"Deepcopying the world changed its entity set; "
+            f"{len(self.differing_entity_hashes)} entities differ between the original "
+            f"and the copy (hashes: {self.differing_entity_hashes})."
+        )
+
+    def suggest_correction(self) -> str:
+        return ""
+
+
+@dataclass
+class NoControlledConnectionInChainError(UsageError):
+    """
+    Raised when the kinematic chain between two entities contains no controlled
+    connection.
+    """
+
+    root: KinematicStructureEntity
+    """
+    The start of the chain.
+    """
+
+    tip: KinematicStructureEntity
+    """
+    The end of the chain.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"The chain between {self.root} and {self.tip} contains no controlled "
+            f"connection."
+        )
+
+    def suggest_correction(self) -> str:
+        return ""
+
+
+@dataclass
+class RobotPartBelongsToAnotherRobotError(UsageError):
+    """
+    Raised when a robot part refers to a robot other than the one that holds it.
+    """
+
+    robot_part: AbstractRobotPart
+    """
+    The robot part whose robot reference was checked.
+    """
+
+    robot: AbstractRobot
+    """
+    The robot that holds the part but is not referred to by it.
+    """
+
+    def error_message(self) -> str:
+        return f"Robot part {self.robot_part} does not refer to robot {self.robot}."
+
+    def suggest_correction(self) -> str:
+        return ""
+
+
+@dataclass
 class InvalidConnectionLimits(UsageError):
     """
     Raised when the lower limit is not less than the upper limit for a degree of
@@ -1850,7 +1943,7 @@ class ConnectionsOutsideEndEffector(UsageError):
     belong to the specification's end effector.
     """
 
-    end_effector: "EndEffector"
+    end_effector: EndEffector
     """
     The end effector the specification was built for.
     """

@@ -8,7 +8,7 @@ from typing_extensions import Optional
 from krrood.adapters.json_serializer import SubclassJSONSerializer
 
 
-class WPGGripPreset(Enum):
+class GriplinkGripPreset(Enum):
     """
     Grip preset selectable on a WEISS WPG gripper controller.
     """
@@ -24,22 +24,10 @@ class WPGGripPreset(Enum):
 
 
 @dataclass
-class GripperConfiguration(SubclassJSONSerializer):
+class GriplinkGripperConfiguration(SubclassJSONSerializer):
     """
-    Base class for a set of hardware-specific parameters a gripper needs to execute an
-    open/close motion.
-
-    Concrete subclasses bind the parameters of one gripper family; the relevant subclass
-    is attached to an :class:`~semantic_digital_twin.robots.robot_parts.EndEffector` so
-    the motion mapping for that gripper can read them.
-    """
-
-
-@dataclass
-class WPGGripperConfiguration(GripperConfiguration):
-    """
-    Parameters for the WEISS WPG 300-120 gripper, forwarded to the griplink action
-    server.
+    Hardware parameters for the WEISS WPG 300-120 gripper, forwarded to the griplink
+    action server.
 
     Only the fields relevant to the commanded motion are read: :attr:`grip_preset` for
     ``Grip``/``Release``, and :attr:`grip_position`/:attr:`grip_force`/
@@ -47,7 +35,7 @@ class WPGGripperConfiguration(GripperConfiguration):
     (:attr:`grip_force` is ignored for ``Flexrelease``, which has no force goal).
     """
 
-    grip_preset: WPGGripPreset = WPGGripPreset.PRESET_0
+    grip_preset: GriplinkGripPreset = GriplinkGripPreset.PRESET_0
     """
     Stored grip preset selected on the controller, used by ``Grip``/``Release``.
     """
@@ -58,7 +46,7 @@ class WPGGripperConfiguration(GripperConfiguration):
     ``Flexrelease``.
 
     ``None`` defers to the per-motion default
-    :class:`~giskardpy.motion_statechart.ros2_nodes.wpg_gripper.wpg_action_server_tasks.WPGFlexActionServerTask`
+    :class:`~giskardpy.motion_statechart.ros2_nodes.griplink.GriplinkFlexActionServerTask`
     picks in ``build_msg`` (0 for ``Flexgrip``, 120 for ``Flexrelease``).
     """
 
@@ -68,7 +56,7 @@ class WPGGripperConfiguration(GripperConfiguration):
     only (ignored for ``Flexrelease``).
 
     ``None`` defers to the default
-    :class:`~giskardpy.motion_statechart.ros2_nodes.wpg_gripper.wpg_action_server_tasks.WPGFlexActionServerTask`
+    :class:`~giskardpy.motion_statechart.ros2_nodes.griplink.GriplinkFlexActionServerTask`
     picks in ``build_msg`` (90).
     """
 
@@ -78,7 +66,7 @@ class WPGGripperConfiguration(GripperConfiguration):
     ``Flexgrip``/``Flexrelease``.
 
     ``None`` defers to the per-motion default
-    :class:`~giskardpy.motion_statechart.ros2_nodes.wpg_gripper.wpg_action_server_tasks.WPGFlexActionServerTask`
+    :class:`~giskardpy.motion_statechart.ros2_nodes.griplink.GriplinkFlexActionServerTask`
     picks in ``build_msg`` (150 for ``Flexgrip``, 250 for ``Flexrelease``).
     """
 
@@ -88,6 +76,6 @@ class WPGGripperConfiguration(GripperConfiguration):
     used by ``Flexgrip``/``Flexrelease``.
 
     ``None`` defers to the per-motion default
-    :class:`~giskardpy.motion_statechart.ros2_nodes.wpg_gripper.wpg_action_server_tasks.WPGFlexActionServerTask`
+    :class:`~giskardpy.motion_statechart.ros2_nodes.griplink.GriplinkFlexActionServerTask`
     picks in ``build_msg`` (600 for ``Flexgrip``, 2000 for ``Flexrelease``).
     """

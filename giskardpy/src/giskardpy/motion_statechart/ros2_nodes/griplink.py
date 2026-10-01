@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-
-# Each task class commands its own pair of griplink actions.
-from griplink_interfaces.action import Grip, Release
-from griplink_interfaces.action import Flexgrip, Flexrelease
-
+from enum import IntEnum
 from typing import Generic
+
+from griplink_interfaces.action import Flexgrip, Flexrelease, Grip, Release
 
 from giskardpy.motion_statechart.context import MotionStatechartContext
 from giskardpy.motion_statechart.data_types import ObservationStateValues
@@ -19,41 +17,60 @@ from giskardpy.motion_statechart.ros2_nodes.ros_tasks import (
     ActionServerTask,
 )
 from semantic_digital_twin.datastructures.robots.gripper_configurations import (
-    WPGGripPreset,
+    GriplinkGripPreset,
 )
 
 logger = logging.getLogger(__name__)
 
 
-# %% griplink goal defaults and status values
+class GriplinkStatus(IntEnum):
+    """
+    The status values a griplink action server reports in its result.
+    """
 
-SUCCESS_STATUS = 0
-"""
-Gripper status the griplink server reports for a successfully finished action.
-"""
+    SUCCESS = 0
+    OVERRUN = 1
+    RANGE_ERROR = 2
+    NOT_AVAILABLE = 3
+    NOT_INITIALIZED = 4
+    TIMEOUT = 5
+    INSUFFICIENT_RESOURCES = 6
+    CHECKSUM_ERROR = 7
+    ACCESS_DENIED = 8
+    INVALID_HANDLE = 9
+    INVALID_PARAMETER = 10
+    INDEX_OUT_OF_BOUNDS = 11
+    IO_ERROR = 12
+    READ_ERROR = 13
+    WRITE_ERROR = 14
+    NOT_FOUND = 15
+    NOT_OPEN = 16
+    EXISTS = 17
+    NO_COMM = 18
+    STATE_CONFLICT = 19
+    NOT_SUPPORTED = 20
+    INCONSISTENT_DATA = 21
+    CMD_SYNTAX = 22
+    CMD_UNKNOWN = 23
+    CMD_ABORTED = 24
+    CMD_FAILED = 25
+    AXIS_BLOCKED = 26
+    PENDING = 27
 
-DEFAULT_FLEXGRIP_POSITION_MM = 0
-DEFAULT_FLEXGRIP_FORCE_N = 90
-DEFAULT_FLEXGRIP_SPEED_MM_PER_S = 150
-DEFAULT_FLEXGRIP_ACCELERATION_MM_PER_S2 = 600
-DEFAULT_FLEXRELEASE_POSITION_MM = 120
-DEFAULT_FLEXRELEASE_SPEED_MM_PER_S = 250
-DEFAULT_FLEXRELEASE_ACCELERATION_MM_PER_S2 = 2000
 
-
-# %% WPG griplink action server tasks
+# %% griplink action server tasks
 
 
 @dataclass(eq=False, repr=False)
-class WPGActionServerTask(
+class GriplinkActionServerTask(
     ActionServerTask[Action, ActionGoal, ActionResult, ActionFeedback],
     Generic[Action, ActionGoal, ActionResult, ActionFeedback],
 ):
     """
-    Base class for tasks calling a WPG-300 griplink action server.
+    Base class for tasks calling a griplink action server.
 
     Observes the gripper status the server reports in its result; subclasses build the
-    goal for their pair of griplink actions.
+    goal for their griplink actions.
     """
 
     def on_tick(self, context: MotionStatechartContext) -> ObservationStateValues:
@@ -66,18 +83,18 @@ class WPGActionServerTask(
         """
         if self._result:
             gripper_status = self._result.result.status
-            logger.info(f"Gripper status: {gripper_status}")
+            logger.info(f"Gripper status: {GriplinkStatus(gripper_status)}")
             return (
                 ObservationStateValues.TRUE
-                if gripper_status == SUCCESS_STATUS
+                if gripper_status == GriplinkStatus.SUCCESS
                 else ObservationStateValues.FALSE
             )
         return ObservationStateValues.UNKNOWN
 
 
 @dataclass(eq=False, repr=False)
-class WPGGripActionServerTask(
-    WPGActionServerTask[
+class GriplinkPresetActionServerTask(
+    GriplinkActionServerTask[
         Grip | Release,
         Grip.Goal | Release.Goal,
         Grip.Result | Release.Result,
@@ -85,11 +102,11 @@ class WPGGripActionServerTask(
     ]
 ):
     """
-    Node for calling the griplink action server of a WPG gripper to execute a stored
-    grip preset (``Grip``) or open the gripper (``Release``).
+    Node for calling the griplink action server of a griplink gripper to execute a
+    stored grip preset (``Grip``) or open the gripper (``Release``).
     """
 
-    grip_preset: WPGGripPreset = WPGGripPreset.PRESET_0
+    grip_preset: GriplinkGripPreset = GriplinkGripPreset.PRESET_0
     """
     Grip preset the server executes.
     """
@@ -103,22 +120,20 @@ class WPGGripActionServerTask(
         :raises ValueError: If the task was built for neither ``Grip`` nor ``Release``.
         """
         if self.message_type is Grip:
-            self._msg = Grip.Goal(
-                port=0,
-                index=self.grip_preset.value,
-            )
+            goal_type = Grip.Goal
         elif self.message_type is Release:
-            self._msg = Release.Goal(
-                port=0,
-                index=self.grip_preset.value,
-            )
+            goal_type = Release.Goal
         else:
             raise ValueError(f"Unknown message type: {self.message_type}")
+        self._msg = goal_type(
+            port=0,
+            index=self.grip_preset.value,
+        )
 
 
 @dataclass(eq=False, repr=False)
-class WPGFlexActionServerTask(
-    WPGActionServerTask[
+class GriplinkFlexActionServerTask(
+    GriplinkActionServerTask[
         Flexgrip | Flexrelease,
         Flexgrip.Goal | Flexrelease.Goal,
         Flexgrip.Result | Flexrelease.Result,
@@ -126,7 +141,7 @@ class WPGFlexActionServerTask(
     ]
 ):
     """
-    Node for calling the griplink action server of a WPG gripper to flex grip to a
+    Node for calling the griplink action server of a griplink gripper to flex grip to a
     commanded opening width (``Flexgrip``) or flex release from it (``Flexrelease``).
     """
 
@@ -170,23 +185,11 @@ class WPGFlexActionServerTask(
             ``Flexrelease``.
         """
         if self.message_type is Flexgrip:
-            position = (
-                DEFAULT_FLEXGRIP_POSITION_MM
-                if self.grip_position is None
-                else self.grip_position
-            )
-            force = (
-                DEFAULT_FLEXGRIP_FORCE_N if self.grip_force is None else self.grip_force
-            )
-            speed = (
-                DEFAULT_FLEXGRIP_SPEED_MM_PER_S
-                if self.grip_speed is None
-                else self.grip_speed
-            )
+            position = 0 if self.grip_position is None else self.grip_position
+            force = 90 if self.grip_force is None else self.grip_force
+            speed = 150 if self.grip_speed is None else self.grip_speed
             acceleration = (
-                DEFAULT_FLEXGRIP_ACCELERATION_MM_PER_S2
-                if self.grip_acceleration is None
-                else self.grip_acceleration
+                600 if self.grip_acceleration is None else self.grip_acceleration
             )
             self._msg = Flexgrip.Goal(
                 port=0,
@@ -196,20 +199,10 @@ class WPGFlexActionServerTask(
                 acceleration=acceleration * 1000,
             )
         elif self.message_type is Flexrelease:
-            position = (
-                DEFAULT_FLEXRELEASE_POSITION_MM
-                if self.grip_position is None
-                else self.grip_position
-            )
-            speed = (
-                DEFAULT_FLEXRELEASE_SPEED_MM_PER_S
-                if self.grip_speed is None
-                else self.grip_speed
-            )
+            position = 120 if self.grip_position is None else self.grip_position
+            speed = 250 if self.grip_speed is None else self.grip_speed
             acceleration = (
-                DEFAULT_FLEXRELEASE_ACCELERATION_MM_PER_S2
-                if self.grip_acceleration is None
-                else self.grip_acceleration
+                2000 if self.grip_acceleration is None else self.grip_acceleration
             )
             self._msg = Flexrelease.Goal(
                 port=0,
