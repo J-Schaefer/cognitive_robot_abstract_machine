@@ -37,11 +37,11 @@ def setup_real_daisy(
     rospy.init_node("demo_node")
 
     # Fetch world
-    world: World = fetch_world_from_service(rospy.node)
+    world: World = fetch_world_from_service(rospy.get_node())
 
     # Synchronizer
-    world_sync = WorldSynchronizer(_world=world, node=rospy.node)
-    ModelReloadSynchronizer(_world=world, node=rospy.node)
+    world_sync = WorldSynchronizer(_world=world, node=rospy.get_node())
+    ModelReloadSynchronizer(_world=world, node=rospy.get_node())
 
     # Optional TF publisher
     # TFPublisher(world=world, node=rospy.node)
@@ -60,8 +60,8 @@ def setup_real_daisy(
     context = Context(
         world,
         robot_view,
-        ros_node=rospy.node,
+        ros_node=rospy.get_node(),
         alternative_motion_mappings=[DAiSyGripMotion],
     )
 
-    return rospy.node, world, robot_view, context
+    return rospy.get_node(), world, robot_view, context

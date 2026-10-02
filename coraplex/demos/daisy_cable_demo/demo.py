@@ -35,12 +35,12 @@ from semantic_digital_twin.collision_checking.collision_rules import (
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.datastructures.robots.gripper_configurations import (
-    WPGGripperConfiguration,
-    WPGGripPreset,
+    GriplinkGripperConfiguration,
+    GriplinkGripPreset,
 )
 from semantic_digital_twin.datastructures.robots.gripper_specification import (
-    WPGFlexSpecification,
-    WPGPresetSpecification,
+    GriplinkFlexSpecification,
+    GriplinkPresetSpecification,
 )
 from semantic_digital_twin.exceptions import WorldEntityNotFoundError
 from semantic_digital_twin.robots.daisy import DAiSy
@@ -50,8 +50,8 @@ from semantic_digital_twin.world_description.connections import FixedConnection
 
 verbose = True
 collision_avoidance = False
-# execution_mode = ExecutionType.REAL
-execution_mode = ExecutionType.SEMI_REAL
+execution_mode = ExecutionType.REAL
+# execution_mode = ExecutionType.SEMI_REAL
 
 print(f"Running in: {execution_mode}")
 
@@ -212,7 +212,7 @@ right_gripper = ViewManager.get_end_effector_view(Arms.RIGHT, context.robot)
 
 def _both_grippers(state_type: GripperState) -> MoveGripperMotion:
     """
-    Open or close both WPG grippers simultaneously.
+    Open or close both WPG/Griplink grippers simultaneously.
     """
     return parallel(
         [
@@ -233,17 +233,21 @@ plan_home = sequential(
         parallel(
             [
                 MoveGripperMotion(
-                    specification=WPGPresetSpecification.from_state_type(
+                    specification=GriplinkPresetSpecification.from_state_type(
                         left_gripper,
                         GripperState.OPEN,
-                        WPGGripperConfiguration(grip_preset=WPGGripPreset.PRESET_0),
+                        GriplinkGripperConfiguration(
+                            grip_preset=GriplinkGripPreset.PRESET_0
+                        ),
                     )
                 ),
                 MoveGripperMotion(
-                    specification=WPGPresetSpecification.from_state_type(
+                    specification=GriplinkPresetSpecification.from_state_type(
                         right_gripper,
                         GripperState.OPEN,
-                        WPGGripperConfiguration(grip_preset=WPGGripPreset.PRESET_0),
+                        GriplinkGripperConfiguration(
+                            grip_preset=GriplinkGripPreset.PRESET_0
+                        ),
                     )
                 ),
             ]
@@ -255,17 +259,17 @@ plan_home = sequential(
         parallel(
             [
                 MoveGripperMotion(
-                    specification=WPGFlexSpecification.from_state_type(
+                    specification=GriplinkFlexSpecification.from_state_type(
                         left_gripper,
                         GripperState.FLEXCLOSE,
-                        WPGGripperConfiguration(grip_position=70, grip_speed=300),
+                        GriplinkGripperConfiguration(grip_position=70, grip_speed=300),
                     )
                 ),
                 MoveGripperMotion(
-                    specification=WPGFlexSpecification.from_state_type(
+                    specification=GriplinkFlexSpecification.from_state_type(
                         right_gripper,
                         GripperState.FLEXCLOSE,
-                        WPGGripperConfiguration(grip_position=70, grip_speed=300),
+                        GriplinkGripperConfiguration(grip_position=70, grip_speed=300),
                     )
                 ),
             ]

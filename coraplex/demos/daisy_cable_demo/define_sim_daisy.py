@@ -27,8 +27,8 @@ def setup_sim_daisy(
 
     world = daisy_world
 
-    viz = VizMarkerPublisher(_world=world, node=rospy.node)
-    viz.with_tf_publisher()
+    viz = VizMarkerPublisher(_world=world, node=rospy.get_node())
+    # viz.with_tf_publisher()
 
     # Robot semantic view
     robot_view = world.get_semantic_annotations_by_type(DAiSy)[0]
@@ -39,4 +39,4 @@ def setup_sim_daisy(
         robot_view,
     )
 
-    return rospy.node, world, robot_view, context
+    return rospy.get_node(), world, robot_view, context
