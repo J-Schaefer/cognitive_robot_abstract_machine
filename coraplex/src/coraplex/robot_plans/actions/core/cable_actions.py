@@ -15,10 +15,10 @@ from krrood.entity_query_language.factories import (
 )
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.robots.gripper_configurations import (
-    WPGGripperConfiguration,
+    GriplinkGripperConfiguration,
 )
 from semantic_digital_twin.datastructures.robots.gripper_specification import (
-    WPGFlexSpecification,
+    GriplinkFlexSpecification,
 )
 from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
 from semantic_digital_twin.robots.robot_parts import EndEffector
@@ -227,7 +227,7 @@ def _flex_gripper_motion(
     grip_acceleration: int | None = None,
 ) -> MoveGripperMotion:
     """
-    Build the motion that commands a WPG gripper into a flex state.
+    Build the motion that commands a WPG/Griplink gripper into a flex state.
 
     :param state_type: The flex state to command, either :attr:`GripperState.FLEXCLOSE`
         or :attr:`GripperState.FLEXOPEN`.
@@ -238,10 +238,10 @@ def _flex_gripper_motion(
         second squared [100..4000].
     """
     return MoveGripperMotion(
-        specification=WPGFlexSpecification.from_state_type(
+        specification=GriplinkFlexSpecification.from_state_type(
             end_effector,
             state_type,
-            WPGGripperConfiguration(
+            GriplinkGripperConfiguration(
                 grip_position=grip_position,
                 grip_force=grip_force,
                 grip_speed=grip_speed,
