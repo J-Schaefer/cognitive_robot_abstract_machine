@@ -390,7 +390,8 @@ class Door(HasHandle, HasMovableJoint):
         """
         Calculate where the door's hinge sits: on the edge opposite its handle.
 
-        :param axis: The axis the door swings about, in the door frame.
+        :param axis: The axis the door swings about, in the door frame, along one of the
+            frame's axes in either direction.
         :return: The pose of the hinge in the door frame.
         """
         if self.handle is None:
@@ -400,7 +401,9 @@ class Door(HasHandle, HasMovableJoint):
         door_P_handle = connection.origin_expression.to_position()
         scale = self.root.collision.scale
 
-        match axis.to_np().tolist():
+        # The axis' sign only decides which way the door swings, not which edge it
+        # swings about.
+        match [abs(component) for component in axis.to_np().tolist()]:
             case [0, 1, 0, 0]:
                 sign = (
                     symbolic_math.sign(-1 * door_P_handle.z)

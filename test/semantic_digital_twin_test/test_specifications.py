@@ -893,7 +893,7 @@ def test_connection_T_child_is_not_bound_to_the_children_it_connected(empty_worl
     assert specification.connection_T_child.child_frame is None
 
 
-def test_replace_keeps_the_child_and_its_branch_where_they_are(empty_world):
+def test_reconnect_keeps_the_child_and_its_branch_where_they_are(empty_world):
     door_specification = BodySpecification.box("door", Scale(0.03, 1, 2))
     door_specification.child_specifications.append(
         BodySpecification.box("handle", Scale(0.05, 0.1, 0.02))
@@ -907,7 +907,7 @@ def test_replace_keeps_the_child_and_its_branch_where_they_are(empty_world):
 
     connection = RevoluteConnectionSpecification(
         axis=Vector3.Z(), connection_T_child=_hinge_T_door()
-    ).replace(empty_world, door)
+    ).reconnect(empty_world, door)
 
     assert isinstance(door.parent_connection, RevoluteConnection)
     assert door.parent_connection is connection
@@ -920,11 +920,11 @@ def test_replace_keeps_the_child_and_its_branch_where_they_are(empty_world):
     )
 
 
-def test_replace_swings_the_child_about_the_new_connection_frame(empty_world):
+def test_reconnect_swings_the_child_about_the_new_connection_frame(empty_world):
     door = BodySpecification.box("door", Scale(0.03, 1, 2)).spawn(empty_world)
     connection = RevoluteConnectionSpecification(
         axis=Vector3.Z(), connection_T_child=_hinge_T_door()
-    ).replace(empty_world, door)
+    ).reconnect(empty_world, door)
     angle = np.pi / 2
 
     connection.position = angle
@@ -942,7 +942,42 @@ def test_replace_swings_the_child_about_the_new_connection_frame(empty_world):
     )
 
 
-def test_replace_releases_the_degrees_of_freedom_of_the_replaced_connection(
+@pytest.mark.parametrize(
+    "joint_specification",
+    [
+        RevoluteConnectionSpecification(
+            axis=Vector3.Z(), offset=0.3, connection_T_child=_hinge_T_door()
+        ),
+        RevoluteConnectionSpecification(
+            axis=Vector3.Z(),
+            dof_limits=DegreeOfFreedomLimits(
+                lower=DerivativeMap(position=0.2), upper=DerivativeMap(position=1.0)
+            ),
+            connection_T_child=_hinge_T_door(),
+        ),
+    ],
+    ids=["offset", "limits_excluding_zero"],
+)
+def test_reconnect_keeps_the_child_where_it_is_when_the_joint_starts_away_from_zero(
+    empty_world, joint_specification
+):
+    door = BodySpecification.box("door", Scale(0.03, 1, 2)).spawn(
+        empty_world,
+        parent_T_self=HomogeneousTransformationMatrix.from_xyz_rpy(x=1, yaw=0.3),
+    )
+    root_T_door = empty_world.compute_forward_kinematics(empty_world.root, door)
+
+    connection = joint_specification.reconnect(empty_world, door)
+
+    assert connection.position != 0
+    np.testing.assert_allclose(
+        empty_world.compute_forward_kinematics(empty_world.root, door).to_np(),
+        root_T_door.to_np(),
+        atol=1e-12,
+    )
+
+
+def test_reconnect_releases_the_degrees_of_freedom_of_the_replaced_connection(
     empty_world,
 ):
     drawer = BodySpecification.box(
@@ -952,7 +987,7 @@ def test_replace_releases_the_degrees_of_freedom_of_the_replaced_connection(
     ).spawn(empty_world)
     [replaced_degree_of_freedom] = drawer.parent_connection.dofs
 
-    connection = RevoluteConnectionSpecification(axis=Vector3.Z()).replace(
+    connection = RevoluteConnectionSpecification(axis=Vector3.Z()).reconnect(
         empty_world, drawer
     )
 

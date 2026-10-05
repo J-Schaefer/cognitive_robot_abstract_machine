@@ -249,15 +249,16 @@ class ConnectionSpecification(
             (parent_T_child @ self.connection_T_child.inverse()).evaluate()
         )
 
-    def replace(self, world: World, child: KinematicStructureEntity) -> Connection:
+    def reconnect(self, world: World, child: KinematicStructureEntity) -> TConnection:
         """
         Replace the connection ``child`` hangs from with one built from this
         specification, under the same parent.
 
         The child, and with it its whole branch, keeps its current pose: the new
-        connection starts at its zero position with its frame placed so that the child
-        stays where it is. The degrees of freedom of the replaced connection are released
-        when the outermost world modification block exits.
+        connection's frame is placed so that the child stays where it is while the
+        connection is at its initial position, which its limits or offset may move away
+        from zero. The degrees of freedom of the replaced connection are released when
+        the outermost world modification block exits.
 
         :param world: The world the child lives in.
         :param child: The kinematic structure entity whose parent connection is replaced.
@@ -270,7 +271,7 @@ class ConnectionSpecification(
         )
         with world.modify_world():
             world.remove_connection(replaced_connection)
-            return self.connect(
+            connection = self.connect(
                 world,
                 child=child,
                 parent=parent,
@@ -278,6 +279,19 @@ class ConnectionSpecification(
                     parent_T_child
                 ),
             )
+            placed_connection = connection.copy_with_new_parent(
+                parent,
+                HomogeneousTransformationMatrix(
+                    (
+                        parent_T_child
+                        @ connection.origin_expression.inverse()
+                        @ connection.parent_T_connection_expression
+                    ).evaluate()
+                ),
+            )
+            world.remove_connection(connection)
+            world.add_connection(placed_connection)
+        return placed_connection
 
     def connect(
         self,
@@ -286,7 +300,7 @@ class ConnectionSpecification(
         parent: KinematicStructureEntity | None = None,
         parent_T_connection: HomogeneousTransformationMatrix | None = None,
         name: str | None = None,
-    ) -> Connection:
+    ) -> TConnection:
         """
         Materialize the connection between ``parent`` and ``child`` and add it to the
         world.

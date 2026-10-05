@@ -599,7 +599,7 @@ class HasMovableJoint(HasRootBody, ABC):
                 connection_specification.axis
             ).inverse(),
         )
-        return placed_specification.replace(self._world, self.root)
+        return placed_specification.reconnect(self._world, self.root)
 
 
 @dataclass(eq=False)

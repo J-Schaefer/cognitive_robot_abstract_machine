@@ -48,7 +48,6 @@ from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     BottleCap,
     DoorWithType,
     Aperture,
-    EntryWay,
     Table,
     Milk,
     Cereal,
@@ -459,6 +458,21 @@ class TestFactories(unittest.TestCase):
         np.testing.assert_allclose(
             door_T_hinge.to_np(),
             HomogeneousTransformationMatrix.from_xyz_rpy(y=0.5).to_np(),
+        )
+
+    def test_door_movable_joint_is_on_the_same_edge_for_an_axis_of_either_sign(self):
+        world, door = self._setup_door()
+        with world.modify_world():
+            handle = Handle.create_with_new_body_in_world(
+                name="handle",
+                world=world,
+                world_root_T_self=HomogeneousTransformationMatrix.from_xyz_rpy(y=0.4),
+            )
+            door.add(handle)
+
+        np.testing.assert_allclose(
+            door.calculate_self_T_movable_joint(Vector3.NEGATIVE_Z()).to_np(),
+            door.calculate_self_T_movable_joint(Vector3.Z()).to_np(),
         )
 
     def test_door_mounts_on_a_hinge_opposite_its_handle(self):

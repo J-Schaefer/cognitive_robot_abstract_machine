@@ -75,6 +75,7 @@ from semantic_digital_twin.robots.hsrb import HSRB
 from semantic_digital_twin.robots.pr2 import PR2
 from semantic_digital_twin.robots.stretch import Stretch
 from semantic_digital_twin.robots.tiago import Tiago
+from semantic_digital_twin.api import PrismaticConnectionSpecification
 from semantic_digital_twin.exceptions import MissingMovableJointError
 from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Door,
@@ -92,6 +93,7 @@ from semantic_digital_twin.spatial_types import (
     HomogeneousTransformationMatrix,
     Point3,
     Quaternion,
+    Vector3,
 )
 from semantic_digital_twin.spatial_types.spatial_types import Pose, Pose2D
 from semantic_digital_twin.world import World
@@ -1081,6 +1083,30 @@ def test_elevator_navigation_needs_doors_that_can_open():
         )
         door = Door.create_with_new_body_in_world(
             name="door", world=world, scale=Scale(0.05, 1, 2)
+        )
+        elevator.add(door)
+        ground_floor = GroundFloor.create_with_new_region_in_world(
+            name="ground_floor", world=world, scale=Scale(4, 4, 0.1)
+        )
+    navigation = ElevatorNavigation(elevator, ground_floor)
+
+    with pytest.raises(MissingMovableJointError):
+        navigation._elevator_open_at_floor(ground_floor)
+
+
+def test_elevator_navigation_needs_a_cabin_that_can_move():
+    world = World.create_with_root_body("root")
+    with world.modify_world():
+        elevator = Elevator.create_with_new_body_in_world(
+            name="elevator", world=world, scale=Scale(2, 2, 2)
+        )
+        door = Door.create_with_new_body_in_world(
+            name="door",
+            world=world,
+            scale=Scale(0.05, 1, 2),
+            parent_connection_specification=PrismaticConnectionSpecification(
+                axis=Vector3.Y()
+            ),
         )
         elevator.add(door)
         ground_floor = GroundFloor.create_with_new_region_in_world(
