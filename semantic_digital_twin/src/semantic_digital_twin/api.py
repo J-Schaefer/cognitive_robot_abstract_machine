@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import (
     TYPE_CHECKING,
     cast,
@@ -190,6 +190,17 @@ class ConnectionSpecification(
     a :class:`PrefixedName` only at materialization time.
     """
 
+    connection_T_child: HomogeneousTransformationMatrix | None = field(
+        default=None, kw_only=True
+    )
+    """
+    Constant pose of the child relative to the connection frame, such as a door's centre
+    relative to the hinge it swings on.
+
+    The connection moves about its own frame, so a child placed away from it swings or
+    slides around that frame rather than around its own origin. Identity if None.
+    """
+
     @property
     def connection_type(self) -> Type[TConnection]:
         """
@@ -201,21 +212,72 @@ class ConnectionSpecification(
 
     def _create_with_dofs_kwargs(self) -> dict[str, Any]:
         """
-        Forward every public dataclass field except the connection ``name`` to
-        ``create_with_dofs``.
+        Forward the parameters the connection family declares to ``create_with_dofs``.
+
+        The fields every connection specification shares are applied by :meth:`connect`
+        itself, so they are not forwarded.
 
         :return: The connection parameters, keyed by ``create_with_dofs`` parameter
             name.
         """
+        shared_field_names = {
+            shared_field.name for shared_field in fields(ConnectionSpecification)
+        }
         discovered_attributes = DataclassOnlyIntrospector().discover(type(self))
         instance_values = vars(self)
         result = {}
         for attribute in discovered_attributes:
             public_name = cast(str, attribute.public_name)
-            if public_name != "name":
+            if public_name not in shared_field_names:
                 result[public_name] = instance_values[public_name]
 
         return result
+
+    def parent_T_connection_for_child_at(
+        self, parent_T_child: HomogeneousTransformationMatrix
+    ) -> HomogeneousTransformationMatrix:
+        """
+        Compute where the connection frame has to sit so that the child is at
+        ``parent_T_child`` while the connection is at its zero position.
+
+        :param parent_T_child: The pose the child should have relative to the parent.
+        :return: The placement of the connection frame in the parent frame.
+        """
+        if self.connection_T_child is None:
+            return parent_T_child
+        return HomogeneousTransformationMatrix(
+            (parent_T_child @ self.connection_T_child.inverse()).evaluate()
+        )
+
+    def replace(self, world: World, child: KinematicStructureEntity) -> Connection:
+        """
+        Replace the connection ``child`` hangs from with one built from this
+        specification, under the same parent.
+
+        The child, and with it its whole branch, keeps its current pose: the new
+        connection starts at its zero position with its frame placed so that the child
+        stays where it is. The degrees of freedom of the replaced connection are released
+        when the outermost world modification block exits.
+
+        :param world: The world the child lives in.
+        :param child: The kinematic structure entity whose parent connection is replaced.
+        :return: The new connection.
+        """
+        replaced_connection = child.parent_connection
+        parent = replaced_connection.parent
+        parent_T_child = world.compute_forward_kinematics(
+            parent, child, enable_unsafe_inside_world_block=True
+        )
+        with world.modify_world():
+            world.remove_connection(replaced_connection)
+            return self.connect(
+                world,
+                child=child,
+                parent=parent,
+                parent_T_connection=self.parent_T_connection_for_child_at(
+                    parent_T_child
+                ),
+            )
 
     def connect(
         self,
@@ -266,6 +328,13 @@ class ConnectionSpecification(
                 child=child,
                 name=self._resolved_name(name),
                 parent_T_connection_expression=parent_T_connection,
+                connection_T_child_expression=(
+                    self.connection_T_child.copy_with_new_reference_frames(
+                        new_reference_frame=None, new_child_frame=child
+                    )
+                    if self.connection_T_child is not None
+                    else None
+                ),
                 **self._create_with_dofs_kwargs(),
             )
             world.add_connection(connection)
@@ -412,7 +481,8 @@ class KinematicStructureEntitySpecification(
     Default placement of the entity in its parent frame, used by :meth:`spawn` when the
     caller does not override it.
 
-    Identity by default.
+    It is where the entity sits while its connection is at its zero position, also when
+    the connection carries a ``connection_T_child`` offset. Identity by default.
     """
 
     connection_specification: ConnectionSpecification | None = None
@@ -480,7 +550,9 @@ class KinematicStructureEntitySpecification(
                 world,
                 child=entity,
                 parent=parent,
-                parent_T_connection=(parent_T_self or self.parent_T_self),
+                parent_T_connection=connection_specification.parent_T_connection_for_child_at(
+                    parent_T_self or self.parent_T_self
+                ),
             )
             for child in self.child_specifications:
                 child.spawn(world, parent=entity)
@@ -877,8 +949,7 @@ class SemanticAnnotationWithRootSpecification(SpawnSpecification[TSemanticAnnota
 
     The annotation's root entity is what attaches to the parent, so its parent
     connection lives on ``root_specification.connection_specification`` and nowhere
-    else. Leaving it unset falls back to the annotation type's own
-    :meth:`~semantic_digital_twin.semantic_annotations.mixins.HasRootKinematicStructureEntity.parent_connection_specification`.
+    else. Leaving it unset fixes the root to its parent.
 
     ..note:: There is deliberately no way to pass loose connection parameters here. Each
         connection family carries exactly the parameters it uses, so an inapplicable
@@ -938,9 +1009,8 @@ class SemanticAnnotationWithRootSpecification(SpawnSpecification[TSemanticAnnota
         part specifications.
 
         The root's connection is the root specification's
-        :attr:`connection_specification`, falling back to the annotation type's own
-        :meth:`~semantic_digital_twin.semantic_annotations.mixins.HasRootKinematicStructureEntity.parent_connection_specification`
-        when it is unset.
+        :attr:`connection_specification`, falling back to a fixed connection when it is
+        unset.
 
         :param world: The world the annotation, its root and its parts are added to.
         :param name: Overrides the specification's own name. If None, the spec's name is
@@ -958,7 +1028,7 @@ class SemanticAnnotationWithRootSpecification(SpawnSpecification[TSemanticAnnota
 
         connection_specification = (
             self.root_specification.connection_specification
-            or self.semantic_annotation_type.parent_connection_specification()
+            or FixedConnectionSpecification()
         )
 
         with world.modify_world():

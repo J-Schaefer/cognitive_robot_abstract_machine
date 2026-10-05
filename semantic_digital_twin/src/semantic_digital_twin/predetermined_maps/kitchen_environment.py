@@ -15,7 +15,6 @@ from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Cabinet,
     Cupboard,
     ShelfLayer,
-    Hinge,
     Door,
     Handle,
     DiningTable,
@@ -28,11 +27,14 @@ from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Cooktop,
     Oven,
     WallPanel,
-    Slider,
 )
 from semantic_digital_twin.world_description.degree_of_freedom import (
     DegreeOfFreedomLimits,
     DegreeOfFreedom,
+)
+from semantic_digital_twin.api import (
+    PrismaticConnectionSpecification,
+    RevoluteConnectionSpecification,
 )
 from semantic_digital_twin.spatial_types.derivatives import DerivativeMap
 from semantic_digital_twin.world_description.connections import (
@@ -201,7 +203,6 @@ class KitchenEnvironment:
         """
         Adds furniture items and room layouts to the scene graph.
         """
-
         # Angular velocity limit of a hinged door in rad/s.
         # Taken from the revolute joint limits of the apartment description in ``iai_apartment``,
         # which uses this value for every one of its hinged doors.
@@ -326,11 +327,15 @@ class KitchenEnvironment:
                 ),
             )
             hinge_world_pose = fridge_pose @ hinge_local_pose
-            fridge_door_hinge = Hinge.create_with_new_body_in_world(
+            hinge_T_fridge_door = HomogeneousTransformationMatrix.from_xyz_rpy(
+                y=fridge_front_width / 2
+            )
+
+            fridge_door = Door.create_with_new_body_in_world(
                 world=world,
-                name="fridge_door_hinge",
-                world_root_T_self=hinge_world_pose,
-                parent_connection_specification=Hinge.parent_connection_specification(
+                name="fridge_door",
+                world_root_T_self=hinge_world_pose @ hinge_T_fridge_door,
+                parent_connection_specification=RevoluteConnectionSpecification(
                     axis=Vector3.Z(),
                     dof_limits=DegreeOfFreedomLimits(
                         lower=DerivativeMap[float](
@@ -340,15 +345,7 @@ class KitchenEnvironment:
                             position=np.pi / 2, velocity=hinged_door_velocity_limit
                         ),
                     ),
-                ),
-            )
-
-            fridge_door = Door.create_with_new_body_in_world(
-                world=world,
-                name="fridge_door",
-                world_root_T_self=hinge_world_pose
-                @ HomogeneousTransformationMatrix.from_xyz_rpy(
-                    y=fridge_front_width / 2
+                    connection_T_child=hinge_T_fridge_door,
                 ),
                 scale=Scale(
                     x=door_thickness,
@@ -358,18 +355,13 @@ class KitchenEnvironment:
             )
             for shape in fridge_door.root.visual.shapes:
                 shape.color = Color.WHITE()
-            fridge_door.add(fridge_door_hinge)
             refrigerator.add(fridge_door)
 
             drawer_depth = 0.5
             drawer_world_pose = (
                 fridge_pose
                 @ HomogeneousTransformationMatrix.from_xyz_rpy(
-                    x=(
-                        -fridge_length / 2
-                        - door_thickness / 2
-                        + drawer_depth / 2
-                    ),
+                    x=(-fridge_length / 2 - door_thickness / 2 + drawer_depth / 2),
                     z=(
                         -fridge_height / 2
                         + fridge_drawer_floor_gap
@@ -381,18 +373,7 @@ class KitchenEnvironment:
                 world=world,
                 name="fridge_drawer",
                 world_root_T_self=drawer_world_pose,
-                scale=Scale(
-                    x=drawer_depth,
-                    y=fridge_front_width,
-                    z=fridge_drawer_height,
-                ),
-            )
-
-            fridge_slider = Slider.create_with_new_body_in_world(
-                world=world,
-                name="fridge_drawer_slider",
-                world_root_T_self=drawer_world_pose,
-                parent_connection_specification=Slider.parent_connection_specification(
+                parent_connection_specification=PrismaticConnectionSpecification(
                     axis=Vector3.NEGATIVE_X(),
                     dof_limits=DegreeOfFreedomLimits(
                         lower=DerivativeMap[float](
@@ -403,9 +384,12 @@ class KitchenEnvironment:
                         ),
                     ),
                 ),
+                scale=Scale(
+                    x=drawer_depth,
+                    y=fridge_front_width,
+                    z=fridge_drawer_height,
+                ),
             )
-
-            fridge_drawer.add(fridge_slider)
 
             for shape in fridge_drawer.root.visual.shapes:
                 shape.color = Color.WHITE()
@@ -421,10 +405,7 @@ class KitchenEnvironment:
                         + fridge_base_facing_setback
                         + fridge_base_facing_thickness / 2
                     ),
-                    z=(
-                        -fridge_drawer_height / 2
-                        - fridge_drawer_floor_gap / 2
-                    ),
+                    z=(-fridge_drawer_height / 2 - fridge_drawer_floor_gap / 2),
                 ),
                 scale=Scale(
                     x=fridge_base_facing_thickness,
@@ -567,9 +548,7 @@ class KitchenEnvironment:
             module_1_door_thickness = 0.02
             module_1_door_gap = 0.005
             module_1_door_height = (
-                counter_cabinet_height
-                - module_1_face_plate_height
-                - module_1_door_gap
+                counter_cabinet_height - module_1_face_plate_height - module_1_door_gap
             )
             module_1_door_center_height = (
                 module_1_door_height - counter_cabinet_height
@@ -625,11 +604,14 @@ class KitchenEnvironment:
                     z=module_1_door_center_height,
                 )
             )
-            module_1_hinge = Hinge.create_with_new_body_in_world(
+            hinge_T_module_1_door = HomogeneousTransformationMatrix.from_xyz_rpy(
+                y=module_1_front_width / 2
+            )
+            module_1_door = Door.create_with_new_body_in_world(
                 world=world,
-                name="module_1_hinge",
-                world_root_T_self=module_1_hinge_world_pose,
-                parent_connection_specification=Hinge.parent_connection_specification(
+                name="module_1_door",
+                world_root_T_self=module_1_hinge_world_pose @ hinge_T_module_1_door,
+                parent_connection_specification=RevoluteConnectionSpecification(
                     axis=Vector3.Z(),
                     dof_limits=DegreeOfFreedomLimits(
                         lower=DerivativeMap[float](
@@ -639,14 +621,7 @@ class KitchenEnvironment:
                             position=np.pi / 2, velocity=hinged_door_velocity_limit
                         ),
                     ),
-                ),
-            )
-            module_1_door = Door.create_with_new_body_in_world(
-                world=world,
-                name="module_1_door",
-                world_root_T_self=module_1_hinge_world_pose
-                @ HomogeneousTransformationMatrix.from_xyz_rpy(
-                    y=module_1_front_width / 2
+                    connection_T_child=hinge_T_module_1_door,
                 ),
                 scale=Scale(
                     x=module_1_door_thickness,
@@ -656,7 +631,6 @@ class KitchenEnvironment:
             )
             for shape in module_1_door.root.visual.shapes:
                 shape.color = Color.WHITE()
-            module_1_door.add(module_1_hinge)
             module_1_cabinet.add(module_1_door)
 
             module_1_handle = Handle.get_annotation_specification(
@@ -715,11 +689,14 @@ class KitchenEnvironment:
                     z=-counter_cabinet_height / 2,
                 )
             )
-            module_2_hinge = Hinge.create_with_new_body_in_world(
+            hinge_T_module_2_door = HomogeneousTransformationMatrix.from_xyz_rpy(
+                z=module_2_door_height / 2
+            )
+            module_2_door = Door.create_with_new_body_in_world(
                 world=world,
-                name="dishwasher_hinge",
-                world_root_T_self=module_2_hinge_world_pose,
-                parent_connection_specification=Hinge.parent_connection_specification(
+                name="dishwasher_door",
+                world_root_T_self=module_2_hinge_world_pose @ hinge_T_module_2_door,
+                parent_connection_specification=RevoluteConnectionSpecification(
                     axis=Vector3.NEGATIVE_Y(),
                     dof_limits=DegreeOfFreedomLimits(
                         lower=DerivativeMap[float](
@@ -729,14 +706,7 @@ class KitchenEnvironment:
                             position=np.pi / 2, velocity=hinged_door_velocity_limit
                         ),
                     ),
-                ),
-            )
-            module_2_door = Door.create_with_new_body_in_world(
-                world=world,
-                name="dishwasher_door",
-                world_root_T_self=module_2_hinge_world_pose
-                @ HomogeneousTransformationMatrix.from_xyz_rpy(
-                    z=module_2_door_height / 2
+                    connection_T_child=hinge_T_module_2_door,
                 ),
                 scale=Scale(
                     x=module_2_door_thickness,
@@ -746,7 +716,6 @@ class KitchenEnvironment:
             )
             for shape in module_2_door.root.visual.shapes:
                 shape.color = Color.WHITE()
-            module_2_door.add(module_2_hinge)
             dishwasher.add(module_2_door)
 
             module_2_handle = Handle.get_annotation_specification(
@@ -816,18 +785,7 @@ class KitchenEnvironment:
                     world=world,
                     name=f"counter_drawer_{drawer_index}",
                     world_root_T_self=drawer_pose,
-                    scale=Scale(
-                        x=module_3_drawer_depth,
-                        y=module_3_width - 0.04,
-                        z=face_height,
-                    ),
-                )
-
-                slider = Slider.create_with_new_body_in_world(
-                    world=world,
-                    name=f"counter_drawer_{drawer_index}_slider",
-                    world_root_T_self=drawer_pose,
-                    parent_connection_specification=Slider.parent_connection_specification(
+                    parent_connection_specification=PrismaticConnectionSpecification(
                         axis=Vector3.NEGATIVE_X(),
                         dof_limits=DegreeOfFreedomLimits(
                             lower=DerivativeMap[float](
@@ -838,8 +796,12 @@ class KitchenEnvironment:
                             ),
                         ),
                     ),
+                    scale=Scale(
+                        x=module_3_drawer_depth,
+                        y=module_3_width - 0.04,
+                        z=face_height,
+                    ),
                 )
-                drawer.add(slider)
 
                 for shape in drawer.root.visual.shapes:
                     shape.color = Color.WHITE()
@@ -999,30 +961,23 @@ class KitchenEnvironment:
                     world=world,
                     name=f"oven_side_drawer_{side_name}",
                     world_root_T_self=side_drawer_pose,
+                    parent_connection_specification=PrismaticConnectionSpecification(
+                        axis=Vector3.NEGATIVE_X(),
+                        dof_limits=DegreeOfFreedomLimits(
+                            lower=DerivativeMap[float](
+                                position=0.0, velocity=-sliding_drawer_velocity_limit
+                            ),
+                            upper=DerivativeMap[float](
+                                position=0.25, velocity=sliding_drawer_velocity_limit
+                            ),
+                        ),
+                    ),
                     scale=Scale(
                         x=oven_depth,
                         y=side_drawer_width,
                         z=oven_side_drawer_height,
                     ),
                 )
-
-                slider = Slider.create_with_new_body_in_world(
-                    world=world,
-                    name=f"oven_side_drawer_{side_name}_slider",
-                    world_root_T_self=side_drawer_pose,
-                    parent_connection_specification=Slider.parent_connection_specification(
-                        axis=Vector3.NEGATIVE_X(),
-                        dof_limits=DegreeOfFreedomLimits(
-                            lower=DerivativeMap[float](
-                                velocity=-sliding_drawer_velocity_limit
-                            ),
-                            upper=DerivativeMap[float](
-                                velocity=sliding_drawer_velocity_limit
-                            ),
-                        ),
-                    ),
-                )
-                drawer.add(slider)
 
                 for shape in drawer.root.visual.shapes:
                     shape.color = Color.WHITE()
@@ -1063,11 +1018,15 @@ class KitchenEnvironment:
                     x=-oven_depth / 2, y=center_front_width / 2
                 )
             )
-            oven_cabinet_hinge = Hinge.create_with_new_body_in_world(
+            hinge_T_oven_cabinet_door = HomogeneousTransformationMatrix.from_xyz_rpy(
+                y=-center_front_width / 2
+            )
+            oven_cabinet_door = Door.create_with_new_body_in_world(
                 world=world,
-                name="oven_cabinet_hinge",
-                world_root_T_self=oven_cabinet_hinge_world_pose,
-                parent_connection_specification=Hinge.parent_connection_specification(
+                name="oven_cabinet_door",
+                world_root_T_self=oven_cabinet_hinge_world_pose
+                @ hinge_T_oven_cabinet_door,
+                parent_connection_specification=RevoluteConnectionSpecification(
                     axis=Vector3.Z(),
                     dof_limits=DegreeOfFreedomLimits(
                         lower=DerivativeMap[float](
@@ -1077,14 +1036,7 @@ class KitchenEnvironment:
                             position=np.pi / 2, velocity=hinged_door_velocity_limit
                         ),
                     ),
-                ),
-            )
-            oven_cabinet_door = Door.create_with_new_body_in_world(
-                world=world,
-                name="oven_cabinet_door",
-                world_root_T_self=oven_cabinet_hinge_world_pose
-                @ HomogeneousTransformationMatrix.from_xyz_rpy(
-                    y=-center_front_width / 2
+                    connection_T_child=hinge_T_oven_cabinet_door,
                 ),
                 scale=Scale(
                     x=center_door_thickness,
@@ -1094,7 +1046,6 @@ class KitchenEnvironment:
             )
             for shape in oven_cabinet_door.root.visual.shapes:
                 shape.color = Color.WHITE()
-            oven_cabinet_door.add(oven_cabinet_hinge)
             tower.add(oven_cabinet_door)
 
             oven_cabinet_handle = Handle.get_annotation_specification(
@@ -1139,18 +1090,7 @@ class KitchenEnvironment:
                 world=world,
                 name="oven_center_drawer",
                 world_root_T_self=drawer_pose,
-                scale=Scale(
-                    x=center_drawer_depth,
-                    y=center_front_width,
-                    z=center_drawer_height,
-                ),
-            )
-
-            slider = Slider.create_with_new_body_in_world(
-                world=world,
-                name="oven_center_drawer_slider",
-                world_root_T_self=drawer_pose,
-                parent_connection_specification=Slider.parent_connection_specification(
+                parent_connection_specification=PrismaticConnectionSpecification(
                     axis=Vector3.NEGATIVE_X(),
                     dof_limits=DegreeOfFreedomLimits(
                         lower=DerivativeMap[float](
@@ -1161,8 +1101,12 @@ class KitchenEnvironment:
                         ),
                     ),
                 ),
+                scale=Scale(
+                    x=center_drawer_depth,
+                    y=center_front_width,
+                    z=center_drawer_height,
+                ),
             )
-            drawer.add(slider)
 
             for shape in drawer.root.visual.shapes:
                 shape.color = Color.WHITE()
@@ -1217,11 +1161,14 @@ class KitchenEnvironment:
                     x=-oven_depth / 2, z=-center_oven_height / 2
                 )
             )
-            oven_hinge = Hinge.create_with_new_body_in_world(
+            hinge_T_oven_door = HomogeneousTransformationMatrix.from_xyz_rpy(
+                z=center_oven_height / 2
+            )
+            oven_door = Door.create_with_new_body_in_world(
                 world=world,
-                name="oven_hinge",
-                world_root_T_self=oven_hinge_world_pose,
-                parent_connection_specification=Hinge.parent_connection_specification(
+                name="oven_door",
+                world_root_T_self=oven_hinge_world_pose @ hinge_T_oven_door,
+                parent_connection_specification=RevoluteConnectionSpecification(
                     axis=Vector3.NEGATIVE_Y(),
                     dof_limits=DegreeOfFreedomLimits(
                         lower=DerivativeMap[float](
@@ -1231,21 +1178,12 @@ class KitchenEnvironment:
                             position=np.pi / 2, velocity=hinged_door_velocity_limit
                         ),
                     ),
-                ),
-            )
-            oven_door = Door.create_with_new_body_in_world(
-                world=world,
-                name="oven_door",
-                world_root_T_self=oven_hinge_world_pose
-                @ HomogeneousTransformationMatrix.from_xyz_rpy(
-                    z=center_oven_height / 2
+                    connection_T_child=hinge_T_oven_door,
                 ),
                 scale=Scale(x=0.02, y=center_width, z=center_oven_height),
             )
             for shape in oven_door.root.visual.shapes:
                 shape.color = Color.WHITE()
-
-            oven_door.add(oven_hinge)
             oven.add(oven_door)
 
             oven_handle_height = 0.025
@@ -1283,14 +1221,10 @@ class KitchenEnvironment:
             sideboard_top_left_overhang = 0.098
             sideboard_top_back_overhang = 0.104
             sideboard_top_right_overhang = (
-                sideboard_top_length
-                - sideboard_length
-                - sideboard_top_left_overhang
+                sideboard_top_length - sideboard_length - sideboard_top_left_overhang
             )
             sideboard_top_front_overhang = (
-                sideboard_top_width
-                - sideboard_width
-                - sideboard_top_back_overhang
+                sideboard_top_width - sideboard_width - sideboard_top_back_overhang
             )
             sideboard_top_x_offset = (
                 sideboard_top_back_overhang - sideboard_top_front_overhang
@@ -1397,10 +1331,7 @@ class KitchenEnvironment:
                         + sideboard_base_facing_setback
                         + sideboard_front_panel_thickness / 2
                     ),
-                    z=(
-                        -sideboard_height / 2
-                        + sideboard_base_facing_height / 2
-                    ),
+                    z=(-sideboard_height / 2 + sideboard_base_facing_height / 2),
                 ),
                 scale=Scale(
                     x=sideboard_front_panel_thickness,
@@ -1447,10 +1378,7 @@ class KitchenEnvironment:
                     name=f"sideboard_upper_face_plate_{column_index}",
                     world_root_T_self=sideboard_pose
                     @ HomogeneousTransformationMatrix.from_xyz_rpy(
-                        x=(
-                            -sideboard_width / 2
-                            + sideboard_front_panel_thickness / 2
-                        ),
+                        x=(-sideboard_width / 2 + sideboard_front_panel_thickness / 2),
                         y=y_offset,
                         z=(
                             sideboard_height / 2
@@ -1483,18 +1411,7 @@ class KitchenEnvironment:
                         world=world,
                         name=drawer_id,
                         world_root_T_self=drawer_pose,
-                        scale=Scale(
-                            sideboard_drawer_depth,
-                            width,
-                            sideboard_drawer_height,
-                        ),
-                    )
-
-                    slider = Slider.create_with_new_body_in_world(
-                        world=world,
-                        name=f"{drawer_id}_slider",
-                        world_root_T_self=drawer_pose,
-                        parent_connection_specification=Slider.parent_connection_specification(
+                        parent_connection_specification=PrismaticConnectionSpecification(
                             axis=Vector3.NEGATIVE_X(),
                             dof_limits=DegreeOfFreedomLimits(
                                 lower=DerivativeMap[float](
@@ -1507,8 +1424,12 @@ class KitchenEnvironment:
                                 ),
                             ),
                         ),
+                        scale=Scale(
+                            sideboard_drawer_depth,
+                            width,
+                            sideboard_drawer_height,
+                        ),
                     )
-                    drawer.add(slider)
 
                     for shape in drawer.root.visual.shapes:
                         shape.color = Color.WHITE()
@@ -1586,17 +1507,20 @@ class KitchenEnvironment:
             for i, (side, limits, y_off) in enumerate(
                 [("left", [0.0, np.pi / 2], -0.40), ("right", [-np.pi / 2, 0.0], 0.40)]
             ):
-                handle_pose = (
+                hinge_pose = (
                     cupboard_pose
                     @ HomogeneousTransformationMatrix.from_xyz_rpy(
                         x=cupboard_door_x_relative, y=y_off, z=cupboard_door_z_relative
                     )
                 )
-                hinge = Hinge.create_with_new_body_in_world(
+                hinge_T_door = HomogeneousTransformationMatrix.from_xyz_rpy(
+                    y=0.2 if side == "left" else -0.2
+                )
+                door = Door.create_with_new_body_in_world(
                     world=world,
-                    name=f"cupboard_hinge_{side}",
-                    world_root_T_self=handle_pose,
-                    parent_connection_specification=Hinge.parent_connection_specification(
+                    name=f"cupboard_door_{side}",
+                    world_root_T_self=hinge_pose @ hinge_T_door,
+                    parent_connection_specification=RevoluteConnectionSpecification(
                         axis=Vector3.Z(),
                         dof_limits=DegreeOfFreedomLimits(
                             lower=DerivativeMap[float](
@@ -1608,20 +1532,12 @@ class KitchenEnvironment:
                                 velocity=hinged_door_velocity_limit,
                             ),
                         ),
-                    ),
-                )
-                door = Door.create_with_new_body_in_world(
-                    world=world,
-                    name=f"cupboard_door_{side}",
-                    world_root_T_self=handle_pose
-                    @ HomogeneousTransformationMatrix.from_xyz_rpy(
-                        y=0.2 if side == "left" else -0.2
+                        connection_T_child=hinge_T_door,
                     ),
                     scale=cupboard_door_scale,
                 )
                 for shape in door.root.visual.shapes:
                     shape.color = Color.WHITE()
-                door.add(hinge)
                 cupboard.add(door)
 
                 handle = Handle.get_annotation_specification(
@@ -1632,7 +1548,7 @@ class KitchenEnvironment:
                     ),
                 ).spawn(
                     world,
-                    parent_T_self=handle_pose
+                    parent_T_self=hinge_pose
                     @ HomogeneousTransformationMatrix.from_xyz_rpy(
                         x=-0.03, y=0.15 if side == "left" else -0.15
                     ),
@@ -1758,14 +1674,7 @@ class KitchenEnvironment:
                     world=world,
                     name=f"cooking_drawer_{side_name}",
                     world_root_T_self=drawer_pose,
-                    scale=Scale(module_width - 0.04, cooking_table_depth - 0.02, 0.18),
-                )
-
-                slider = Slider.create_with_new_body_in_world(
-                    world=world,
-                    name=f"cooking_drawer_{side_name}_slider",
-                    world_root_T_self=drawer_pose,
-                    parent_connection_specification=Slider.parent_connection_specification(
+                    parent_connection_specification=PrismaticConnectionSpecification(
                         axis=Vector3.NEGATIVE_X(),
                         dof_limits=DegreeOfFreedomLimits(
                             lower=DerivativeMap[float](
@@ -1776,8 +1685,8 @@ class KitchenEnvironment:
                             ),
                         ),
                     ),
+                    scale=Scale(module_width - 0.04, cooking_table_depth - 0.02, 0.18),
                 )
-                drawer.add(slider)
 
                 for shape in drawer.root.visual.shapes:
                     shape.color = Color.BEIGE()

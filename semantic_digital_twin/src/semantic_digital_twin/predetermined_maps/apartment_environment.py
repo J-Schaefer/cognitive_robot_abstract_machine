@@ -7,11 +7,10 @@ from dataclasses import dataclass
 import numpy as np
 
 from semantic_digital_twin.adapters.package_resolver import CompositePathResolver
-from semantic_digital_twin.api import BodySpecification
+from semantic_digital_twin.api import BodySpecification, RevoluteConnectionSpecification
 from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Door,
     Handle,
-    Hinge,
     Shelf,
     ShelfLayer,
     SideTable,
@@ -202,6 +201,19 @@ class ApartmentEnvironment:
                         -0.3246, door_y
                     ),
                 ),
+                parent_connection_specification=RevoluteConnectionSpecification(
+                    axis=Vector3.Z(),
+                    dof_limits=DegreeOfFreedomLimits(
+                        lower=DerivativeMap[float](
+                            position=min(0.0, opening_angle),
+                            velocity=-WARDROBE_DOOR_VELOCITY_LIMIT,
+                        ),
+                        upper=DerivativeMap[float](
+                            position=max(0.0, opening_angle),
+                            velocity=WARDROBE_DOOR_VELOCITY_LIMIT,
+                        ),
+                    ),
+                ),
                 part_specifications={
                     "handle": Handle.get_annotation_specification(
                         f"wardrobe_door_handle_{side}",
@@ -210,23 +222,6 @@ class ApartmentEnvironment:
                             self.mesh_path("wardrobe_door_handle.dae"),
                             parent_T_self=HomogeneousTransformationMatrix.from_xyz_rpy(
                                 -0.032089, handle_y, 0.973703
-                            ),
-                        ),
-                    ),
-                    "mechanical_joint": Hinge.get_annotation_specification(
-                        f"wardrobe_hinge_{side}",
-                        Hinge.get_default_root_kinematic_structure_entity_specification(),
-                        parent_connection_specification=Hinge.parent_connection_specification(
-                            axis=Vector3.Z(),
-                            dof_limits=DegreeOfFreedomLimits(
-                                lower=DerivativeMap[float](
-                                    position=min(0.0, opening_angle),
-                                    velocity=-WARDROBE_DOOR_VELOCITY_LIMIT,
-                                ),
-                                upper=DerivativeMap[float](
-                                    position=max(0.0, opening_angle),
-                                    velocity=WARDROBE_DOOR_VELOCITY_LIMIT,
-                                ),
                             ),
                         ),
                     ),
