@@ -10,10 +10,7 @@ from krrood.patterns.subclass_safe_generic import SubClassSafeGeneric
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
-from semantic_digital_twin.exceptions import (
-    ConnectionsOutsideEndEffector,
-    MissingPositionLimits,
-)
+from semantic_digital_twin.exceptions import ConnectionsOutsideEndEffector
 from semantic_digital_twin.datastructures.robots.gripper_configurations import (
     GriplinkGripperConfiguration,
 )
@@ -214,11 +211,11 @@ class GriplinkFlexSpecification(GriplinkSpecification):
         configuration: GriplinkGripperConfiguration,
     ) -> JointState:
         """
-        Build the joint state a griplink flex motion commands, interpolating the open
-        state by the configured opening width.
+        Build the joint state a griplink flex motion commands, interpolating between the
+        declared open and close states by the configured opening width.
 
-        Without a configured opening width, a ``FLEXCLOSE`` motion commands the fully
-        closed state and a ``FLEXOPEN`` motion the fully open state.
+        Without a configured opening width, a ``FLEXCLOSE`` motion commands the declared
+        close state and a ``FLEXOPEN`` motion the declared open state.
 
         :param end_effector: The griplink gripper whose connections are commanded.
         :param state_type: The flex state type the joint state is labelled with.
@@ -226,8 +223,6 @@ class GriplinkFlexSpecification(GriplinkSpecification):
             server; its opening width drives the joint state.
         :return: The joint state driving the gripper's connections to the interpolated
             position.
-        :raises MissingPositionLimits: If a commanded connection's degree of freedom
-            declares no position limits.
         """
         if configuration.grip_position is not None:
             grip_position = configuration.grip_position
@@ -236,16 +231,13 @@ class GriplinkFlexSpecification(GriplinkSpecification):
         else:
             grip_position = MAXIMUM_OPENING_WIDTH_MM
         open_state = end_effector.get_joint_state_by_type(GripperState.OPEN)
+        close_state = end_effector.get_joint_state_by_type(GripperState.CLOSE)
         fraction = (MAXIMUM_OPENING_WIDTH_MM - grip_position) / MAXIMUM_OPENING_WIDTH_MM
-        target_values = []
-        for connection in open_state.connections:
-            lower = connection.dof.limits.lower.position
-            upper = connection.dof.limits.upper.position
-            if lower is None or upper is None:
-                raise MissingPositionLimits(
-                    name=connection.dof.name, limits=connection.dof.limits
-                )
-            target_values.append(lower + fraction * (upper - lower))
+        close_targets = dict(close_state.items())
+        target_values = [
+            open_target + fraction * (close_targets[connection] - open_target)
+            for connection, open_target in open_state.items()
+        ]
         return JointState(
             connections=open_state.connections,
             target_values=target_values,

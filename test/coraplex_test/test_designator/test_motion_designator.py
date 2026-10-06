@@ -1091,7 +1091,7 @@ class TestDAiSyFlexGripMotion:
         assert isinstance(chart, JointPositionList)
         assert chart.name == "flexgrip"
 
-    def test_semi_real_target_within_joint_limits(self, immutable_daisy_world):
+    def test_semi_real_target_within_declared_states(self, immutable_daisy_world):
         motion = self._flex_motion(
             immutable_daisy_world,
             state_type=GripperState.FLEXCLOSE,
@@ -1099,15 +1099,18 @@ class TestDAiSyFlexGripMotion:
         )
         with semi_real_robot:
             chart = motion._motion_chart
-        for connection, target in chart.goal_state.items():
-            lower = connection.dof.limits.lower.position or 0.0
-            upper = connection.dof.limits.upper.position or 0.0
-            expected = lower + 0.5 * (upper - lower)
-            assert (
-                abs(target - expected) < 0.001
-            ), f"Expected ~{expected} for grip_position=60, got {target}"
+        _, robot, _ = immutable_daisy_world
+        end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
+        open_state = end_effector.get_joint_state_by_type(GripperState.OPEN)
+        close_state = end_effector.get_joint_state_by_type(GripperState.CLOSE)
+        close_targets = dict(close_state.items())
+        expected = [
+            open_target + 0.5 * (close_targets[connection] - open_target)
+            for connection, open_target in open_state.items()
+        ]
+        assert chart.goal_state.target_values == pytest.approx(expected)
 
-    def test_semi_real_full_open_maps_to_lower_limit(self, immutable_daisy_world):
+    def test_semi_real_full_open_maps_to_the_open_state(self, immutable_daisy_world):
         motion = self._flex_motion(
             immutable_daisy_world,
             state_type=GripperState.FLEXOPEN,
@@ -1115,13 +1118,21 @@ class TestDAiSyFlexGripMotion:
         )
         with semi_real_robot:
             chart = motion._motion_chart
+        _, robot, _ = immutable_daisy_world
+        end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
+        open_state = end_effector.get_joint_state_by_type(GripperState.OPEN)
         for connection, target in chart.goal_state.items():
-            lower = connection.dof.limits.lower.position or 0.0
-            assert (
-                abs(target - lower) < 0.001
-            ), f"Expected lower limit {lower} for grip_position=120, got {target}"
+            expected = dict(open_state.items())[connection]
+            assert abs(target - expected) < 0.001, (
+                f"Expected open state {expected}, got {target}"
+            )
 
-    def test_semi_real_full_close_maps_to_upper_limit(self, immutable_daisy_world):
+    def test_semi_real_full_close_maps_to_the_close_state(self, immutable_daisy_world):
+        """
+        The fully closed flex target is the declared close state, not the connection's
+        upper position limit: past the close state the fingers cross and separate
+        again, so a limit-anchored target would open the gripper instead of closing it.
+        """
         motion = self._flex_motion(
             immutable_daisy_world,
             state_type=GripperState.FLEXCLOSE,
@@ -1129,11 +1140,14 @@ class TestDAiSyFlexGripMotion:
         )
         with semi_real_robot:
             chart = motion._motion_chart
+        _, robot, _ = immutable_daisy_world
+        end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
+        close_state = end_effector.get_joint_state_by_type(GripperState.CLOSE)
         for connection, target in chart.goal_state.items():
-            upper = connection.dof.limits.upper.position or 0.0
-            assert (
-                abs(target - upper) < 0.001
-            ), f"Expected upper limit {upper} for grip_position=0, got {target}"
+            expected = dict(close_state.items())[connection]
+            assert abs(target - expected) < 0.001, (
+                f"Expected close state {expected}, got {target}"
+            )
 
     def test_real_returns_griplink_action_server_task(self, immutable_daisy_world):
         motion = self._flex_motion(immutable_daisy_world)
