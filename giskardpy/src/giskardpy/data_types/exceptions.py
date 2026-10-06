@@ -5,12 +5,6 @@ from dataclasses import dataclass
 from krrood.exceptions import DataclassException
 
 
-class DoesntPrintStackTrace:
-    """
-    Marker mixin for exceptions whose stack trace should not be printed.
-    """
-
-
 @dataclass
 class GiskardException(DataclassException):
     """

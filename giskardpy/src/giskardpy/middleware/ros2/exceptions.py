@@ -4,11 +4,10 @@ Exceptions raised while executing a trajectory on a robot.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Type
 
 from giskardpy.data_types.exceptions import (
-    DoesntPrintStackTrace,
     GiskardException,
     SetupException,
 )
@@ -67,6 +66,8 @@ class ExecutionCanceledException(ExecutionException):
     Raised when the execution of a goal is canceled.
     """
 
+    print_stack_trace: bool = field(default=False, kw_only=True)
+
     action_server_name: str
     """
     The name of the action server whose goal was canceled.
@@ -85,13 +86,15 @@ class ExecutionCanceledException(ExecutionException):
 
 
 @dataclass
-class ClientDisconnectedError(ExecutionException, DoesntPrintStackTrace):
+class ClientDisconnectedError(ExecutionException):
     """
     Raised when the client that sent the running goal disconnected.
 
     Nobody is waiting for the motion any more, so it is stopped instead of being run to
     its end.
     """
+
+    print_stack_trace: bool = field(default=False, kw_only=True)
 
     client: MetaData
     """
@@ -127,7 +130,7 @@ class NoWatchedClientError(GiskardException):
 
 
 @dataclass
-class WorldModelModifiedDuringMotionError(ExecutionException, DoesntPrintStackTrace):
+class WorldModelModifiedDuringMotionError(ExecutionException):
     """
     Raised when another process modified the world model while a motion was running.
 
@@ -137,6 +140,8 @@ class WorldModelModifiedDuringMotionError(ExecutionException, DoesntPrintStackTr
     again.
     """
 
+    print_stack_trace: bool = field(default=False, kw_only=True)
+
     def error_message(self) -> str:
         return "The world model was modified by another process during the motion."
 
@@ -145,13 +150,15 @@ class WorldModelModifiedDuringMotionError(ExecutionException, DoesntPrintStackTr
 
 
 @dataclass
-class RequiredWorldUpdateNotReceivedError(ExecutionException, DoesntPrintStackTrace):
+class RequiredWorldUpdateNotReceivedError(ExecutionException):
     """
     Raised when a goal names a change of the client's world that never arrived.
 
     The goal refers to a world the client already changed, so executing it against the
     world Giskard has would act on something else than what was asked for.
     """
+
+    print_stack_trace: bool = field(default=False, kw_only=True)
 
     publisher_name: str
     """
@@ -187,13 +194,15 @@ class RequiredWorldUpdateNotReceivedError(ExecutionException, DoesntPrintStackTr
 
 
 @dataclass
-class GiskardWorldUpdateNotReceivedError(ExecutionException, DoesntPrintStackTrace):
+class GiskardWorldUpdateNotReceivedError(ExecutionException):
     """
     Raised when the changes Giskard made during a goal never reached the client.
 
     Reading the world of the client after such a goal would show a world that Giskard
     has already moved on from.
     """
+
+    print_stack_trace: bool = field(default=False, kw_only=True)
 
     awaited_sequence_number: int
     """
