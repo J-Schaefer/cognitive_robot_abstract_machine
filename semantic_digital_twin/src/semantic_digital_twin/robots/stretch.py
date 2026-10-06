@@ -7,9 +7,11 @@ from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
 
+import numpy as np
 from typing_extensions import Self, List
 
 from krrood.ormatic.utils import classproperty
+from semantic_digital_twin.adapters.sensors.lidar import Lidar, LidarSource
 from semantic_digital_twin.collision_checking.collision_rules import (
     AvoidExternalCollisions,
     SelfCollisionMatrixRule,
@@ -22,8 +24,10 @@ from semantic_digital_twin.datastructures.definitions import (
 from semantic_digital_twin.datastructures.field_of_view import FieldOfView
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
+from semantic_digital_twin.datastructures.scan_pattern import ScanPattern
 from semantic_digital_twin.robots.robot_part_mixins import (
     HasNeck,
+    HasLidar,
     HasOneArm,
     HasTorso,
     HasMobileBase,
@@ -44,6 +48,18 @@ from semantic_digital_twin.world_description.connections import DifferentialDriv
 from semantic_digital_twin.world_description.world_entity import (
     KinematicStructureEntity,
 )
+
+
+class StretchTopic(StrEnum):
+    """
+    Topics the Stretch publishes the state of its parts on, where it does not follow the
+    conventional name.
+    """
+
+    ODOMETRY = "odom"
+    """
+    The topic the mobile base reports its odometry on.
+    """
 
 
 class StretchJoint(StrEnum):
@@ -357,7 +373,43 @@ class StretchTorso(Torso, HasNeck[StretchNeck], HasOneArm[StretchArm]):
 
 
 @dataclass(eq=False)
-class StretchMobileBase(MobileBase[DifferentialDrive], HasTorso[StretchTorso]):
+class StretchBaseLidar(Lidar):
+    """
+    The RPLIDAR scanner sweeping the whole floor around the Stretch's base.
+
+    ..note:: The sweep closes a full circle, so its last beam stops one increment short
+        of its first rather than repeating it.
+    """
+
+    @classmethod
+    def with_source(
+        cls, robot_root: KinematicStructureEntity, source: LidarSource
+    ) -> Self:
+        return cls(
+            root=robot_root._world.get_body_in_branch_by_name(robot_root, "laser"),
+            scan_pattern=ScanPattern(
+                minimum_angle=-np.pi,
+                maximum_angle=np.pi,
+                angle_increment=0.005823156330734491,
+                minimum_range=0.05,
+                maximum_range=12.0,
+            ),
+            source=source,
+        )
+
+
+@dataclass(eq=False)
+class StretchMobileBase(
+    MobileBase[DifferentialDrive],
+    HasTorso[StretchTorso],
+    HasLidar[StretchBaseLidar],
+):
+    @classproperty
+    def topic_name(cls) -> str:
+        """
+        The topic the Stretch publishes the pose of its base on.
+        """
+        return StretchTopic.ODOMETRY
 
     full_body_controlled: bool = field(default=True, kw_only=True)
 

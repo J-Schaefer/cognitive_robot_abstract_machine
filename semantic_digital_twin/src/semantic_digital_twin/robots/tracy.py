@@ -8,6 +8,8 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Self, List
 
+from krrood.ormatic.utils import classproperty
+
 
 from semantic_digital_twin.collision_checking.collision_rules import (
     AvoidExternalCollisions,
@@ -40,6 +42,20 @@ from semantic_digital_twin.spatial_types import Quaternion, Vector3
 from semantic_digital_twin.world_description.world_entity import (
     KinematicStructureEntity,
 )
+
+
+class TracyTopic(StrEnum):
+    """
+    Topics the Tracy publishes the state of its parts on.
+
+    Each arm and each gripper runs its own controller, so each publishes its joints
+    separately instead of the one topic most robots use.
+    """
+
+    LEFT_ARM_JOINT_STATES = "left_arm/joint_states"
+    RIGHT_ARM_JOINT_STATES = "right_arm/joint_states"
+    LEFT_GRIPPER_JOINT_STATES = "left_gripper/joint_states"
+    RIGHT_GRIPPER_JOINT_STATES = "right_gripper/joint_states"
 
 
 class TracyJoint(StrEnum):
@@ -75,6 +91,13 @@ class TracyJoint(StrEnum):
 @dataclass(eq=False)
 class TracyLeftGripperLeftFinger(Finger):
 
+    @classproperty
+    def topic_name(cls) -> str:
+        """
+        The topic the gripper this finger belongs to publishes its joints on.
+        """
+        return TracyTopic.LEFT_GRIPPER_JOINT_STATES
+
     def setup_hardware_interfaces(self):
         pass
 
@@ -97,6 +120,13 @@ class TracyLeftGripperLeftFinger(Finger):
 
 @dataclass(eq=False)
 class TracyLeftGripperRightFinger(Finger):
+
+    @classproperty
+    def topic_name(cls) -> str:
+        """
+        The topic the gripper this finger belongs to publishes its joints on.
+        """
+        return TracyTopic.LEFT_GRIPPER_JOINT_STATES
 
     def setup_hardware_interfaces(self):
         pass
@@ -121,6 +151,13 @@ class TracyLeftGripperRightFinger(Finger):
 @dataclass(eq=False)
 class TracyRightGripperLeftFinger(Finger):
 
+    @classproperty
+    def topic_name(cls) -> str:
+        """
+        The topic the gripper this finger belongs to publishes its joints on.
+        """
+        return TracyTopic.RIGHT_GRIPPER_JOINT_STATES
+
     def setup_hardware_interfaces(self):
         pass
 
@@ -143,6 +180,13 @@ class TracyRightGripperLeftFinger(Finger):
 
 @dataclass(eq=False)
 class TracyRightGripperRightFinger(Finger):
+
+    @classproperty
+    def topic_name(cls) -> str:
+        """
+        The topic the gripper this finger belongs to publishes its joints on.
+        """
+        return TracyTopic.RIGHT_GRIPPER_JOINT_STATES
 
     def setup_hardware_interfaces(self):
         pass
@@ -260,6 +304,13 @@ class TracyRightGripper(
 @dataclass(eq=False)
 class TracyLeftArm(UR10eArm[TracyLeftGripper]):
 
+    @classproperty
+    def topic_name(cls) -> str:
+        """
+        The topic this arm's controller publishes its joints on.
+        """
+        return TracyTopic.LEFT_ARM_JOINT_STATES
+
     def setup_hardware_interfaces(self):
         self._setup_hardware_interfaces_for_active_connections()
 
@@ -286,6 +337,13 @@ class TracyLeftArm(UR10eArm[TracyLeftGripper]):
 
 @dataclass(eq=False)
 class TracyRightArm(UR10eArm[TracyRightGripper]):
+
+    @classproperty
+    def topic_name(cls) -> str:
+        """
+        The topic this arm's controller publishes its joints on.
+        """
+        return TracyTopic.RIGHT_ARM_JOINT_STATES
 
     def setup_hardware_interfaces(self):
         self._setup_hardware_interfaces_for_active_connections()
@@ -408,9 +466,11 @@ class Tracy(
     def _setup_velocity_limits(self):
         """
         Slow the arms down to 0.2 rad/s at their fastest joint, keeping the joints'
-        proportions. The grippers keep the description's own limits: a finger is no
-        danger at that speed, and scaling it down with the arms would leave it too slow
-        to close within a motion.
+        proportions.
+
+        The grippers keep the description's own limits: a finger is no danger at that
+        speed, and scaling it down with the arms would leave it too slow to close within
+        a motion.
         """
         end_effector_connections = {
             connection
