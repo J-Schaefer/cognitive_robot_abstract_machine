@@ -43,7 +43,7 @@ from semantic_digital_twin.robots.robot_parts import (
     AbstractRobot,
     EndEffector,
 )
-from semantic_digital_twin.spatial_types import Quaternion, Vector3
+from semantic_digital_twin.spatial_types import Vector3
 from semantic_digital_twin.world_description.connections import (
     ActiveConnection,
     OmniDrive,
@@ -110,6 +110,10 @@ class PR2KinectV1(Camera):
     def setup_joint_states(self) -> List[JointState]:
         return []
 
+    @property
+    def forward_facing_axis(self) -> Vector3:
+        return Vector3.Z(reference_frame=self.root)
+
     @classmethod
     def setup_default_configuration_in_world_below_robot_root(
         cls, robot_root: KinematicStructureEntity
@@ -118,7 +122,6 @@ class PR2KinectV1(Camera):
             root=robot_root._world.get_body_in_branch_by_name(
                 robot_root, "wide_stereo_optical_frame"
             ),
-            forward_facing_axis=Vector3.Z(),
             field_of_view=FieldOfView(horizontal_angle=0.99483, vertical_angle=0.75049),
             minimal_height=1.27,
             maximal_height=1.60,
@@ -268,6 +271,14 @@ class PR2RightGripper(
     def setup_hardware_interfaces(self):
         return
 
+    @property
+    def approach_axis(self) -> Vector3:
+        return Vector3.X(reference_frame=self.tool_frame)
+
+    @property
+    def closing_axis(self) -> Vector3:
+        return Vector3.Y(reference_frame=self.tool_frame)
+
     @classmethod
     def setup_default_configuration_in_world_below_robot_root(
         cls, robot_root: KinematicStructureEntity
@@ -279,7 +290,6 @@ class PR2RightGripper(
             tool_frame=robot_root._world.get_body_in_branch_by_name(
                 robot_root, "r_gripper_tool_frame"
             ),
-            front_facing_orientation=Quaternion(0, 0, 0, 1),
         )
 
 
@@ -304,6 +314,14 @@ class PR2LeftGripper(
 
         return [left_gripper_open, left_gripper_close]
 
+    @property
+    def approach_axis(self) -> Vector3:
+        return Vector3.X(reference_frame=self.tool_frame)
+
+    @property
+    def closing_axis(self) -> Vector3:
+        return Vector3.Y(reference_frame=self.tool_frame)
+
     @classmethod
     def setup_default_configuration_in_world_below_robot_root(
         cls, robot_root: KinematicStructureEntity
@@ -315,7 +333,6 @@ class PR2LeftGripper(
             tool_frame=robot_root._world.get_body_in_branch_by_name(
                 robot_root, "l_gripper_tool_frame"
             ),
-            front_facing_orientation=Quaternion(0, 0, 0, 1),
         )
 
     def setup_hardware_interfaces(self):
@@ -404,7 +421,7 @@ class PR2LeftArm(Arm[PR2LeftGripper]):
                 robot_root, "torso_lift_link"
             ),
             tip=robot_root._world.get_body_in_branch_by_name(
-                robot_root, "l_wrist_roll_link"
+                robot_root, "l_force_torque_link"
             ),
         )
 
