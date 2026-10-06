@@ -2,6 +2,7 @@
 
 ## Applying These Rules
 - Existing code that breaks these rules stays as it is unless a change touches it or the user asks for the cleanup. When you modify a function or class, bring that function or class in line with these rules as part of the change, and leave code the change does not otherwise modify alone. If the cleanup renames a method and so changes the API, ask the user first
+- When a rule seems wrong for the case at hand - a failing test that is itself wrong, an exception that has to be caught, a value that genuinely has to live at module level - ask the user before departing from it; never decide the exception on your own
 
 ## Ask the Developer
 - When you are unsure why something was done or why a specific number was chosen, ask; never invent a reason and write it down as a comment
@@ -44,7 +45,7 @@
 ## Code Style
 - Always use dataclasses
 - Divide every file, source and test, into sections with `# %% <short description>` headers (e.g. `# %% same-noun disambiguation`), never decorative box-drawing dividers
-- A group of primitives that travels together, or a return type that keeps being repeated, becomes a dataclass or a type alias
+- A group of primitives that travels together, or a return type that keeps being repeated, becomes a dataclass
 - Never duplicate code. Never put methods in a catch-all module such as `utils.py`; move them onto the class that owns the behaviour
 - Access attributes with `.`, never with `getattr`, and never wrap attribute access in try-except
 - Never use mutable objects as default arguments
@@ -69,7 +70,7 @@
 
 ## Imports
 - Imports are absolute. Exception: a test imports another test module (a shared mimic or fixture from the test datasets) relatively
-- Imports go at the top of the module. Only ORM interface imports may be local; fix an import cycle by restructuring the modules, never with a local import
+- Imports go at the top of the module; fix an import cycle by restructuring the modules, never with a local import. If an ORM import creates a cycle, ask the user if a local import is fine.
 - Guard type-only imports with `TYPE_CHECKING`
 
 ### krrood Isolation
@@ -97,7 +98,7 @@
 
 ### Errors
 - Never use try-except; a program in an illegal state raises an appropriate exception
-- Create meaningful custom exceptions
+- Create meaningful custom exceptions as dataclasses subclassing `krrood.exceptions.DataclassException`, implementing its `error_message` and `suggest_correction`
 - Never use `assert` outside tests: Python drops it when run with `-O`, so the check silently disappears. Raise a custom exception instead
 
 ### Constants and Class-Level Values
@@ -112,7 +113,7 @@
 - A string that names a fixed thing - a payload key, a state, a label, a filename, an environment variable, a command flag, a status - is a `StrEnum` member. A value spelled in two places has no single source to rename, and nothing fails when the two drift apart
 - When the values are more than text - paths, numbers - give the enum values of that type, mixing the type in where Python supports it (`IntEnum`, `StrEnum`). `Path` cannot be mixed in, because pathlib builds every derived path through the enum's own member lookup, so a path enum is a plain `Enum` whose values are `Path`s
 - A magic number becomes an enum member, a field default or a `classproperty`; a bare literal that carries meaning is unreadable where it is used and unsearchable everywhere else
-- JSON that our own classes round-trip uses `krrood.adapters.json_serializer.SubclassJSONSerializer`, never hand-written `to_json`/`from_json`; it resolves the concrete subclass from the stored type name
+- JSON that our own classes round-trip goes through `krrood.adapters.json_serializer`: use `DataclassJSONSerializer` wherever it can (de)serialize the class; where a class needs more, subclass `SubclassJSONSerializer` and build on `DataclassJSONSerializer.to_json`/`from_json`. Never hand-write field-by-field `to_json`/`from_json`
 - Data whose shape someone else controls - an API response, a configuration file - is mirrored in dataclasses and parsed by a `from_json` classmethod, so the field names and the access path into the payload are written once
 - A tuple whose positions carry meaning becomes a dataclass, or an enum when the positions are a fixed set of alternatives rather than fields
 - A long literal document - a query, a template, a schema - lives in a file of its own type and is read in, never embedded as a string
