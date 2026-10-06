@@ -13,6 +13,7 @@
 
 ## Testing
 - If you need to run tests, execute them with pytest
+- Always write tests with pytest: plain test functions or classes, pytest fixtures, `pytest.raises` and plain `assert`, never `unittest.TestCase` or its assertion methods
 - Reuse existing fixtures found in conftest.py
 - Always use a test-driven development approach. For example for bugs, always prove a bug by adding a meaningful, failing test first, before then fixing it
 - When fixing failing tests, never modify the test itself
