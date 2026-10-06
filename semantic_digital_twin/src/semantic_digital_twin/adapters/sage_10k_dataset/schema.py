@@ -26,7 +26,6 @@ from semantic_digital_twin.semantic_annotations.semantic_annotations import (
 )
 from semantic_digital_twin.api import RevoluteConnectionSpecification
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix, Vector3
-from semantic_digital_twin.spatial_types.derivatives import DerivativeMap
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.connections import (
     ActiveConnection1DOF,
@@ -713,16 +712,18 @@ class Sage10kDoor(Sage10kWithID):
         :return: The revolute connection the door swings on.
         """
         if self.opens_inward:
-            lower = DerivativeMap(position=0.0)
-            upper = DerivativeMap(position=np.pi / 2)
+            limits = DegreeOfFreedomLimits.from_position_range_and_speed(
+                lower_position=0.0, upper_position=np.pi / 2
+            )
         else:
-            upper = DerivativeMap(position=0.0)
-            lower = DerivativeMap(position=-np.pi / 2)
+            limits = DegreeOfFreedomLimits.from_position_range_and_speed(
+                lower_position=-np.pi / 2, upper_position=0.0
+            )
 
         return door.mount_on_movable_joint(
             RevoluteConnectionSpecification(
                 axis=Vector3.Z(),
-                dof_limits=DegreeOfFreedomLimits(lower=lower, upper=upper),
+                dof_limits=limits,
             )
         )
 

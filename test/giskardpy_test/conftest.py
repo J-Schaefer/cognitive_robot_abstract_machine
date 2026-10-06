@@ -24,7 +24,6 @@ from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.minimal_robot import MinimalRobot
 from semantic_digital_twin.spatial_types import Vector3, HomogeneousTransformationMatrix
-from semantic_digital_twin.spatial_types.derivatives import DerivativeMap
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.connections import (
     FixedConnection,
@@ -172,16 +171,10 @@ def _symmetric_prismatic_limits(
     Builds symmetric prismatic degree-of-freedom limits with no acceleration or jerk
     bound.
     """
-    return DegreeOfFreedomLimits(
-        lower=DerivativeMap(
-            position=None if position is None else -position,
-            velocity=-velocity,
-            acceleration=None,
-            jerk=None,
-        ),
-        upper=DerivativeMap(
-            position=position, velocity=velocity, acceleration=None, jerk=None
-        ),
+    return DegreeOfFreedomLimits.from_position_range_and_speed(
+        lower_position=None if position is None else -position,
+        upper_position=position,
+        maximum_speed=velocity,
     )
 
 

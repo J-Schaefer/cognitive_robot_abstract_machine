@@ -61,7 +61,6 @@ from semantic_digital_twin.spatial_types import (
     Point3,
 )
 from semantic_digital_twin.spatial_types import Vector3
-from semantic_digital_twin.spatial_types.derivatives import DerivativeMap
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.connections import (
     FixedConnection,
@@ -486,9 +485,8 @@ class TestFactories(unittest.TestCase):
             door.add(handle)
         world_T_door = door.root.global_transform
         world_T_hinge = world_T_door @ door.calculate_self_T_movable_joint(Vector3.Z())
-        limits = DegreeOfFreedomLimits(
-            lower=DerivativeMap[float](position=0.0),
-            upper=DerivativeMap[float](position=np.pi / 2),
+        limits = DegreeOfFreedomLimits.from_position_range_and_speed(
+            lower_position=0.0, upper_position=np.pi / 2
         )
 
         specification = RevoluteConnectionSpecification(
@@ -857,11 +855,9 @@ class TestFactories(unittest.TestCase):
     def test_create_with_connection_limits(self):
         world = World()
         root = Body(name=PrefixedName("root"))
-        lower = DerivativeMap[float]()
-        lower.position = -0.5
-        upper = DerivativeMap[float]()
-        upper.position = 0.5
-        limits = DegreeOfFreedomLimits(lower=lower, upper=upper)
+        limits = DegreeOfFreedomLimits.from_position_range_and_speed(
+            lower_position=-0.5, upper_position=0.5
+        )
 
         with world.modify_world():
             world.add_body(root)
@@ -880,11 +876,9 @@ class TestFactories(unittest.TestCase):
 
     def test_create_with_invalid_connection_limits(self):
         world = World.create_with_root_body("root")
-        lower = DerivativeMap[float]()
-        lower.position = 0.5
-        upper = DerivativeMap[float]()
-        upper.position = -0.5
-        limits = DegreeOfFreedomLimits(lower=lower, upper=upper)
+        limits = DegreeOfFreedomLimits.from_position_range_and_speed(
+            lower_position=0.5, upper_position=-0.5
+        )
 
         with self.assertRaises(InvalidConnectionLimits), world.modify_world():
             Door.create_with_new_body_in_world(

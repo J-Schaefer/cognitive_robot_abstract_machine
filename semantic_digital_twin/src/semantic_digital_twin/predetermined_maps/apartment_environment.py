@@ -19,7 +19,6 @@ from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Wardrobe,
 )
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix, Vector3
-from semantic_digital_twin.spatial_types.derivatives import DerivativeMap
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.degree_of_freedom import (
     DegreeOfFreedomLimits,
@@ -203,15 +202,10 @@ class ApartmentEnvironment:
                 ),
                 parent_connection_specification=RevoluteConnectionSpecification(
                     axis=Vector3.Z(),
-                    dof_limits=DegreeOfFreedomLimits(
-                        lower=DerivativeMap[float](
-                            position=min(0.0, opening_angle),
-                            velocity=-WARDROBE_DOOR_VELOCITY_LIMIT,
-                        ),
-                        upper=DerivativeMap[float](
-                            position=max(0.0, opening_angle),
-                            velocity=WARDROBE_DOOR_VELOCITY_LIMIT,
-                        ),
+                    dof_limits=DegreeOfFreedomLimits.from_position_range_and_speed(
+                        lower_position=min(0.0, opening_angle),
+                        upper_position=max(0.0, opening_angle),
+                        maximum_speed=WARDROBE_DOOR_VELOCITY_LIMIT,
                     ),
                 ),
                 part_specifications={

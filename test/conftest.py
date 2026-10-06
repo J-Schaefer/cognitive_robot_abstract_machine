@@ -19,7 +19,6 @@ from semantic_digital_twin.semantic_annotations.mixins import (
     HasRootBody,
     HasRootKinematicStructureEntity,
 )
-from semantic_digital_twin.spatial_types.derivatives import DerivativeMap
 from semantic_digital_twin.world_description.degree_of_freedom import (
     DegreeOfFreedomLimits,
 )
@@ -743,9 +742,8 @@ def _elevator_world_setup():
             ),
             parent_connection_specification=PrismaticConnectionSpecification(
                 axis=Vector3.Z(),
-                dof_limits=DegreeOfFreedomLimits(
-                    lower=DerivativeMap(velocity=-1.0),
-                    upper=DerivativeMap(velocity=1.0),
+                dof_limits=DegreeOfFreedomLimits.from_position_range_and_speed(
+                    maximum_speed=1.0
                 ),
             ),
         ).spawn(world)
@@ -762,9 +760,8 @@ def _elevator_world_setup():
                 ),
                 parent_connection_specification=PrismaticConnectionSpecification(
                     axis=(Vector3.Y() * ((-1) ** (i + 1))),
-                    dof_limits=DegreeOfFreedomLimits(
-                        lower=DerivativeMap(position=0.0),
-                        upper=DerivativeMap(position=door_travel),
+                    dof_limits=DegreeOfFreedomLimits.from_position_range_and_speed(
+                        lower_position=0.0, upper_position=door_travel
                     ),
                 ),
                 scale=door_scale,

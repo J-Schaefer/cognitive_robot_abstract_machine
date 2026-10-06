@@ -1,6 +1,7 @@
 import numpy as np
 import threading
 import rclpy
+from enum import Enum
 
 from semantic_digital_twin.adapters.ros.visualization.viz_marker import (
     VizMarkerPublisher,
@@ -36,7 +37,6 @@ from semantic_digital_twin.api import (
     PrismaticConnectionSpecification,
     RevoluteConnectionSpecification,
 )
-from semantic_digital_twin.spatial_types.derivatives import DerivativeMap
 from semantic_digital_twin.world_description.connections import (
     FixedConnection,
     RevoluteConnection,
@@ -54,6 +54,28 @@ from semantic_digital_twin.world_description.geometry import Box, Scale, Color
 from semantic_digital_twin.world_description.geometry import Cylinder
 from semantic_digital_twin.world_description.shape_collection import ShapeCollection
 from semantic_digital_twin.world_description.world_entity import Body
+
+
+class MaximumSpeed(float, Enum):
+    """
+    The speed limits of the kitchen's movable parts.
+    """
+
+    HINGED_DOOR = np.pi / 2
+    """
+    Angular speed limit of a hinged door in rad/s.
+
+    Taken from the revolute joint limits of the apartment description in
+    ``iai_apartment``, which uses this value for every one of its hinged doors.
+    """
+
+    DRAWER = 0.5
+    """
+    Linear speed limit of a drawer in m/s.
+
+    Taken from the prismatic joint limits of the apartment description in
+    ``iai_apartment``.
+    """
 
 
 class KitchenEnvironment:
@@ -75,6 +97,47 @@ class KitchenEnvironment:
         self._build_environment_rooms(world)
 
         return world
+
+    @staticmethod
+    def _door_hinge_specification(
+        axis: Vector3,
+        hinge_T_door: HomogeneousTransformationMatrix,
+        lower_angle: float = 0.0,
+        upper_angle: float = np.pi / 2,
+    ) -> RevoluteConnectionSpecification:
+        """
+        Specify a hinge that swings a door about the axis between the two angles.
+
+        :param axis: The axis the door swings about, in the hinge frame.
+        :param hinge_T_door: The pose of the door's centre relative to its hinge.
+        :param lower_angle: The angle the door can close to, in rad.
+        :param upper_angle: The angle the door can open to, in rad.
+        """
+        return RevoluteConnectionSpecification(
+            axis=axis,
+            dof_limits=DegreeOfFreedomLimits.from_position_range_and_speed(
+                lower_position=lower_angle,
+                upper_position=upper_angle,
+                maximum_speed=MaximumSpeed.HINGED_DOOR.value,
+            ),
+            connection_T_child=hinge_T_door,
+        )
+
+    @staticmethod
+    def _drawer_slide_specification(travel: float) -> PrismaticConnectionSpecification:
+        """
+        Specify a slide that pulls a drawer out of the front of its cabinet.
+
+        :param travel: How far the drawer can be pulled out, in m.
+        """
+        return PrismaticConnectionSpecification(
+            axis=Vector3.NEGATIVE_X(),
+            dof_limits=DegreeOfFreedomLimits.from_position_range_and_speed(
+                lower_position=0.0,
+                upper_position=travel,
+                maximum_speed=MaximumSpeed.DRAWER.value,
+            ),
+        )
 
     def _build_environment_walls(self, world: World):
         """
@@ -203,15 +266,6 @@ class KitchenEnvironment:
         """
         Adds furniture items and room layouts to the scene graph.
         """
-        # Angular velocity limit of a hinged door in rad/s.
-        # Taken from the revolute joint limits of the apartment description in ``iai_apartment``,
-        # which uses this value for every one of its hinged doors.
-        hinged_door_velocity_limit = np.pi / 2
-
-        # Linear velocity limit of a sliding drawer in m/s.
-        # Taken from the prismatic joint limits of the apartment description in ``iai_apartment``.
-        sliding_drawer_velocity_limit = 0.5
-
         standard_handle_depth = 0.068
         standard_handle_height = 0.015
 
@@ -335,17 +389,8 @@ class KitchenEnvironment:
                 world=world,
                 name="fridge_door",
                 world_root_T_self=hinge_world_pose @ hinge_T_fridge_door,
-                parent_connection_specification=RevoluteConnectionSpecification(
-                    axis=Vector3.Z(),
-                    dof_limits=DegreeOfFreedomLimits(
-                        lower=DerivativeMap[float](
-                            position=0.0, velocity=-hinged_door_velocity_limit
-                        ),
-                        upper=DerivativeMap[float](
-                            position=np.pi / 2, velocity=hinged_door_velocity_limit
-                        ),
-                    ),
-                    connection_T_child=hinge_T_fridge_door,
+                parent_connection_specification=self._door_hinge_specification(
+                    axis=Vector3.Z(), hinge_T_door=hinge_T_fridge_door
                 ),
                 scale=Scale(
                     x=door_thickness,
@@ -373,16 +418,8 @@ class KitchenEnvironment:
                 world=world,
                 name="fridge_drawer",
                 world_root_T_self=drawer_world_pose,
-                parent_connection_specification=PrismaticConnectionSpecification(
-                    axis=Vector3.NEGATIVE_X(),
-                    dof_limits=DegreeOfFreedomLimits(
-                        lower=DerivativeMap[float](
-                            position=0.0, velocity=-sliding_drawer_velocity_limit
-                        ),
-                        upper=DerivativeMap[float](
-                            position=0.5, velocity=sliding_drawer_velocity_limit
-                        ),
-                    ),
+                parent_connection_specification=self._drawer_slide_specification(
+                    travel=0.5
                 ),
                 scale=Scale(
                     x=drawer_depth,
@@ -611,17 +648,8 @@ class KitchenEnvironment:
                 world=world,
                 name="module_1_door",
                 world_root_T_self=module_1_hinge_world_pose @ hinge_T_module_1_door,
-                parent_connection_specification=RevoluteConnectionSpecification(
-                    axis=Vector3.Z(),
-                    dof_limits=DegreeOfFreedomLimits(
-                        lower=DerivativeMap[float](
-                            position=0.0, velocity=-hinged_door_velocity_limit
-                        ),
-                        upper=DerivativeMap[float](
-                            position=np.pi / 2, velocity=hinged_door_velocity_limit
-                        ),
-                    ),
-                    connection_T_child=hinge_T_module_1_door,
+                parent_connection_specification=self._door_hinge_specification(
+                    axis=Vector3.Z(), hinge_T_door=hinge_T_module_1_door
                 ),
                 scale=Scale(
                     x=module_1_door_thickness,
@@ -696,17 +724,8 @@ class KitchenEnvironment:
                 world=world,
                 name="dishwasher_door",
                 world_root_T_self=module_2_hinge_world_pose @ hinge_T_module_2_door,
-                parent_connection_specification=RevoluteConnectionSpecification(
-                    axis=Vector3.NEGATIVE_Y(),
-                    dof_limits=DegreeOfFreedomLimits(
-                        lower=DerivativeMap[float](
-                            position=0.0, velocity=-hinged_door_velocity_limit
-                        ),
-                        upper=DerivativeMap[float](
-                            position=np.pi / 2, velocity=hinged_door_velocity_limit
-                        ),
-                    ),
-                    connection_T_child=hinge_T_module_2_door,
+                parent_connection_specification=self._door_hinge_specification(
+                    axis=Vector3.NEGATIVE_Y(), hinge_T_door=hinge_T_module_2_door
                 ),
                 scale=Scale(
                     x=module_2_door_thickness,
@@ -785,16 +804,8 @@ class KitchenEnvironment:
                     world=world,
                     name=f"counter_drawer_{drawer_index}",
                     world_root_T_self=drawer_pose,
-                    parent_connection_specification=PrismaticConnectionSpecification(
-                        axis=Vector3.NEGATIVE_X(),
-                        dof_limits=DegreeOfFreedomLimits(
-                            lower=DerivativeMap[float](
-                                position=0.0, velocity=-sliding_drawer_velocity_limit
-                            ),
-                            upper=DerivativeMap[float](
-                                position=0.25, velocity=sliding_drawer_velocity_limit
-                            ),
-                        ),
+                    parent_connection_specification=self._drawer_slide_specification(
+                        travel=0.25
                     ),
                     scale=Scale(
                         x=module_3_drawer_depth,
@@ -961,16 +972,8 @@ class KitchenEnvironment:
                     world=world,
                     name=f"oven_side_drawer_{side_name}",
                     world_root_T_self=side_drawer_pose,
-                    parent_connection_specification=PrismaticConnectionSpecification(
-                        axis=Vector3.NEGATIVE_X(),
-                        dof_limits=DegreeOfFreedomLimits(
-                            lower=DerivativeMap[float](
-                                position=0.0, velocity=-sliding_drawer_velocity_limit
-                            ),
-                            upper=DerivativeMap[float](
-                                position=0.25, velocity=sliding_drawer_velocity_limit
-                            ),
-                        ),
+                    parent_connection_specification=self._drawer_slide_specification(
+                        travel=0.25
                     ),
                     scale=Scale(
                         x=oven_depth,
@@ -1026,17 +1029,8 @@ class KitchenEnvironment:
                 name="oven_cabinet_door",
                 world_root_T_self=oven_cabinet_hinge_world_pose
                 @ hinge_T_oven_cabinet_door,
-                parent_connection_specification=RevoluteConnectionSpecification(
-                    axis=Vector3.Z(),
-                    dof_limits=DegreeOfFreedomLimits(
-                        lower=DerivativeMap[float](
-                            position=0.0, velocity=-hinged_door_velocity_limit
-                        ),
-                        upper=DerivativeMap[float](
-                            position=np.pi / 2, velocity=hinged_door_velocity_limit
-                        ),
-                    ),
-                    connection_T_child=hinge_T_oven_cabinet_door,
+                parent_connection_specification=self._door_hinge_specification(
+                    axis=Vector3.Z(), hinge_T_door=hinge_T_oven_cabinet_door
                 ),
                 scale=Scale(
                     x=center_door_thickness,
@@ -1090,16 +1084,8 @@ class KitchenEnvironment:
                 world=world,
                 name="oven_center_drawer",
                 world_root_T_self=drawer_pose,
-                parent_connection_specification=PrismaticConnectionSpecification(
-                    axis=Vector3.NEGATIVE_X(),
-                    dof_limits=DegreeOfFreedomLimits(
-                        lower=DerivativeMap[float](
-                            position=0.0, velocity=-sliding_drawer_velocity_limit
-                        ),
-                        upper=DerivativeMap[float](
-                            position=0.25, velocity=sliding_drawer_velocity_limit
-                        ),
-                    ),
+                parent_connection_specification=self._drawer_slide_specification(
+                    travel=0.25
                 ),
                 scale=Scale(
                     x=center_drawer_depth,
@@ -1168,17 +1154,8 @@ class KitchenEnvironment:
                 world=world,
                 name="oven_door",
                 world_root_T_self=oven_hinge_world_pose @ hinge_T_oven_door,
-                parent_connection_specification=RevoluteConnectionSpecification(
-                    axis=Vector3.NEGATIVE_Y(),
-                    dof_limits=DegreeOfFreedomLimits(
-                        lower=DerivativeMap[float](
-                            position=0.0, velocity=-hinged_door_velocity_limit
-                        ),
-                        upper=DerivativeMap[float](
-                            position=np.pi / 2, velocity=hinged_door_velocity_limit
-                        ),
-                    ),
-                    connection_T_child=hinge_T_oven_door,
+                parent_connection_specification=self._door_hinge_specification(
+                    axis=Vector3.NEGATIVE_Y(), hinge_T_door=hinge_T_oven_door
                 ),
                 scale=Scale(x=0.02, y=center_width, z=center_oven_height),
             )
@@ -1411,18 +1388,8 @@ class KitchenEnvironment:
                         world=world,
                         name=drawer_id,
                         world_root_T_self=drawer_pose,
-                        parent_connection_specification=PrismaticConnectionSpecification(
-                            axis=Vector3.NEGATIVE_X(),
-                            dof_limits=DegreeOfFreedomLimits(
-                                lower=DerivativeMap[float](
-                                    position=0.0,
-                                    velocity=-sliding_drawer_velocity_limit,
-                                ),
-                                upper=DerivativeMap[float](
-                                    position=0.25,
-                                    velocity=sliding_drawer_velocity_limit,
-                                ),
-                            ),
+                        parent_connection_specification=self._drawer_slide_specification(
+                            travel=0.25
                         ),
                         scale=Scale(
                             sideboard_drawer_depth,
@@ -1520,19 +1487,11 @@ class KitchenEnvironment:
                     world=world,
                     name=f"cupboard_door_{side}",
                     world_root_T_self=hinge_pose @ hinge_T_door,
-                    parent_connection_specification=RevoluteConnectionSpecification(
+                    parent_connection_specification=self._door_hinge_specification(
                         axis=Vector3.Z(),
-                        dof_limits=DegreeOfFreedomLimits(
-                            lower=DerivativeMap[float](
-                                position=limits[0],
-                                velocity=-hinged_door_velocity_limit,
-                            ),
-                            upper=DerivativeMap[float](
-                                position=limits[1],
-                                velocity=hinged_door_velocity_limit,
-                            ),
-                        ),
-                        connection_T_child=hinge_T_door,
+                        hinge_T_door=hinge_T_door,
+                        lower_angle=limits[0],
+                        upper_angle=limits[1],
                     ),
                     scale=cupboard_door_scale,
                 )
@@ -1674,16 +1633,8 @@ class KitchenEnvironment:
                     world=world,
                     name=f"cooking_drawer_{side_name}",
                     world_root_T_self=drawer_pose,
-                    parent_connection_specification=PrismaticConnectionSpecification(
-                        axis=Vector3.NEGATIVE_X(),
-                        dof_limits=DegreeOfFreedomLimits(
-                            lower=DerivativeMap[float](
-                                position=0.0, velocity=-sliding_drawer_velocity_limit
-                            ),
-                            upper=DerivativeMap[float](
-                                position=0.40, velocity=sliding_drawer_velocity_limit
-                            ),
-                        ),
+                    parent_connection_specification=self._drawer_slide_specification(
+                        travel=0.40
                     ),
                     scale=Scale(module_width - 0.04, cooking_table_depth - 0.02, 0.18),
                 )

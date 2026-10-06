@@ -31,7 +31,6 @@ from semantic_digital_twin.adapters.ros.messages import MetaData, StreamPosition
 from semantic_digital_twin.adapters.ros.world_synchronizer import WorldSynchronizer
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.spatial_types import Vector3
-from semantic_digital_twin.spatial_types.derivatives import DerivativeMap
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.connections import (
     FixedConnection,
@@ -381,13 +380,6 @@ def add_moving_connection(world: World) -> None:
     The degree of freedom is limited because the compiled motion statechart needs
     velocity limits to decide whether the world has settled.
     """
-    lower_limits = DerivativeMap[float]()
-    lower_limits.position = -1.0
-    lower_limits.velocity = -1.0
-    upper_limits = DerivativeMap[float]()
-    upper_limits.position = 1.0
-    upper_limits.velocity = 1.0
-
     with world.modify_world():
         parent_body = Body(name=PrefixedName("parent"))
         child_body = Body(name=PrefixedName("child"))
@@ -399,8 +391,8 @@ def add_moving_connection(world: World) -> None:
                 parent=parent_body,
                 child=child_body,
                 axis=Vector3.X(),
-                dof_limits=DegreeOfFreedomLimits(
-                    lower=lower_limits, upper=upper_limits
+                dof_limits=DegreeOfFreedomLimits.from_position_range_and_speed(
+                    lower_position=-1.0, upper_position=1.0, maximum_speed=1.0
                 ),
             )
         )

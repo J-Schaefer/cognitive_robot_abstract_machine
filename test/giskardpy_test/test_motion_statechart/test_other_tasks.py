@@ -48,7 +48,6 @@ from semantic_digital_twin.spatial_types import (
     Vector3,
     Point3,
 )
-from semantic_digital_twin.spatial_types.derivatives import DerivativeMap
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.degree_of_freedom import (
     DegreeOfFreedomLimits,
@@ -775,21 +774,16 @@ class TestOpenClose:
         world_T_hinge = HomogeneousTransformationMatrix.from_xyz_rpy(
             x=1.5, y=-0.5, z=1, yaw=np.pi, reference_frame=pr2_world_copy.root
         )
-        lower_limits = DerivativeMap()
-        lower_limits.position = -np.pi / 2
-        lower_limits.velocity = -1
-        upper_limits = DerivativeMap()
-        upper_limits.position = np.pi / 2
-        upper_limits.velocity = 1
+        limits = DegreeOfFreedomLimits.from_position_range_and_speed(
+            lower_position=-np.pi / 2, upper_position=np.pi / 2, maximum_speed=1
+        )
         with pr2_world_copy.modify_world():
             door = Door.create_with_new_body_in_world(
                 name="door",
                 world=pr2_world_copy,
                 world_root_T_self=world_T_door,
                 parent_connection_specification=RevoluteConnectionSpecification(
-                    dof_limits=DegreeOfFreedomLimits(
-                        lower=lower_limits, upper=upper_limits
-                    ),
+                    dof_limits=limits,
                     axis=Vector3.Z(),
                     connection_T_child=world_T_hinge.inverse() @ world_T_door,
                 ),
@@ -877,12 +871,9 @@ class TestOpenClose:
     def test_unscrew_and_tighten_bottle_cap(self, pr2_world_copy):
         screw_pitch = 0.03
         unscrew_goal = 2 * np.pi
-        lower_limits = DerivativeMap()
-        lower_limits.position = 0
-        lower_limits.velocity = -1
-        upper_limits = DerivativeMap()
-        upper_limits.position = unscrew_goal
-        upper_limits.velocity = 1
+        limits = DegreeOfFreedomLimits.from_position_range_and_speed(
+            lower_position=0, upper_position=unscrew_goal, maximum_speed=1
+        )
         with pr2_world_copy.modify_world():
             # The bottle lies on its side, its thread axis pointing towards the robot.
             Bottle.create_with_new_body_in_world(
@@ -905,9 +896,7 @@ class TestOpenClose:
                 # towards the robot, so unscrewing moves the cap away from the bottle.
                 parent_connection_specification=ScrewConnectionSpecification(
                     axis=Vector3(-1, 0, 0),
-                    dof_limits=DegreeOfFreedomLimits(
-                        lower=lower_limits, upper=upper_limits
-                    ),
+                    dof_limits=limits,
                     screw_pitch=screw_pitch,
                 ),
             )

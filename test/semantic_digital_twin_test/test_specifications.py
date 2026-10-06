@@ -77,7 +77,6 @@ from semantic_digital_twin.world_description.connections import (
 from semantic_digital_twin.world_description.degree_of_freedom import (
     DegreeOfFreedomLimits,
 )
-from semantic_digital_twin.spatial_types.derivatives import DerivativeMap
 from semantic_digital_twin.world_description.geometry import Color, Scale, Box
 from semantic_digital_twin.world_description.inertial_properties import Inertial
 from semantic_digital_twin.world_description.shape_collection import ShapeCollection
@@ -645,9 +644,7 @@ def test_connection_6dof_spec_binds_type_without_params():
 
 
 def test_active_1dof_spec_captures_parameters():
-    limits = DegreeOfFreedomLimits(
-        lower=DerivativeMap(velocity=-1.0), upper=DerivativeMap(velocity=1.0)
-    )
+    limits = DegreeOfFreedomLimits.from_position_range_and_speed(maximum_speed=1.0)
     axis = Vector3.Z()
     spec = PrismaticConnectionSpecification(
         axis=axis, multiplier=2.0, offset=0.5, dof_limits=limits
@@ -737,9 +734,7 @@ def test_connection_spec_connect_defaults_parent_to_root(empty_world):
 
 
 def test_connection_spec_connect_active_forwards_kwargs(empty_world):
-    limits = DegreeOfFreedomLimits(
-        lower=DerivativeMap(velocity=-1.5), upper=DerivativeMap(velocity=1.5)
-    )
+    limits = DegreeOfFreedomLimits.from_position_range_and_speed(maximum_speed=1.5)
     child = BodySpecification.box("slider", Scale(1, 1, 1)).to_domain_object()
     connection = PrismaticConnectionSpecification(
         axis=Vector3.Z(), dof_limits=limits
@@ -950,8 +945,8 @@ def test_reconnect_swings_the_child_about_the_new_connection_frame(empty_world):
         ),
         RevoluteConnectionSpecification(
             axis=Vector3.Z(),
-            dof_limits=DegreeOfFreedomLimits(
-                lower=DerivativeMap(position=0.2), upper=DerivativeMap(position=1.0)
+            dof_limits=DegreeOfFreedomLimits.from_position_range_and_speed(
+                lower_position=0.2, upper_position=1.0
             ),
             connection_T_child=_hinge_T_door(),
         ),
@@ -1424,9 +1419,7 @@ def test_nested_part_placement_is_relative_to_whole(empty_world):
 
 
 def test_annotation_connection_limits_threaded(empty_world):
-    limits = DegreeOfFreedomLimits(
-        lower=DerivativeMap(velocity=-1.5), upper=DerivativeMap(velocity=1.5)
-    )
+    limits = DegreeOfFreedomLimits.from_position_range_and_speed(maximum_speed=1.5)
     spec = Drawer.get_annotation_specification(
         "drawer",
         Drawer.get_default_root_kinematic_structure_entity_specification(
