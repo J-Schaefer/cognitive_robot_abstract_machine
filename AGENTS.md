@@ -60,7 +60,7 @@
 - Never use generic words that would fit anything; use the plain technical word for what the thing is
 - A name whose meaning has to be looked up elsewhere is wrong. Never adopt another system's vocabulary as an identifier of ours: name the thing for what it is here, and explain a foreign shape in the docstring
 - Methods are verb phrases for what they do; classes and attributes are noun phrases for what they are. Name a field for its subject, not for the shape of its value
-- One operation has one name throughout a module. Where callers depend on that name, declare it in a base class or protocol instead of leaving it a convention each class is trusted to follow
+- One operation has one name throughout a module. Where callers depend on that name, declare it in a base class instead of leaving it a convention each class is trusted to follow
 - Name an enum member for the situation it means, not for the function it dispatches to or the text it renders
 - Never repeat the enclosing type's name in its members, or the same word twice within one name
 - Never take an identifier the language or something in scope already binds: `Enum` reserves `name`, a parameter `field` shadows `dataclasses.field`, a field shadows a method of the same name. These fail at runtime or silently, not at import
@@ -82,12 +82,18 @@
   - Single Responsibility: each class and method does one thing. If a method has cyclomatic complexity in the hundreds, refactor
   - Open/Closed: open for extension, closed for modification
   - Liskov Substitution: subtypes are substitutable for their base types without breaking behaviour
-  - Interface Segregation: many small interfaces over one large one
+  - Interface Segregation: many small interfaces over one large one. An interface is an explicit superclass or mixin, never a `Protocol`
   - Dependency Inversion: depend on abstractions, not concrete implementations
 - Keep code modular and decoupled
 - Eliminate YAGNI smells
 - Make interfaces hard to misuse
-- Reduce nesting and complexity with guard clauses: handle alternative outputs first by inverting conditions and returning early, so the main branch holds the main output and the biggest compute
+
+### Methods
+- Every method hides what actually runs from the reader, so extract one only when its abstraction is worth more than reading the executed code in place
+- Keep every statement in a method on the same level of abstraction: a method either strings together named steps or carries out one step's detail, never both
+- Never write a method that only forwards to or renames another call. A one-line method is allowed only when it implements an abstract method or a `classproperty`, caches its result, or removes duplication - and in the last case, first try to abstract the duplicated code itself
+- A method with a single caller must earn its place under these rules; otherwise inline it
+- Reduce nesting and complexity with guard clauses: handle alternative outputs first by inverting conditions and returning early, so the main branch holds the main output and the biggest compute. A single level of abstraction never justifies deep nesting; split the method instead
 
 ### Errors
 - Never use try-except; a program in an illegal state raises an appropriate exception
