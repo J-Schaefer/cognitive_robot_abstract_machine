@@ -37,14 +37,18 @@ from typing_extensions import (
     TypeVar,
 )
 
-from semantic_digital_twin.api import (
+from semantic_digital_twin.specifications.connections import (
     ActiveConnection1DOFSpecification,
-    BodySpecification,
     ConnectionSpecification,
-    PartSpecificationBinding,
+)
+from semantic_digital_twin.specifications.kinematic_structure_entities import (
+    BodySpecification,
     RegionSpecification,
-    SemanticAnnotationWithRootSpecification,
     KinematicStructureEntitySpecification,
+)
+from semantic_digital_twin.specifications.semantic_annotations import (
+    PartSpecificationBinding,
+    SemanticAnnotationWithRootSpecification,
 )
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.datastructures.variables import SpatialVariables

@@ -47,7 +47,9 @@ drawer hangs from, which `drawer.movable_joint` returns.
 
 ```{code-cell} ipython3
 from semantic_digital_twin.spatial_types.spatial_types import HomogeneousTransformationMatrix, Vector3
-from semantic_digital_twin.api import PrismaticConnectionSpecification
+from semantic_digital_twin.specifications.connections import (
+    PrismaticConnectionSpecification,
+)
 from semantic_digital_twin.semantic_annotations.semantic_annotations import Drawer, Handle, Dresser
 from semantic_digital_twin.spatial_computations.raytracer import RayTracer
 from semantic_digital_twin.world_description.geometry import Scale

@@ -7,7 +7,12 @@ from dataclasses import dataclass
 import numpy as np
 
 from semantic_digital_twin.adapters.package_resolver import CompositePathResolver
-from semantic_digital_twin.api import BodySpecification, RevoluteConnectionSpecification
+from semantic_digital_twin.specifications.connections import (
+    RevoluteConnectionSpecification,
+)
+from semantic_digital_twin.specifications.kinematic_structure_entities import (
+    BodySpecification,
+)
 from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Door,
     Handle,

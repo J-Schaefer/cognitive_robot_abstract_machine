@@ -32,7 +32,9 @@ from typing import Optional
 
 from semantic_digital_twin.semantic_annotations.mixins import HasHandle, HasRootBody
 from semantic_digital_twin.semantic_annotations.part_whole import IsPartWholeRelationship
-from semantic_digital_twin.api import PrismaticConnectionSpecification
+from semantic_digital_twin.specifications.connections import (
+    PrismaticConnectionSpecification,
+)
 from semantic_digital_twin.semantic_annotations.semantic_annotations import Drawer, Dresser, Handle
 from semantic_digital_twin.world_description.connections import PrismaticConnection
 from semantic_digital_twin.spatial_types.spatial_types import HomogeneousTransformationMatrix, Vector3

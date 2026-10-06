@@ -32,7 +32,9 @@ import numpy as np
 from krrood.entity_query_language.factories import entity, variable, in_, the
 
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
-from semantic_digital_twin.api import PrismaticConnectionSpecification
+from semantic_digital_twin.specifications.connections import (
+    PrismaticConnectionSpecification,
+)
 from semantic_digital_twin.semantic_annotations.semantic_annotations import Drawer, Handle, Dresser
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix, Vector3
 from semantic_digital_twin.world import World

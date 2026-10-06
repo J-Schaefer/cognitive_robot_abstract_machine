@@ -8,9 +8,8 @@ import numpy as np
 import pytest
 
 from krrood.utils import recursive_subclasses
-from semantic_digital_twin.api import (
-    BodySpecification,
-    RegionSpecification,
+from semantic_digital_twin.specifications.base import SpawnSpecification
+from semantic_digital_twin.specifications.connections import (
     ActiveConnection1DOFSpecification,
     ConnectionSpecification,
     FixedConnectionSpecification,
@@ -18,11 +17,16 @@ from semantic_digital_twin.api import (
     PrismaticConnectionSpecification,
     RevoluteConnectionSpecification,
     ScrewConnectionSpecification,
-    SemanticAnnotationWithRootSpecification,
-    RobotSpecification,
-    WorldSpecification,
-    SpawnSpecification,
 )
+from semantic_digital_twin.specifications.kinematic_structure_entities import (
+    BodySpecification,
+    RegionSpecification,
+)
+from semantic_digital_twin.specifications.semantic_annotations import (
+    SemanticAnnotationWithRootSpecification,
+)
+from semantic_digital_twin.specifications.robots import RobotSpecification
+from semantic_digital_twin.specifications.worlds import WorldSpecification
 from krrood.ormatic.data_access_objects.helper import to_dao
 import semantic_digital_twin.orm.ormatic_interface  # registers the DAOs to_dao looks up
 

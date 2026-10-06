@@ -9,7 +9,9 @@ from coraplex.execution_environment import simulated_robot
 from coraplex.plans.factories import execute_single
 from experiments.sage_10k.sage10k_actions import Sage10kOpenDoor
 from krrood.entity_query_language.backends import ProbabilisticBackend
-from semantic_digital_twin.api import RevoluteConnectionSpecification
+from semantic_digital_twin.specifications.connections import (
+    RevoluteConnectionSpecification,
+)
 from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Wall,
     Door,

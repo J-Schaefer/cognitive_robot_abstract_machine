@@ -33,7 +33,7 @@ from semantic_digital_twin.world_description.degree_of_freedom import (
     DegreeOfFreedomLimits,
     DegreeOfFreedom,
 )
-from semantic_digital_twin.api import (
+from semantic_digital_twin.specifications.connections import (
     PrismaticConnectionSpecification,
     RevoluteConnectionSpecification,
 )

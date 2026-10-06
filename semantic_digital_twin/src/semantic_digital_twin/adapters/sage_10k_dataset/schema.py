@@ -24,7 +24,9 @@ from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     RoomWithWallsAndDoors,
     DoorWithType,
 )
-from semantic_digital_twin.api import RevoluteConnectionSpecification
+from semantic_digital_twin.specifications.connections import (
+    RevoluteConnectionSpecification,
+)
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix, Vector3
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.connections import (

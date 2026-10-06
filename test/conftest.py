@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pytest
 
-from semantic_digital_twin.api import (
+from semantic_digital_twin.specifications.connections import (
     ConnectionSpecification,
     ActiveConnection1DOFSpecification,
     PrismaticConnectionSpecification,
