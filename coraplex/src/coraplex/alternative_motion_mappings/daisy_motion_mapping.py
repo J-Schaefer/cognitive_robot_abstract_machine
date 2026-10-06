@@ -9,6 +9,7 @@ from typing import ClassVar
 from giskardpy.motion_statechart.goals.templates import Parallel
 from giskardpy.motion_statechart.graph_node import MotionStatechartNode
 from giskardpy.motion_statechart.ros2_nodes.griplink import (
+    GriplinkAction,
     GriplinkFlexActionServerTask,
     GriplinkPresetActionServerTask,
 )
@@ -52,9 +53,9 @@ class GriplinkEndpoint:
     ROS action topic the griplink server for one gripper listens on.
     """
 
-    message_type: type
+    message_type: type[GriplinkAction]
     """
-    Griplink action message type this endpoint expects (``Grip``/``Release``/
+    Griplink action this endpoint's server executes (``Grip``/``Release``/
     ``Flexgrip``/``Flexrelease``).
     """
 

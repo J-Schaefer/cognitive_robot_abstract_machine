@@ -36,6 +36,7 @@ from semantic_digital_twin.datastructures.definitions import (
 )
 from semantic_digital_twin.datastructures.field_of_view import FieldOfView
 from semantic_digital_twin.datastructures.robots.gripper_specification import (
+    GripperSpecification,
     GripperStateSpecification,
 )
 from semantic_digital_twin.datastructures.joint_state import JointState
@@ -616,8 +617,8 @@ The axis of the end_effector's tool frame that is facing forward.
     def default_specification(
         self,
         state_type: GripperState,
-        finger_velocity: Optional[float] = None,
-    ) -> GripperStateSpecification:
+        finger_velocity: float | None = None,
+    ) -> GripperSpecification:
         """
         Build the default gripper specification for a state this end effector declares.
 

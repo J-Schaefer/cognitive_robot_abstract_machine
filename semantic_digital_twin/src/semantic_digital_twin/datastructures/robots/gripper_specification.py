@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Generic, Optional
+from typing import TYPE_CHECKING, Generic
 
 from typing_extensions import Self, TypeVar
 
@@ -10,7 +10,10 @@ from krrood.patterns.subclass_safe_generic import SubClassSafeGeneric
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
-from semantic_digital_twin.exceptions import ConnectionsOutsideEndEffector
+from semantic_digital_twin.exceptions import (
+    ConnectionsOutsideEndEffector,
+    MissingPositionLimits,
+)
 from semantic_digital_twin.datastructures.robots.gripper_configurations import (
     GriplinkGripperConfiguration,
 )
@@ -48,7 +51,7 @@ class GripperSpecification(Generic[TGripperSpecification], SubClassSafeGeneric, 
     The positions the end effector's connections are commanded to.
     """
 
-    finger_velocity: Optional[float] = field(default=None)
+    finger_velocity: float | None = field(default=None)
     """
     Maximum finger joint velocity (in m/s) enforced during the motion.
 
@@ -106,14 +109,6 @@ class GripperStateSpecification(GripperSpecification):
     """
 
     @classmethod
-    def opened(cls, end_effector: EndEffector) -> Self:
-        """
-        :param end_effector: The end effector to build the specification for.
-        :return: The specification for the end effector's open state.
-        """
-        return cls.from_state_type(end_effector, GripperState.OPEN)
-
-    @classmethod
     def closed(cls, end_effector: EndEffector) -> Self:
         """
         :param end_effector: The end effector to build the specification for.
@@ -124,20 +119,31 @@ class GripperStateSpecification(GripperSpecification):
 
 # %% Griplink specifications
 
+MAXIMUM_OPENING_WIDTH_MM = 120
+"""
+Maximum opening width of the griplink gripper in millimetres, the scale the flex
+specification interpolates ``grip_position`` on.
+"""
+
+FULLY_CLOSED_OPENING_WIDTH_MM = 0
+"""
+Opening width of the griplink gripper in millimetres that commands the fully closed
+state.
+"""
+
 
 @dataclass(eq=False)
-class GriplinkPresetSpecification(GripperSpecification):
+class GriplinkSpecification(GripperSpecification, ABC):
     """
-    A griplink gripper motion driven by a stored grip preset, used for ``Grip``/
-    ``Release`` actions.
+    A specification for a griplink gripper, carrying the hardware parameters the
+    griplink action server executes the motion with.
     """
 
     configuration: GriplinkGripperConfiguration = field(
         default_factory=GriplinkGripperConfiguration
     )
     """
-    Hardware parameters forwarded to the griplink action server; the alternative reads
-    :attr:`~GriplinkGripperConfiguration.grip_preset`.
+    Hardware parameters forwarded to the griplink action server.
     """
 
     @classmethod
@@ -145,91 +151,104 @@ class GriplinkPresetSpecification(GripperSpecification):
         cls,
         end_effector: EndEffector,
         state_type: GripperState,
-        configuration: Optional[GriplinkGripperConfiguration] = None,
+        configuration: GriplinkGripperConfiguration | None = None,
     ) -> Self:
         """
-        :param end_effector: The griplink gripper to build the preset specification for.
-        :param state_type: The declared open/close state the preset executes.
+        :param end_effector: The griplink gripper to build the specification for.
+        :param state_type: The state type the specification is labelled with.
         :param configuration: Hardware parameters forwarded to the griplink action
             server; ``None`` uses the default configuration.
-        :return: The preset specification for the declared open/close state.
+        :return: The specification for the given state type, commanding the joint
+            state the configuration describes.
         """
+        if configuration is None:
+            configuration = GriplinkGripperConfiguration()
         return cls(
             end_effector=end_effector,
-            joint_state=end_effector.get_joint_state_by_type(state_type),
-            configuration=configuration or GriplinkGripperConfiguration(),
+            joint_state=cls._build_joint_state(end_effector, state_type, configuration),
+            configuration=configuration,
         )
+
+    @staticmethod
+    def _build_joint_state(
+        end_effector: EndEffector,
+        state_type: GripperState,
+        configuration: GriplinkGripperConfiguration,
+    ) -> JointState:
+        """
+        Build the joint state the specification commands for a state type.
+
+        Preset states command the joint state the robot description declares; subclasses
+        override this to derive the joint state from the configuration.
+
+        :param end_effector: The griplink gripper whose connections are commanded.
+        :param state_type: The state type the joint state is labelled with.
+        :param configuration: The hardware parameters the joint state may derive from.
+        :return: The joint state the specification commands.
+        """
+        return end_effector.get_joint_state_by_type(state_type)
 
 
 @dataclass(eq=False)
-class GriplinkFlexSpecification(GripperSpecification):
+class GriplinkPresetSpecification(GriplinkSpecification):
     """
-    A griplink gripper motion driven by a commanded opening width, used for
-    ``Flexgrip``/``Flexrelease`` actions.
+    A griplink gripper motion driven by a stored grip preset, used for ``Grip``/
+    ``Release`` actions; the alternative reads the configuration's
+    :attr:`~GriplinkGripperConfiguration.grip_preset`.
     """
 
-    configuration: GriplinkGripperConfiguration = field(
-        default_factory=GriplinkGripperConfiguration
-    )
+
+@dataclass(eq=False)
+class GriplinkFlexSpecification(GriplinkSpecification):
     """
-    Hardware parameters forwarded to the griplink action server; the alternative reads
+    A griplink gripper motion driven by a commanded opening width, used for
+    ``Flexgrip``/``Flexrelease`` actions; the alternative reads the configuration's
     :attr:`~GriplinkGripperConfiguration.grip_position`, :attr:`~grip_force`,
     :attr:`~grip_speed` and :attr:`~grip_acceleration`.
     """
 
     @staticmethod
-    def _flex_joint_state(
+    def _build_joint_state(
         end_effector: EndEffector,
-        grip_position: Optional[int],
         state_type: GripperState,
+        configuration: GriplinkGripperConfiguration,
     ) -> JointState:
         """
-        Build the joint state a griplink flex motion commands, from the opening width
-        the controller accepts.
+        Build the joint state a griplink flex motion commands, interpolating the open
+        state by the configured opening width.
+
+        Without a configured opening width, a ``FLEXCLOSE`` motion commands the fully
+        closed state and a ``FLEXOPEN`` motion the fully open state.
 
         :param end_effector: The griplink gripper whose connections are commanded.
-        :param grip_position: Opening width in millimetres [-5..120]; ``None`` defaults
-            to fully open (120).
         :param state_type: The flex state type the joint state is labelled with.
+        :param configuration: Hardware parameters forwarded to the griplink action
+            server; its opening width drives the joint state.
         :return: The joint state driving the gripper's connections to the interpolated
             position.
+        :raises MissingPositionLimits: If a commanded connection's degree of freedom
+            declares no position limits.
         """
-        position = grip_position if grip_position is not None else 120
+        if configuration.grip_position is not None:
+            grip_position = configuration.grip_position
+        elif state_type is GripperState.FLEXCLOSE:
+            grip_position = FULLY_CLOSED_OPENING_WIDTH_MM
+        else:
+            grip_position = MAXIMUM_OPENING_WIDTH_MM
         open_state = end_effector.get_joint_state_by_type(GripperState.OPEN)
-        fraction = (120 - position) / 120
+        fraction = (MAXIMUM_OPENING_WIDTH_MM - grip_position) / MAXIMUM_OPENING_WIDTH_MM
         target_values = []
         for connection in open_state.connections:
-            lower = connection.dof.limits.lower.position or 0.0
-            upper = connection.dof.limits.upper.position or 0.0
+            lower = connection.dof.limits.lower.position
+            upper = connection.dof.limits.upper.position
+            if lower is None or upper is None:
+                raise MissingPositionLimits(
+                    name=connection.dof.name, limits=connection.dof.limits
+                )
             target_values.append(lower + fraction * (upper - lower))
         return JointState(
             connections=open_state.connections,
             target_values=target_values,
             state_type=state_type,
             name=PrefixedName("flexgrip", prefix=end_effector.name.name),
-        )
-
-    @classmethod
-    def from_state_type(
-        cls,
-        end_effector: EndEffector,
-        state_type: GripperState,
-        configuration: Optional[GriplinkGripperConfiguration] = None,
-    ) -> Self:
-        """
-        :param end_effector: The griplink gripper to build the flex specification for.
-        :param state_type: The flex state type the specification is labelled with.
-        :param configuration: Hardware parameters forwarded to the griplink action
-            server; its opening width drives the joint state; ``None`` uses the
-            default configuration.
-        :return: The flex specification for the given flex state type, with the joint
-            state interpolated from the configuration's grip position.
-        """
-        configuration = configuration or GriplinkGripperConfiguration()
-        return cls(
-            end_effector=end_effector,
-            joint_state=cls._flex_joint_state(
-                end_effector, configuration.grip_position, state_type
-            ),
-            configuration=configuration,
         )

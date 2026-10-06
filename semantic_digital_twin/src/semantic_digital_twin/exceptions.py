@@ -594,6 +594,33 @@ class InvalidConnectionLimits(UsageError):
 
 
 @dataclass
+class MissingPositionLimits(UsageError):
+    """
+    Raised when a target position must be derived from the limits of a degree of freedom
+    that declares no position limits.
+    """
+
+    name: PrefixedName
+    """
+    The name of the degree of freedom.
+    """
+
+    limits: DegreeOfFreedomLimits
+    """
+    The limits without positions.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"Degree of freedom {self.name} must declare position limits. "
+            f"Given limits: {self.limits}."
+        )
+
+    def suggest_correction(self) -> str:
+        return ""
+
+
+@dataclass
 class MissingConnectionParentError(UsageError):
     """
     Raised when a connection is spawned without a parent kinematic structure entity.

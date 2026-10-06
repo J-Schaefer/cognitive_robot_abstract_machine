@@ -3,19 +3,13 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Generic
+from typing import Protocol
 
 from griplink_interfaces.action import Flexgrip, Flexrelease, Grip, Release
 
 from giskardpy.motion_statechart.context import MotionStatechartContext
 from giskardpy.motion_statechart.data_types import ObservationStateValues
-from giskardpy.motion_statechart.ros2_nodes.ros_tasks import (
-    Action,
-    ActionFeedback,
-    ActionGoal,
-    ActionResult,
-    ActionServerTask,
-)
+from giskardpy.motion_statechart.ros2_nodes.ros_tasks import ActionServerTask
 from semantic_digital_twin.datastructures.robots.gripper_configurations import (
     GriplinkGripPreset,
 )
@@ -58,13 +52,68 @@ class GriplinkStatus(IntEnum):
     PENDING = 27
 
 
+# %% griplink message protocols
+
+
+class GriplinkGoal(Protocol):
+    """
+    A griplink action goal; every griplink action addresses one port of the controller.
+    """
+
+    port: int
+
+
+class GriplinkResult(Protocol):
+    """
+    The result every griplink action reports: a status code, a human-readable message
+    and the controller's device state.
+    """
+
+    status: int
+    message: str
+    device_state: int
+
+
+class GriplinkFeedback(Protocol):
+    """
+    The feedback every griplink action streams: the controller's device state.
+    """
+
+    device_state: int
+
+
+class GriplinkResultResponse(Protocol):
+    """
+    The response the action client resolves a result future with, wrapping the
+    :class:`GriplinkResult` the server reported and the goal state it reached.
+    """
+
+    status: int
+    result: GriplinkResult
+
+
+class GriplinkAction(Protocol):
+    """
+    A griplink action, carrying the goal, result and feedback message classes the action
+    client sends and receives.
+    """
+
+    Goal: type[GriplinkGoal]
+    Result: type[GriplinkResult]
+    Feedback: type[GriplinkFeedback]
+
+
 # %% griplink action server tasks
 
 
 @dataclass(eq=False, repr=False)
 class GriplinkActionServerTask(
-    ActionServerTask[Action, ActionGoal, ActionResult, ActionFeedback],
-    Generic[Action, ActionGoal, ActionResult, ActionFeedback],
+    ActionServerTask[
+        GriplinkAction,
+        GriplinkGoal,
+        GriplinkResultResponse,
+        GriplinkFeedback,
+    ]
 ):
     """
     Base class for tasks calling a griplink action server.
@@ -93,14 +142,7 @@ class GriplinkActionServerTask(
 
 
 @dataclass(eq=False, repr=False)
-class GriplinkPresetActionServerTask(
-    GriplinkActionServerTask[
-        Grip | Release,
-        Grip.Goal | Release.Goal,
-        Grip.Result | Release.Result,
-        Grip.Feedback | Release.Feedback,
-    ]
-):
+class GriplinkPresetActionServerTask(GriplinkActionServerTask):
     """
     Node for calling the griplink action server of a griplink gripper to execute a
     stored grip preset (``Grip``) or open the gripper (``Release``).
@@ -132,14 +174,7 @@ class GriplinkPresetActionServerTask(
 
 
 @dataclass(eq=False, repr=False)
-class GriplinkFlexActionServerTask(
-    GriplinkActionServerTask[
-        Flexgrip | Flexrelease,
-        Flexgrip.Goal | Flexrelease.Goal,
-        Flexgrip.Result | Flexrelease.Result,
-        Flexgrip.Feedback | Flexrelease.Feedback,
-    ]
-):
+class GriplinkFlexActionServerTask(GriplinkActionServerTask):
     """
     Node for calling the griplink action server of a griplink gripper to flex grip to a
     commanded opening width (``Flexgrip``) or flex release from it (``Flexrelease``).
