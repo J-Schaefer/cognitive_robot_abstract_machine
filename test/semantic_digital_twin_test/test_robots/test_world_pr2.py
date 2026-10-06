@@ -435,15 +435,15 @@ def test_pr2_semantic_annotation(pr2_world_state_reset):
     # Ensure there are no loose bodies
     pr2_world_state_reset._notify_model_change()
 
-    assert len(pr2.get_end_effectors()) == 2
-    assert len(pr2.get_arms()) == 2
-    assert len(pr2.get_sensors()) == 2
+    assert len(pr2.all_end_effectors) == 2
+    assert len(pr2.all_arms) == 2
+    assert len(pr2.all_sensors) == 2
     assert pr2.torso.name.name == "PR2Torso"
     assert len(pr2.torso.neck.sensors) == 1
     assert pr2.left_arm and pr2.right_arm
     assert pr2.left_arm != pr2.right_arm
-    assert pr2.get_default_camera() in pr2.get_sensors()
-    assert pr2.mobile_base.lidar in pr2.get_sensors()
+    assert pr2.get_default_camera() in pr2.all_sensors
+    assert pr2.mobile_base.lidar in pr2.all_sensors
 
 
 def test_has_left_right_arm_mixin(pr2_world_state_reset):
@@ -455,6 +455,27 @@ def test_has_left_right_arm_mixin(pr2_world_state_reset):
         right_arm_chain[1].center_of_mass,
         pr2.root.global_transform,
     )()
+
+
+def test_an_arm_covers_the_chain_down_to_its_end_effector(pr2_world_state_reset):
+    """
+    Whatever carries the end effector -- a wrist mounted force torque sensor, say --
+    belongs to the arm holding it.
+
+    An arm's tip stops where its joints do, so a body mounted past it belongs to no part
+    of the robot at all, and anything written for the arm or for its end effector passes
+    it by.
+    """
+    pr2 = pr2_world_state_reset.get_semantic_annotations_by_type(PR2)[0]
+
+    for arm in (pr2.left_arm, pr2.right_arm):
+        carrying_chain = (
+            pr2_world_state_reset.compute_chain_of_kinematic_structure_entities(
+                arm.root, arm.end_effector.root
+            )
+        )
+
+        assert set(carrying_chain) <= set(arm.kinematic_structure_entities)
 
 
 def test_kinematic_chains(pr2_world_state_reset):
@@ -471,18 +492,18 @@ def test_tracy_semantic_annotation(tracy_world):
 
     tracy_world._notify_model_change()
 
-    assert len(tracy.get_end_effectors()) == 2
-    assert len(tracy.get_sensors()) == 1
+    assert len(tracy.all_end_effectors) == 2
+    assert len(tracy.all_sensors) == 1
 
 
 def test_hsrb_semantic_annotation(_hsr_world_setup):
     hsrb = _hsr_world_setup.get_semantic_annotations_by_type(HSRB)[0]
     _hsr_world_setup._notify_model_change()
 
-    assert len(hsrb.get_end_effectors()) == 1
-    assert len(hsrb.get_arms()) == 1
+    assert len(hsrb.all_end_effectors) == 1
+    assert len(hsrb.all_arms) == 1
 
-    assert len(hsrb.get_sensors()) == 6
+    assert len(hsrb.all_sensors) == 6
     assert hsrb.mobile_base.torso is not None
 
 
@@ -671,7 +692,7 @@ def test_kinematic_chain_approximate_length(pr2_world_state_reset):
 def test_kinematic_chain_length_stretch(stretch_apartment_world):
     robot = stretch_apartment_world.get_semantic_annotations_by_type(Stretch)[0]
 
-    arm_length = robot.get_arms()[0].approximate_length()
+    arm_length = robot.all_arms[0].approximate_length()
 
     assert arm_length < 1.3
 

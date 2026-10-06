@@ -85,7 +85,7 @@ def test_the_lidar_sits_on_the_link_its_description_names(lidar_case):
 def test_the_lidar_is_one_of_the_robots_sensors(lidar_case):
     _, robot = lidar_case
 
-    assert robot.mobile_base.lidar in robot.get_sensors()
+    assert robot.mobile_base.lidar in robot.all_sensors
 
 
 def test_the_lidar_sweeps_the_pattern_its_description_declares(lidar_case):
