@@ -1,7 +1,10 @@
 # Code Quality Rules
 
+## Applying These Rules
+- Existing code that breaks these rules may stay as it is until a change touches it or the user asks for it. If the changes is regarding the method name which would change the API, ask the user first if you should change it. When you modify a function or class, bring that function or class in line with these rules as part of the change; do not extend the cleanup to code the change does not otherwise modify
+
 ## Avoid Behaviour
-- Avoid using global variables
+- Never use global variables or module-level constants. See the rule on constants and class-level values under Design Principles for what to use instead
 - Avoid accessing any ormatic_interface.py files. if there are issues regarding the ormatic interface run the script `scripts/regenerate_all_orm.py`. If it does not fix the issue, consider consulting the developer.
 - ormatic_interface.py files are generated, never written, so the repository ignores them instead of tracking them (see the rule in `.gitignore`): the test suite builds them for its runs, and a local checkout builds them with `scripts/regenerate_all_orm.py`. Never track one again - git refuses to overwrite a tracked path a checkout has generated its own copy of, which is what used to make every branch switch fail.
 - Avoid using mutable objects as default arguments
@@ -16,13 +19,16 @@
 - All new features and fixes must be covered by tests
 - Name test classes (and the mimic classes used by tests) after the pattern or behaviour they exercise, not after the concrete external class they happen to stand in for
 - Make assertions as specific as possible: when the correct expected value can be determined, assert equality to that value rather than only a weaker check such as not-None or not-empty
-- Assert against the definition rather than a copy of it: compare to the enum member, the named constant, or the value read from the fixture the code under test consumed. Where a type distinguishes the case, assert the type - a distinct exception class or enum member - instead of matching on message text. A literal retyped into the test is a second copy of the thing the test exists to check, and it keeps passing when the original changes
+- Assert against the definition rather than a copy of it: compare to the enum member, the `classproperty`, or the value read from the fixture the code under test consumed. Where a type distinguishes the case, assert the type - a distinct exception class or enum member - instead of matching on message text. A literal retyped into the test is a second copy of the thing the test exists to check, and it keeps passing when the original changes
 - Keep each test focused on the one behaviour it names: assert exactly the values that behaviour determines, and do not also pin down incidental output a change unrelated to that behaviour could alter (for example, an unrelated wording tweak to an error message a test isn't about). Prefer deriving an expected value from the same production code that computes it (e.g. by calling the lower-level function under test and reusing its result) over hardcoding a second literal copy of output another test already asserts exactly — a hardcoded copy duplicates coverage and turns one wording change into two unrelated test failures. Tests should be separable and independent, each failing only for its own reason.
 - CI safety: All added tests must be part of the CI suite, but only need to execute there if they can run without live external calls or missing credentials — tests requiring unavailable credentials must be skipped (or removed if new), not left to break the pipeline.
 - Credentials: Any test requiring credentials to run in CI must be pre-approved by the user and have those credentials available in CI; otherwise it must be skipped there.
 - No inline snippets: Code snippets must live in separate files with the correct file type, imported or read into the test rather than embedded as strings.
 - Mock over live calls: Tests for code depending on external APIs should mock those APIs instead of calling them live, except when an API call is needed to download a dataset required for other tests to run.
 - Live API tests: You may add tests that hit external APIs directly, but they must have skip conditions so they don't run in CI, and must be paired with an equivalent mock-based test that does run in CI.
+- Never run the whole test suite in one invocation. Run one package or a few test directories at a time, and wait for each run to finish before starting the next
+- Make sure a test run can never exhaust the machine's working memory: check the free memory before starting, cap the run's memory so the run is killed rather than the machine, and account for other test runs already going on the same machine
+- Pass `--orm-build never` to pytest, and regenerate the ORM interfaces explicitly with `scripts/regenerate_all_orm.py` when a change needs it
 
 ## Code Style
 - Divide a file into logical sections with `# %% <short description>` comment headers (e.g. `# %% same-noun disambiguation`), not decorative box-drawing dividers. Applies to source files as well as test files
@@ -36,6 +42,7 @@
 
 ### Naming
 - Names must be technically correct, simple and descriptive, in that order. Correct first: a name that describes the thing inaccurately is worse than a vague one, because a reader who trusts it stops reading. Then the simplest wording that stays correct
+- A name must stay correct and understandable when read on its own, without its class or a keyword argument next to it - after `value = instance.attribute`, in a log line, in a traceback, or when passed on positionally. For example, a `Pipe` field `size` says nothing once it leaves the class; `inner_diameter` does
 - Minimize jargon. Prefer the plain word every reader already knows over the specialist, metaphorical or in-house one, and reserve a technical term for where it is genuinely the precise word - not as shorthand between the people who happen to have been in the discussion. Jargon is a lookup the reader has to perform, and it is only worth it when the plain wording would be wrong
 - Do not use abbreviations in variable names, methods, classes, or any other identifiers
 - Use short but descriptive names: a name says *what* a thing is or does, never *how* it does it or *when* it runs
@@ -78,14 +85,20 @@
   - The main branch of a function should hold the main output with the biggest compute; alternative outputs should be realized via guard clauses beforehand
   - When dealing with nested if statements and branching methods, use guard clauses to reduce nesting by inverting conditions and returning early
 - Dont use try except blocks, programs in illegal states should raise appropriate exceptions.
+- Never use `assert` outside tests: Python drops `assert` statements when run with `-O`, so the check silently disappears. Raise a meaningful custom exception instead.
 - Prefer structured data over bare strings, hardcoded values, and meaningless numbers. This is the default, not a preference to weigh: reach for the structured form first and justify the literal, never the other way round.
   - Never hardcode a string that names a fixed thing - a payload key, a state, a label, a filename, an environment variable, a command flag, a status. Give it a `StrEnum` member and use that. A value spelled in two places has no single source to rename, and nothing fails when the two drift apart.
   - When the members are more than text - paths, numbers - give them values of that type rather than strings, and prefer that over a `StrEnum`. Mix the type into the enum where Python supports it (`IntEnum`, `StrEnum`); `Path` does not support it, because pathlib builds every derived path through the enum's own member lookup, so a path enum is a plain `Enum` whose values are `Path`s.
-  - Replace a magic number with a named constant or an enum member. A bare literal that carries meaning is unreadable where it is used and unsearchable everywhere else.
+  - Replace a magic number with an enum member, a field default or a `classproperty` (see the rule on constants and class-level values below). A bare literal that carries meaning is unreadable where it is used and unsearchable everywhere else.
   - For JSON our own classes round-trip, reuse `krrood.adapters.json_serializer.SubclassJSONSerializer` rather than hand-writing `to_json`/`from_json` - it already resolves the concrete subclass from the stored type name.
   - For data whose shape someone else controls - an API response, a configuration file - that serializer does not apply, since the payload carries no type of ours. Mirror the structure in dataclasses instead and parse into them the same way, with a `from_json` classmethod doing the reading, so the field names and the access path into the payload are written once rather than at every use site.
   - Replace a tuple whose positions carry meaning with a dataclass, or with an enum when the positions are a fixed set of alternatives rather than fields, so the parts are named rather than counted.
   - Keep a long literal document - a query, a template, a schema - in a file of its own type and read it in, rather than embedding it as a string.
+- Do not use module-level constants or `ClassVar`. Instead:
+  - A fixed set of related values is a module-level enum.
+  - A default a caller may want to change is a dataclass field with that default, or a parameter of the method that uses it. For example, a `Heater` takes `target_temperature: float = 20.0` as a field instead of declaring `DEFAULT_TARGET_TEMPERATURE: ClassVar[float] = 20.0`.
+  - A constant that belongs to a class is a `classproperty` (use the one `krrood` provides).
+  - `ClassVar` is allowed only for state that explicitly has to be shared and mutable across every instance of a class. This almost never applies.
 - If there are methods that are never used outside of tests, consult the developer if they can be removed.
 
 ## Type Hints
@@ -104,6 +117,7 @@
 - Every field/attribute must be documented with its own docstring placed directly below the field, not described in the class docstring
 - Write docstrings in ReStructuredText format
 - Write docstrings that explain what the function does and not how it does it
+- Document what a field or step does, not the ways a caller can supply its value (for example, that it may also be given as a query instead of a concrete object)
 - Keep docstrings short and concise
 - Use Sphinx directives (for example `..note::`, `..warning::`, and `:func:`) where appropriate
 - Do not use all-caps words for emphasis in docstrings or comments; use RST emphasis (`*word*`) if emphasis is genuinely needed
@@ -115,6 +129,8 @@
 - Docstrings must be short and to the point: state what the code does, not a conversation about
   it. Do not compare against a rejected/alternative design, narrate the review or implementation
   history, or explain what would happen under a hypothetical design that was not chosen
+- Do not write comments or docstrings that justify or explain design decisions, and do not write
+  walls of text; a reader needs the contract, not the reasoning that led to it
 - Do not use ALL-CAPS words for emphasis in docstrings or comments; use RST emphasis (`*word*`)
   instead. This does not apply to genuine identifiers, acronyms, or enum/constant names (e.g.
   `UUID`, `WHERE`, `Definiteness.DEFINITE`)
@@ -128,6 +144,7 @@
 - Do not attribute authorship or co-authorship to an assistant: no `Co-Authored-By:` trailer for Claude or any assistant, and no `noreply@anthropic.com` (or similar) as author or committer. The commit's authorship reflects the person responsible for it.
 - It is fine — and encouraged — to acknowledge assistant help in the commit message body with a short plain line, for example `Made with AI assistance`. Do NOT add any info mentioning the particular model or the AI service. Keep it a note, not an author/co-author trailer.
 - This applies to every contributor and every tool.
+- Never push to the upstream `cram2/cognitive_robot_abstract_machine` repository - no branch, no tag, whatever the reason. Push only to your fork; work reaches upstream only through a pull request opened from the fork. Before any push, read the full, untruncated `git remote -v` output and confirm the target remote is the fork.
 
 ## Misc
 - If you find a package that could be replaced by a more powerful one, let us know
