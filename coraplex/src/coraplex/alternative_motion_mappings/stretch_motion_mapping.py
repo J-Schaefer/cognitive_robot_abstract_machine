@@ -24,7 +24,6 @@ from coraplex.robot_plans import (
     MoveGripperMotion,
 )
 from coraplex.robot_plans.motions.base import AlternativeMotion
-from coraplex.view_manager import ViewManager
 from semantic_digital_twin.datastructures.robots.gripper_configuration import (
     GripperConfiguration,
 )
@@ -50,10 +49,10 @@ class StretchMoveToolCenterPoint(MoveToolCenterPointMotion, AlternativeMotion[St
 
     @property
     def _motion_chart(self) -> Sequence:
-        tip = ViewManager().get_end_effector_view(self.arm, self.robot).tool_frame
+        tip = self.arm.end_effector.tool_frame
         goal_copy = deepcopy(self.target)
         goal_copy = self.world.transform(goal_copy, self.world.root)
-        goal_point = goal_copy.to_position()
+        goal_point = goal_copy.position
         goal_point.z = 0
         return Parallel(
             [
@@ -134,7 +133,7 @@ class StretchClose(ClosingMotion, AlternativeMotion[Stretch]):
 
     @property
     def _motion_chart(self):
-        tip = ViewManager().get_end_effector_view(self.arm, self.robot).tool_frame
+        tip = self.arm.end_effector.tool_frame
         cart = CartesianPose(
             name="Keep holding handle",
             root_link=self.object_part,
@@ -171,8 +170,12 @@ class StretchMoveGripperMotion(
         return Parallel(
             [
                 JointPositionList(
-                    goal_state=goal_state,
-                    name=goal_state.name.name,
+                    goal_state=self.gripper.get_joint_state_by_type(self.motion),
+                    name=(
+                        "OpenGripper"
+                        if self.motion == GripperState.OPEN
+                        else "CloseGripper"
+                    ),
                     threshold=0,
                 ),
                 LocalMinimumReached(

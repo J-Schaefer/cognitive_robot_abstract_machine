@@ -60,10 +60,9 @@ Like any designator we start by creating a description and then resolving and pe
 ```python
 from coraplex.robot_plans.motions.gripper import MoveToolCenterPointMotion
 from coraplex.execution_environment import simulated_robot
-from coraplex.datastructures.enums import Arms
 
 motion_description = MoveToolCenterPointMotion(
-    target=Pose.from_xyz_quaternion(1.5, 0.6, 0.6, 0, 0, 0, 1, reference_frame=world.root), arm=Arms.LEFT)
+    target=Pose.from_xyz_quaternion(1.5, 0.6, 0.6, 0, 0, 0, 1, reference_frame=world.root), arm=pr2_view.left_arm)
 
 with simulated_robot:
     execute_single(motion_description, context=context).perform()
@@ -94,7 +93,6 @@ configuration of an end effector can be created for one of the states {attr}`~se
 ```python
 from coraplex.robot_plans.motions import MoveGripperMotion
 from coraplex.execution_environment import simulated_robot
-from coraplex.datastructures.enums import Arms
 from semantic_digital_twin.datastructures.definitions import GripperState
 
 configuration = pr2_view.left_arm.end_effector.default_configuration(GripperState.OPEN)

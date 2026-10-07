@@ -27,7 +27,7 @@ from semantic_digital_twin.datastructures.robots.gripper_configuration import (
 )
 from semantic_digital_twin.robots.justin import Justin
 from semantic_digital_twin.robots.robot_part_mixins import HasMobileBase
-from semantic_digital_twin.robots.robot_parts import EndEffector
+from semantic_digital_twin.robots.robot_parts import Arm, EndEffector
 from semantic_digital_twin.spatial_types import Point3, Vector3
 from semantic_digital_twin.spatial_types.spatial_types import Pose
 from semantic_digital_twin.world_description.world_entity import Body
@@ -39,7 +39,6 @@ from coraplex.robot_plans.mixins import (
 )
 from coraplex.robot_plans.motions.base import BaseMotion
 from coraplex.datastructures.enums import (
-    Arms,
     MovementType,
     WaypointsMovementType,
 )
@@ -142,6 +141,11 @@ class MoveGripperMotion(
     The gripper configuration to command.
     """
 
+    gripper: EndEffector
+    """
+    The gripper that should be moved.
+    """
+
     allow_gripper_collision: Optional[bool] = None
     """
     If the gripper is allowed to collide with something.
@@ -157,8 +161,8 @@ class MoveGripperMotion(
             configuration commands, with the velocity limit and collision rules the
             configuration and parameters ask for.
         """
-        goal_state = self.configuration.joint_state
-        name = goal_state.name.name
+        name = "OpenGripper" if self.motion == GripperState.OPEN else "CloseGripper"
+        goal_state = self.gripper.get_joint_state_by_type(self.motion)
         joint_task = JointPositionList(goal_state=goal_state, name=name)
 
         done_node = joint_task
@@ -234,7 +238,7 @@ class MoveToolCenterPointMotion(
     Target pose to which the TCP should be moved.
     """
 
-    arm: Arms
+    arm: Arm
     """
     Arm with the TCP that should be moved to the target.
     """
@@ -282,7 +286,7 @@ class MoveToolCenterPointMotion(
 
     @property
     def _motion_chart(self):
-        tip = ViewManager().get_end_effector_view(self.arm, self.robot).tool_frame
+        tip = self.arm.end_effector.tool_frame
         root = (
             self.world.root
             if isinstance(self.robot, HasMobileBase)
@@ -293,7 +297,7 @@ class MoveToolCenterPointMotion(
             task = CartesianPosition(
                 root_link=root,
                 tip_link=tip,
-                goal_point=self.target.to_position(),
+                goal_point=self.target.position,
                 name="MoveTCP",
                 weight=DefaultWeights.WEIGHT_BELOW_COLLISION_AVOIDANCE,
                 threshold=self.resolved_position_threshold(),
@@ -333,7 +337,7 @@ class MoveTCPWaypointsMotion(BaseMotion, HasTcpGoalThresholds):
     Waypoints the TCP should move along.
     """
 
-    arm: Arms
+    arm: Arm
     """
     Arm with the TCP that should be moved to the target.
     """
@@ -355,7 +359,7 @@ class MoveTCPWaypointsMotion(BaseMotion, HasTcpGoalThresholds):
 
     @property
     def _motion_chart(self):
-        tip = ViewManager().get_end_effector_view(self.arm, self.robot).tool_frame
+        tip = self.arm.end_effector.tool_frame
         root = (
             self.world.root
             if isinstance(self.robot, HasMobileBase)
@@ -389,7 +393,7 @@ class MoveTCPWaypointsAlignedMotion(BaseMotion, HasTcpGoalThresholds):
     Waypoints the TCP should move along.
     """
 
-    arm: Arms
+    arm: Arm
     """
     Arm with the TCP that should be moved along the waypoints.
     """
@@ -422,9 +426,7 @@ class MoveTCPWaypointsAlignedMotion(BaseMotion, HasTcpGoalThresholds):
         """
         if self.tip is not None:
             return self.tip
-        tool_frame = (
-            ViewManager().get_end_effector_view(self.arm, self.robot).tool_frame
-        )
+        tool_frame = self.arm.end_effector.tool_frame
         if tool_frame is None:
             raise MissingToolFrame(self.arm, self.robot)
         return tool_frame
