@@ -122,7 +122,8 @@
 - Every parameter and return value has an accurate type hint, `Any` and `-> None` included
 - Use builtin generics and `X | None` (`list[int]`, `Pose | None`), never `typing.List`, `Dict`, `Optional` or `Union`; import every other typing construct from `typing_extensions`, never from `typing`
 - Use `from __future__ import annotations` instead of wrapping types in strings
-- When each class in a family declares the type it handles, carry that type as a bound generic parameter, not a `ClassVar`, so it is part of the signature and cannot disagree with a separate attribute: inherit `Generic[T]` plus `krrood.patterns.subclass_safe_generic.SubClassSafeGeneric`, bind it in each member (`class MemberOfFamily(Family[ConcreteType])`), and read it back through `SubClassSafeGeneric`'s own helpers. `SubClassSafeGeneric` is a non-frozen dataclass, so members cannot be `@dataclass(frozen=True)`
+- Generic classes inherit `Generic[...]` and then `krrood.patterns.subclass_safe_generic.SubClassSafeGeneric`, which narrows field types when a subclass binds a parameter. Read a bound type with `get_type_of_generic_parameter`, never via `__orig_bases__`. Such classes cannot be frozen dataclasses
+- When each class in a family declares the type it handles, carry that type as a bound generic parameter, not a `ClassVar`, so it is part of the signature and cannot disagree with a separate attribute: bind it in each member (`class MemberOfFamily(Family[ConcreteType])`)
 
 ## Documentation
 - Every class and method has meaningful, non-trivial documentation in reStructuredText. Every field has its own docstring directly below it, not a description in the class docstring
