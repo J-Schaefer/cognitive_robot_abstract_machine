@@ -86,7 +86,7 @@ from semantic_digital_twin.spatial_types import (
     RotationMatrix,
     HomogeneousTransformationMatrix,
 )
-from semantic_digital_twin.spatial_types.spatial_types import Pose
+from semantic_digital_twin.spatial_types.spatial_types import Pose, Quaternion
 from semantic_digital_twin.spatial_types.derivatives import DerivativeMap
 from semantic_digital_twin.world_description.connections import (
     ActiveConnection,
