@@ -98,13 +98,13 @@
 
 ### Errors
 - Never use try-except; a program in an illegal state raises an appropriate exception
-- Create meaningful custom exceptions as dataclasses subclassing `krrood.exceptions.DataclassException`, implementing its `error_message` and `suggest_correction`
+- Create meaningful custom exceptions as dataclasses subclassing `krrood.exceptions.DataclassException`, implementing its `error_message` and `suggest_correction`, placed in their package's `exceptions.py`
 - Never use `assert` outside tests: Python drops it when run with `-O`, so the check silently disappears. Raise a custom exception instead
 
 ### Constants and Class-Level Values
 - Never use global variables, module-level constants or `ClassVar`. Instead:
   - A fixed set of related values is a module-level enum
-  - A default a caller may want to change is a dataclass field with that default, or a parameter of the method that uses it. For example, a `Heater` takes `target_temperature: float = 20.0` as a field instead of declaring `DEFAULT_TARGET_TEMPERATURE: ClassVar[float] = 20.0`
+  - A default a caller may want to change is a parameter of the method that uses it if only that method does, otherwise a dataclass field with that default. For example, a `Heater` takes `target_temperature: float = 20.0` as a field instead of declaring `DEFAULT_TARGET_TEMPERATURE: ClassVar[float] = 20.0`
   - A constant that belongs to a class is a `classproperty` (use the one `krrood` provides)
   - `ClassVar` is allowed only for state that explicitly has to be shared and mutable across every instance of a class. This almost never applies
 
@@ -127,6 +127,7 @@
 
 ## Documentation
 - Every class and method has meaningful, non-trivial documentation in reStructuredText. Every field has its own docstring directly below it, not a description in the class docstring
+- An override that keeps its base contract has no docstring and inherits the base one. One that changes the contract documents only the difference and references the overridden method with `:meth:`
 - A docstring states what the code does and its contract, short and to the point. It never contains:
   - how the code does it
   - the ways a caller can supply a value (for example, that it may also be given as a query instead of a concrete object)
