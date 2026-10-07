@@ -12,7 +12,7 @@ from semantic_digital_twin.specifications.connections import (
     ActiveConnection1DOFSpecification,
     PrismaticConnectionSpecification,
 )
-from semantic_digital_twin.predetermined_maps.building_floor import BuildingFloor
+from semantic_digital_twin.predefined_maps.building_floor import BuildingFloor
 from semantic_digital_twin.callbacks.callback import Callback
 from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.semantic_annotations.mixins import (
@@ -66,7 +66,7 @@ from semantic_digital_twin.adapters.mesh import STLParser
 from semantic_digital_twin.adapters.urdf import URDFParser
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.exceptions import ParsingError
-from semantic_digital_twin.predetermined_maps.apartment_environment import (
+from semantic_digital_twin.predefined_maps.apartment_environment import (
     ApartmentEnvironment,
 )
 from semantic_digital_twin.robots.robot_parts import AbstractRobot

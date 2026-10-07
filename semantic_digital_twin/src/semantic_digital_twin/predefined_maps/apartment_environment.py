@@ -30,20 +30,19 @@ from semantic_digital_twin.world_description.degree_of_freedom import (
 )
 from semantic_digital_twin.world_description.geometry import Scale
 
-WARDROBE_DOOR_VELOCITY_LIMIT = np.pi / 2
-"""
-Angular velocity limit of a wardrobe door in rad/s.
-
-Taken from the ``wardrobe_door_*_joint`` limits of the apartment's own URDF, which
-describes the same wardrobe this map spawns from meshes.
-"""
-
-
 @dataclass
 class ApartmentEnvironment:
     """
     The furniture of the apartment: a shelf, a wall, a bedside table, a sofa, the
     apartment's wall meshes and a two-leaf wardrobe.
+    """
+
+    wardrobe_door_velocity_limit: float = np.pi / 2
+    """
+    Angular velocity limit of a wardrobe door in rad/s.
+
+    Taken from the ``wardrobe_door_*_joint`` limits of the apartment's own URDF, which
+    describes the same wardrobe this map spawns from meshes.
     """
 
     def get_world(self) -> World:
@@ -210,7 +209,7 @@ class ApartmentEnvironment:
                     dof_limits=DegreeOfFreedomLimits.from_position_range_and_speed(
                         lower_position=min(0.0, opening_angle),
                         upper_position=max(0.0, opening_angle),
-                        maximum_speed=WARDROBE_DOOR_VELOCITY_LIMIT,
+                        maximum_speed=self.wardrobe_door_velocity_limit,
                     ),
                 ),
                 part_specifications={

@@ -1,7 +1,7 @@
 import os
 
 from semantic_digital_twin.adapters.urdf import URDFParser
-from semantic_digital_twin.predetermined_maps.kitchen_environment import (
+from semantic_digital_twin.predefined_maps.kitchen_environment import (
     KitchenEnvironment,
 )
 from semantic_digital_twin.reasoning.queries import (
