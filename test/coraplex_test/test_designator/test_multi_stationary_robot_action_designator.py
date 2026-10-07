@@ -210,9 +210,9 @@ def test_move_gripper_multi(stationary_block_context):
 
     plan = execute_single(
         SetGripperAction(
-            specification=ViewManager.get_end_effector_view(
+            configuration=ViewManager.get_end_effector_view(
                 Arms.LEFT, view
-            ).default_specification(GripperState.OPEN)
+            ).default_configuration(GripperState.OPEN)
         ),
         context=context,
     ).plan
@@ -229,9 +229,9 @@ def test_move_gripper_multi(stationary_block_context):
 
     plan = execute_single(
         SetGripperAction(
-            specification=ViewManager.get_end_effector_view(
+            configuration=ViewManager.get_end_effector_view(
                 Arms.LEFT, view
-            ).default_specification(GripperState.CLOSE)
+            ).default_configuration(GripperState.CLOSE)
         ),
         context=context,
     ).plan

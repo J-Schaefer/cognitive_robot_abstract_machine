@@ -15,13 +15,10 @@ from giskardpy.motion_statechart.ros2_nodes.griplink import (
 )
 from griplink_interfaces.action import Flexgrip, Flexrelease, Grip, Release
 from semantic_digital_twin.datastructures.definitions import GripperState
-from semantic_digital_twin.datastructures.robots.gripper_configurations import (
-    GriplinkGripperConfiguration,
-)
-from semantic_digital_twin.datastructures.robots.gripper_specification import (
-    GriplinkFlexSpecification,
-    GriplinkPresetSpecification,
-    TGripperSpecification,
+from semantic_digital_twin.datastructures.robots.gripper_configuration import (
+    GriplinkFlexConfiguration,
+    GriplinkPresetConfiguration,
+    TGripperConfiguration,
 )
 from semantic_digital_twin.robots.daisy import (
     DAiSy,
@@ -62,7 +59,7 @@ class GriplinkEndpoint:
 
 # %% DAiSy griplink motions
 @dataclass
-class DAiSyGripperMotion(MoveGripperMotion[TGripperSpecification]):
+class DAiSyGripperMotion(MoveGripperMotion[TGripperConfiguration]):
     """
     Moves a griplink gripper of real DAiSy on its griplink action server, or commands a
     joint position goal for semi-real and simulated execution.
@@ -80,7 +77,7 @@ class DAiSyGripperMotion(MoveGripperMotion[TGripperSpecification]):
     Execution types this alternative applies to.
 
     Real execution drives the griplink action server; semi-real and simulated execution
-    fall back to the joint position goal the specification describes.
+    fall back to the joint position goal the configuration describes.
     """
 
     _griplink_endpoints: ClassVar[
@@ -122,12 +119,12 @@ class DAiSyGripperMotion(MoveGripperMotion[TGripperSpecification]):
         :raises NoGriplinkEndpoint: If the gripper or state has no endpoint in
             :attr:`_griplink_endpoints`.
         """
-        state_type = self.specification.joint_state.state_type
-        gripper_type = type(self.specification.end_effector)
+        state_type = self.configuration.joint_state.state_type
+        gripper_type = type(self.configuration.end_effector)
         endpoint = self._griplink_endpoints.get(gripper_type, {}).get(state_type)
         if endpoint is None:
             raise NoGriplinkEndpoint(
-                end_effector=self.specification.end_effector, state_type=state_type
+                end_effector=self.configuration.end_effector, state_type=state_type
             )
         return endpoint
 
@@ -137,14 +134,14 @@ class DAiSyGripperMotion(MoveGripperMotion[TGripperSpecification]):
         """
         The griplink action server task this motion builds its chart from.
 
-        :return: The task configured from this motion's specification and endpoint.
+        :return: The task configured from this motion's configuration and endpoint.
         """
 
 
 # %% DAiSy grip motion
 @dataclass
 class DAiSyGripMotion(
-    AlternativeMotion[DAiSy], DAiSyGripperMotion[GriplinkPresetSpecification]
+    AlternativeMotion[DAiSy], DAiSyGripperMotion[GriplinkPresetConfiguration]
 ):
     """
     Uses the griplink action server to grip or release with the griplink grippers of
@@ -173,21 +170,20 @@ class DAiSyGripMotion(
     @property
     def _action_server_task(self) -> GriplinkPresetActionServerTask:
         """
-        :return: The griplink task executing the preset of this motion's specification.
+        :return: The griplink task executing the preset of this motion's configuration.
         """
-        configuration: GriplinkGripperConfiguration = self.specification.configuration
         endpoint = self._griplink_endpoint
         return GriplinkPresetActionServerTask(
             action_topic=endpoint.action_topic,
             message_type=endpoint.message_type,
-            grip_preset=configuration.grip_preset,
+            grip_preset=self.configuration.grip_preset,
         )
 
 
 # %% DAiSy flex grip motion
 @dataclass
 class DAiSyFlexGripMotion(
-    AlternativeMotion[DAiSy], DAiSyGripperMotion[GriplinkFlexSpecification]
+    AlternativeMotion[DAiSy], DAiSyGripperMotion[GriplinkFlexConfiguration]
 ):
     """
     Uses flex grip and release motions for the griplink grippers of real DAiSy, or a
@@ -217,15 +213,14 @@ class DAiSyFlexGripMotion(
     def _action_server_task(self) -> GriplinkFlexActionServerTask:
         """
         :return: The griplink task executing the commanded opening width of this
-            motion's specification.
+            motion's configuration.
         """
-        configuration: GriplinkGripperConfiguration = self.specification.configuration
         endpoint = self._griplink_endpoint
         return GriplinkFlexActionServerTask(
             action_topic=endpoint.action_topic,
             message_type=endpoint.message_type,
-            grip_position=configuration.grip_position,
-            grip_force=configuration.grip_force,
-            grip_speed=configuration.grip_speed,
-            grip_acceleration=configuration.grip_acceleration,
+            grip_position=self.configuration.grip_position,
+            grip_force=self.configuration.grip_force,
+            grip_speed=self.configuration.grip_speed,
+            grip_acceleration=self.configuration.grip_acceleration,
         )

@@ -35,9 +35,9 @@ from semantic_digital_twin.datastructures.definitions import (
     GripperState,
 )
 from semantic_digital_twin.datastructures.field_of_view import FieldOfView
-from semantic_digital_twin.datastructures.robots.gripper_specification import (
-    GripperSpecification,
-    GripperStateSpecification,
+from semantic_digital_twin.datastructures.robots.gripper_configuration import (
+    GripperConfiguration,
+    GripperStateConfiguration,
 )
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
@@ -614,23 +614,23 @@ class EndEffector(AbstractRobotPart, ABC):
 The axis of the end_effector's tool frame that is facing forward.
     """
 
-    def default_specification(
+    def default_configuration(
         self,
         state_type: GripperState,
         finger_velocity: float | None = None,
-    ) -> GripperSpecification:
+    ) -> GripperConfiguration:
         """
-        Build the default gripper specification for a state this end effector declares.
+        Build the default gripper configuration for a state this end effector declares.
 
-        :param state_type: The state type to build the specification for.
+        :param state_type: The state type to build the configuration for.
         :param finger_velocity: Optional maximum finger joint velocity (in m/s) to
             enforce during the motion.
-        :return: The specification carrying the declared joint state for that type.
+        :return: The configuration carrying the declared joint state for that type.
         """
-        specification = GripperStateSpecification.from_state_type(self, state_type)
+        configuration = GripperStateConfiguration.from_state_type(self, state_type)
         if finger_velocity is not None:
-            specification.finger_velocity = finger_velocity
-        return specification
+            configuration.finger_velocity = finger_velocity
+        return configuration
 
     def __post_init__(self):
         super().__post_init__()

@@ -20,10 +20,10 @@ from semantic_digital_twin.datastructures.definitions import (
     GripperState,
 )
 from semantic_digital_twin.datastructures.field_of_view import FieldOfView
-from semantic_digital_twin.datastructures.robots.gripper_specification import (
-    GripperSpecification,
-    GriplinkFlexSpecification,
-    GriplinkPresetSpecification,
+from semantic_digital_twin.datastructures.robots.gripper_configuration import (
+    GripperConfiguration,
+    GriplinkFlexConfiguration,
+    GriplinkPresetConfiguration,
 )
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
@@ -164,41 +164,41 @@ class GriplinkGripper(EndEffector, ABC):
     """
     An `WEISS WPG gripper <https://weiss-robotics.com/servo-electric/wpg-series/>`_ driven by the Griplink interface.
 
-    Builds griplink-specific specifications so generic actions and demos produce robot-
-    appropriate specifications without naming the robot.
+    Builds griplink-specific configurations so generic actions and demos produce robot-
+    appropriate configurations without naming the robot.
     """
 
-    def default_specification(
+    def default_configuration(
         self,
         state_type: GripperState,
         finger_velocity: Optional[float] = None,
-    ) -> GripperSpecification:
+    ) -> GripperConfiguration:
         """
-        Build the griplink specification for a state this gripper declares.
+        Build the griplink configuration for a state this gripper declares.
 
         Preset states (``OPEN``/``CLOSE``) build a
-        :class:`~semantic_digital_twin.datastructures.robots.gripper_specification.GriplinkPresetSpecification`,
+        :class:`~semantic_digital_twin.datastructures.robots.gripper_configuration.GriplinkPresetConfiguration`,
         flex states (``FLEXOPEN``/``FLEXCLOSE``) a
-        :class:`~semantic_digital_twin.datastructures.robots.gripper_specification.GriplinkFlexSpecification`.
+        :class:`~semantic_digital_twin.datastructures.robots.gripper_configuration.GriplinkFlexConfiguration`.
 
-        :param state_type: The state type to build the specification for.
+        :param state_type: The state type to build the configuration for.
         :param finger_velocity: Optional maximum finger joint velocity (in m/s) to
             enforce during the motion.
-        :return: The griplink specification for that state type, or the specification
+        :return: The griplink configuration for that state type, or the configuration
             the base implementation builds for state types a griplink controller does
             not command.
         """
         if state_type in (GripperState.OPEN, GripperState.CLOSE):
-            specification = GriplinkPresetSpecification.from_state_type(
+            configuration = GriplinkPresetConfiguration.from_state_type(
                 self, state_type
             )
         elif state_type in (GripperState.FLEXOPEN, GripperState.FLEXCLOSE):
-            specification = GriplinkFlexSpecification.from_state_type(self, state_type)
+            configuration = GriplinkFlexConfiguration.from_state_type(self, state_type)
         else:
-            return super().default_specification(state_type, finger_velocity)
+            return super().default_configuration(state_type, finger_velocity)
         if finger_velocity is not None:
-            specification.finger_velocity = finger_velocity
-        return specification
+            configuration.finger_velocity = finger_velocity
+        return configuration
 
 
 @dataclass(eq=False)

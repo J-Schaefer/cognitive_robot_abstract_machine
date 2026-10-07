@@ -22,8 +22,8 @@ from giskardpy.motion_statechart.tasks.joint_tasks import (
 from giskardpy.motion_statechart.monitors.monitors import LocalMinimumReached
 from krrood.patterns.subclass_safe_generic import SubClassSafeGeneric
 from semantic_digital_twin.datastructures.alignment import AlignmentPair
-from semantic_digital_twin.datastructures.robots.gripper_specification import (
-    TGripperSpecification,
+from semantic_digital_twin.datastructures.robots.gripper_configuration import (
+    TGripperConfiguration,
 )
 from semantic_digital_twin.robots.justin import Justin
 from semantic_digital_twin.robots.robot_part_mixins import HasMobileBase
@@ -129,15 +129,15 @@ class ReachMotion(BaseMotion, HasTcpGoalThresholds):
 @dataclass
 class MoveGripperMotion(
     BaseMotion,
-    Generic[TGripperSpecification],
+    Generic[TGripperConfiguration],
     SubClassSafeGeneric,
     GripperStallToleranceParameters,
 ):
     """
-    Moves a gripper into the configuration its specification describes.
+    Moves a gripper into the configuration it describes.
     """
 
-    specification: TGripperSpecification
+    configuration: TGripperConfiguration
     """
     The gripper configuration to command.
     """
@@ -154,10 +154,10 @@ class MoveGripperMotion(
     def _motion_chart(self):
         """
         :return: The chart driving the gripper's connections to the joint state the
-            specification commands, with the velocity limit and collision rules the
-            specification and parameters ask for.
+            configuration commands, with the velocity limit and collision rules the
+            configuration and parameters ask for.
         """
-        goal_state = self.specification.joint_state
+        goal_state = self.configuration.joint_state
         name = goal_state.name.name
         joint_task = JointPositionList(goal_state=goal_state, name=name)
 
@@ -180,7 +180,7 @@ class MoveGripperMotion(
 
         nodes = [done_node]
 
-        finger_velocity = self.specification.finger_velocity
+        finger_velocity = self.configuration.finger_velocity
         if finger_velocity is not None:
             nodes.append(
                 JointVelocityLimit(
@@ -192,7 +192,7 @@ class MoveGripperMotion(
         if self.allow_gripper_collision:
             nodes.extend(
                 self._only_allow_gripper_collision_rules(
-                    self.specification.end_effector
+                    self.configuration.end_effector
                 )
             )
 
@@ -203,22 +203,22 @@ class MoveGripperMotion(
     @classmethod
     def handles(cls, motion: MoveGripperMotion) -> bool:
         """
-        Whether this alternative can be built from the given motion's specification.
+        Whether this alternative can be built from the given motion's configuration.
 
-        :param motion: The motion whose specification is checked.
-        :return: True if the motion's specification is an instance of the specification
+        :param motion: The motion whose configuration is checked.
+        :return: True if the motion's configuration is an instance of the configuration
             type this alternative is bound to. Also True when this class binds no
-            concrete specification type.
+            concrete configuration type.
         """
-        bound_specification = cls.get_generic_type_parameters()
-        if not bound_specification:
+        bound_configuration_type = cls.get_generic_type_parameters()
+        if not bound_configuration_type:
             return True
-        specification_type = bound_specification[0]
-        if not isinstance(specification_type, type):
+        configuration_type = bound_configuration_type[0]
+        if not isinstance(configuration_type, type):
             # The generic parameter is still an unresolved type variable, so this class
-            # binds no concrete specification type it could check against.
+            # binds no concrete configuration type it could check against.
             return True
-        return isinstance(motion.specification, specification_type)
+        return isinstance(motion.configuration, configuration_type)
 
 
 @dataclass

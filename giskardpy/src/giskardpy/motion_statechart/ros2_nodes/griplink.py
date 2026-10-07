@@ -10,7 +10,7 @@ from griplink_interfaces.action import Flexgrip, Flexrelease, Grip, Release
 from giskardpy.motion_statechart.context import MotionStatechartContext
 from giskardpy.motion_statechart.data_types import ObservationStateValues
 from giskardpy.motion_statechart.ros2_nodes.ros_tasks import ActionServerTask
-from semantic_digital_twin.datastructures.robots.gripper_configurations import (
+from semantic_digital_twin.datastructures.robots.gripper_configuration import (
     GriplinkGripPreset,
 )
 

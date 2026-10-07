@@ -319,9 +319,9 @@ def test_move_gripper_multi(multiple_robot_apartment_context):
 
     plan = execute_single(
         SetGripperAction(
-            specification=ViewManager.get_end_effector_view(
+            configuration=ViewManager.get_end_effector_view(
                 Arms.LEFT, view
-            ).default_specification(GripperState.OPEN)
+            ).default_configuration(GripperState.OPEN)
         ),
         context,
     )
@@ -338,9 +338,9 @@ def test_move_gripper_multi(multiple_robot_apartment_context):
 
     plan = execute_single(
         SetGripperAction(
-            specification=ViewManager.get_end_effector_view(
+            configuration=ViewManager.get_end_effector_view(
                 Arms.LEFT, view
-            ).default_specification(GripperState.CLOSE)
+            ).default_configuration(GripperState.CLOSE)
         ),
         context,
     )

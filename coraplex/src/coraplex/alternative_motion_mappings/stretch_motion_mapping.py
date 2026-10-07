@@ -25,8 +25,8 @@ from coraplex.robot_plans import (
 )
 from coraplex.robot_plans.motions.base import AlternativeMotion
 from coraplex.view_manager import ViewManager
-from semantic_digital_twin.datastructures.robots.gripper_specification import (
-    GripperSpecification,
+from semantic_digital_twin.datastructures.robots.gripper_configuration import (
+    GripperConfiguration,
 )
 from semantic_digital_twin.robots.stretch import Stretch
 from semantic_digital_twin.spatial_types import (
@@ -152,7 +152,7 @@ class StretchClose(ClosingMotion, AlternativeMotion[Stretch]):
 
 
 class StretchMoveGripperMotion(
-    AlternativeMotion[Stretch], MoveGripperMotion[GripperSpecification]
+    AlternativeMotion[Stretch], MoveGripperMotion[GripperConfiguration]
 ):
     """
     Gripper motion tuned for Stretch: forces convergence checks to hold for at least one
@@ -166,7 +166,7 @@ class StretchMoveGripperMotion(
 
     @property
     def _motion_chart(self):
-        goal_state = self.specification.joint_state
+        goal_state = self.configuration.joint_state
 
         return Parallel(
             [

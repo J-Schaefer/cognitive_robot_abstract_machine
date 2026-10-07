@@ -31,8 +31,8 @@ from semantic_digital_twin.datastructures.definitions import (
     TorsoState,
     StaticJointState,
 )
-from semantic_digital_twin.datastructures.robots.gripper_specification import (
-    GripperSpecification,
+from semantic_digital_twin.datastructures.robots.gripper_configuration import (
+    GripperConfiguration,
 )
 
 
@@ -73,17 +73,17 @@ class MoveTorsoAction(ActionDescription):
 @dataclass
 class SetGripperAction(ActionDescription):
     """
-    Sets a gripper to the configuration its specification describes.
+    Sets a gripper to the configuration it describes.
     """
 
-    specification: GripperSpecification
+    configuration: GripperConfiguration
     """
     The gripper configuration to reach.
     """
 
     @property
     def _action_plan(self) -> PlanNode:
-        return execute_single(MoveGripperMotion(specification=self.specification))
+        return execute_single(MoveGripperMotion(configuration=self.configuration))
 
     @staticmethod
     def post_condition(
@@ -92,7 +92,7 @@ class SetGripperAction(ActionDescription):
         """
         The gripper's target joint state needs to be achieved.
         """
-        return variable_from(kwargs["specification"].joint_state).is_achieved()
+        return variable_from(kwargs["configuration"].joint_state).is_achieved()
 
 
 @dataclass

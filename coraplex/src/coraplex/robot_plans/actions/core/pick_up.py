@@ -108,9 +108,9 @@ class ReachAction(
         if self.open_gripper_at_pre_pose:
             children.append(
                 MoveGripperMotion(
-                    specification=ViewManager.get_end_effector_view(
+                    configuration=ViewManager.get_end_effector_view(
                         self.arm, self.robot
-                    ).default_specification(GripperState.OPEN)
+                    ).default_configuration(GripperState.OPEN)
                 )
             )
         children.append(
@@ -234,9 +234,9 @@ class PickUpAction(
                     orientation_threshold=self.orientation_threshold,
                 ),
                 MoveGripperMotion(
-                    specification=ViewManager.get_end_effector_view(
+                    configuration=ViewManager.get_end_effector_view(
                         self.arm, self.robot
-                    ).default_specification(
+                    ).default_configuration(
                         GripperState.CLOSE,
                         finger_velocity=self.grasp_closing_velocity,
                     ),
@@ -355,9 +355,9 @@ class GraspingAction(ActionDescription, HasTcpGoalThresholds):
                     allow_gripper_collision=True,
                 ),
                 MoveGripperMotion(
-                    specification=ViewManager.get_end_effector_view(
+                    configuration=ViewManager.get_end_effector_view(
                         self.arm, self.robot
-                    ).default_specification(GripperState.OPEN)
+                    ).default_configuration(GripperState.OPEN)
                 ),
                 MoveToolCenterPointMotion(
                     grasp_pose,
@@ -367,9 +367,9 @@ class GraspingAction(ActionDescription, HasTcpGoalThresholds):
                     orientation_threshold=self.orientation_threshold,
                 ),
                 MoveGripperMotion(
-                    specification=ViewManager.get_end_effector_view(
+                    configuration=ViewManager.get_end_effector_view(
                         self.arm, self.robot
-                    ).default_specification(GripperState.CLOSE),
+                    ).default_configuration(GripperState.CLOSE),
                     allow_gripper_collision=True,
                 ),
             ]

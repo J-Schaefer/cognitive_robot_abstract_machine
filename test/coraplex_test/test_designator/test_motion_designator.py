@@ -52,13 +52,10 @@ from giskardpy.motion_statechart.tasks.joint_tasks import (
 )
 from giskardpy.motion_statechart.tasks.pointing import Pointing
 from semantic_digital_twin.datastructures.definitions import GripperState, TorsoState
-from semantic_digital_twin.datastructures.robots.gripper_specification import (
-    GriplinkFlexSpecification,
-    GriplinkPresetSpecification,
-)
-from semantic_digital_twin.datastructures.robots.gripper_configurations import (
-    GriplinkGripperConfiguration,
+from semantic_digital_twin.datastructures.robots.gripper_configuration import (
+    GriplinkFlexConfiguration,
     GriplinkGripPreset,
+    GriplinkPresetConfiguration,
 )
 from semantic_digital_twin.semantic_annotations.semantic_annotations import Milk
 from semantic_digital_twin.spatial_types import Point3, Quaternion
@@ -361,9 +358,9 @@ def test_move_gripper_motion_finger_velocity_adds_real_limit(pr2_apartment_conte
     world, view, context = pr2_apartment_context
 
     close_motion = MoveGripperMotion(
-        specification=ViewManager.get_end_effector_view(
+        configuration=ViewManager.get_end_effector_view(
             Arms.LEFT, view
-        ).default_specification(GripperState.CLOSE, finger_velocity=0.03)
+        ).default_configuration(GripperState.CLOSE, finger_velocity=0.03)
     )
     execute_single(close_motion, context=context)
     assert isinstance(close_motion.motion_chart, Parallel)
@@ -389,9 +386,9 @@ def test_move_gripper_motion_tolerate_stall_and_finger_velocity_combine(
     world, view, context = pr2_apartment_context
 
     close_motion = MoveGripperMotion(
-        specification=ViewManager.get_end_effector_view(
+        configuration=ViewManager.get_end_effector_view(
             Arms.LEFT, view
-        ).default_specification(GripperState.CLOSE, finger_velocity=0.03),
+        ).default_configuration(GripperState.CLOSE, finger_velocity=0.03),
         tolerate_stall=True,
     )
     execute_single(close_motion, context=context)
@@ -421,17 +418,17 @@ def test_move_gripper_motion_tolerate_stall_defaults_to_false(pr2_apartment_cont
     world, view, context = pr2_apartment_context
 
     close_motion = MoveGripperMotion(
-        specification=ViewManager.get_end_effector_view(
+        configuration=ViewManager.get_end_effector_view(
             Arms.LEFT, view
-        ).default_specification(GripperState.CLOSE)
+        ).default_configuration(GripperState.CLOSE)
     )
     execute_single(close_motion, context=context)
     assert isinstance(close_motion.motion_chart, JointPositionList)
 
     open_motion = MoveGripperMotion(
-        specification=ViewManager.get_end_effector_view(
+        configuration=ViewManager.get_end_effector_view(
             Arms.LEFT, view
-        ).default_specification(GripperState.OPEN)
+        ).default_configuration(GripperState.OPEN)
     )
     execute_single(open_motion, context=context)
     assert isinstance(open_motion.motion_chart, JointPositionList)
@@ -450,9 +447,9 @@ def test_move_gripper_motion_tolerate_stall_can_be_explicitly_enabled(
     world, view, context = pr2_apartment_context
 
     close_motion = MoveGripperMotion(
-        specification=ViewManager.get_end_effector_view(
+        configuration=ViewManager.get_end_effector_view(
             Arms.LEFT, view
-        ).default_specification(GripperState.CLOSE),
+        ).default_configuration(GripperState.CLOSE),
         tolerate_stall=True,
     )
     execute_single(close_motion, context=context)
@@ -658,9 +655,9 @@ def test_move_gripper_motion_frees_the_fingers_it_closes(pr2_apartment_context):
     world, view, context = pr2_apartment_context
 
     close_motion = MoveGripperMotion(
-        specification=ViewManager.get_end_effector_view(
+        configuration=ViewManager.get_end_effector_view(
             Arms.LEFT, view
-        ).default_specification(GripperState.CLOSE),
+        ).default_configuration(GripperState.CLOSE),
         allow_gripper_collision=True,
     )
     execute_single(close_motion, context=context)
@@ -679,9 +676,9 @@ def test_move_gripper_motion_keeps_the_fingers_clear_by_default(pr2_apartment_co
     world, view, context = pr2_apartment_context
 
     close_motion = MoveGripperMotion(
-        specification=ViewManager.get_end_effector_view(
+        configuration=ViewManager.get_end_effector_view(
             Arms.LEFT, view
-        ).default_specification(GripperState.CLOSE)
+        ).default_configuration(GripperState.CLOSE)
     )
     execute_single(close_motion, context=context)
 
@@ -985,7 +982,7 @@ class TestDAiSyGripMotion:
         _, robot, context = immutable_daisy_world
         end_effector = ViewManager.get_end_effector_view(arm, robot)
         motion_obj = DAiSyGripMotion(
-            specification=end_effector.default_specification(state_type)
+            configuration=end_effector.default_configuration(state_type)
         )
         execute_single(motion_obj, context=context)
         return motion_obj
@@ -1034,7 +1031,7 @@ class TestDAiSyGripMotion:
         _, robot, _ = immutable_daisy_world
         end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
         motion = DAiSyGripMotion(
-            specification=GriplinkFlexSpecification.from_state_type(
+            configuration=GriplinkFlexConfiguration.from_state_type(
                 end_effector, GripperState.FLEXCLOSE
             )
         )
@@ -1054,13 +1051,13 @@ class TestDAiSyFlexGripMotion:
         immutable_daisy_world,
         arm=Arms.LEFT,
         state_type=GripperState.FLEXCLOSE,
-        configuration=None,
+        **grip_parameters,
     ):
         _, robot, context = immutable_daisy_world
         end_effector = ViewManager.get_end_effector_view(arm, robot)
         motion_obj = DAiSyFlexGripMotion(
-            specification=GriplinkFlexSpecification.from_state_type(
-                end_effector, state_type, configuration
+            configuration=GriplinkFlexConfiguration.from_state_type(
+                end_effector, state_type, **grip_parameters
             )
         )
         execute_single(motion_obj, context=context)
@@ -1095,7 +1092,7 @@ class TestDAiSyFlexGripMotion:
         motion = self._flex_motion(
             immutable_daisy_world,
             state_type=GripperState.FLEXCLOSE,
-            configuration=GriplinkGripperConfiguration(grip_position=60),
+            grip_position=60,
         )
         with semi_real_robot:
             chart = motion._motion_chart
@@ -1114,7 +1111,7 @@ class TestDAiSyFlexGripMotion:
         motion = self._flex_motion(
             immutable_daisy_world,
             state_type=GripperState.FLEXOPEN,
-            configuration=GriplinkGripperConfiguration(grip_position=120),
+            grip_position=120,
         )
         with semi_real_robot:
             chart = motion._motion_chart
@@ -1136,7 +1133,7 @@ class TestDAiSyFlexGripMotion:
         motion = self._flex_motion(
             immutable_daisy_world,
             state_type=GripperState.FLEXCLOSE,
-            configuration=GriplinkGripperConfiguration(grip_position=0),
+            grip_position=0,
         )
         with semi_real_robot:
             chart = motion._motion_chart
@@ -1158,50 +1155,50 @@ class TestDAiSyFlexGripMotion:
         assert isinstance(chart.nodes[0], GriplinkFlexActionServerTask)
 
 
-# %% DAiSy specification routing and parameter forwarding
+# %% DAiSy configuration routing and parameter forwarding
 
 
 @pytest.mark.skipif(
     not daisy_mappings_available,
     reason="DAiSy motion mappings not available",
 )
-class TestDAiSyGripperSpecificationRouting:
+class TestDAiSyGripperConfigurationRouting:
     """
     A base :class:`MoveGripperMotion` with both DAiSy alternatives registered routes to
-    the correct alternative by specification type, and the specification's configuration
-    reaches the griplink action server task.
+    the correct alternative by configuration type, and the configuration's hardware
+    parameters reach the griplink action server task.
     """
 
     def _motion_through_dispatch(
         self,
         immutable_daisy_world,
-        specification,
+        configuration,
     ):
         _, _, context = immutable_daisy_world
         context.alternative_motion_mappings = [
             DAiSyGripMotion,
             DAiSyFlexGripMotion,
         ]
-        motion_obj = MoveGripperMotion(specification=specification)
+        motion_obj = MoveGripperMotion(configuration=configuration)
         execute_single(motion_obj, context=context)
         return motion_obj
 
-    def test_preset_specification_routes_to_grip_motion(self, immutable_daisy_world):
+    def test_preset_configuration_routes_to_grip_motion(self, immutable_daisy_world):
         _, robot, _ = immutable_daisy_world
         end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
         motion = self._motion_through_dispatch(
             immutable_daisy_world,
-            end_effector.default_specification(GripperState.CLOSE),
+            end_effector.default_configuration(GripperState.CLOSE),
         )
         with real_robot:
             assert motion.get_alternative_motion() is DAiSyGripMotion
 
-    def test_flex_specification_routes_to_flex_motion(self, immutable_daisy_world):
+    def test_flex_configuration_routes_to_flex_motion(self, immutable_daisy_world):
         _, robot, _ = immutable_daisy_world
         end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
         motion = self._motion_through_dispatch(
             immutable_daisy_world,
-            GriplinkFlexSpecification.from_state_type(
+            GriplinkFlexConfiguration.from_state_type(
                 end_effector, GripperState.FLEXCLOSE
             ),
         )
@@ -1217,7 +1214,7 @@ class TestDAiSyGripperSpecificationRouting:
         end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
         motion = self._motion_through_dispatch(
             immutable_daisy_world,
-            end_effector.default_specification(GripperState.CLOSE),
+            end_effector.default_configuration(GripperState.CLOSE),
         )
         with simulated_robot:
             chart = motion.motion_chart
@@ -1229,7 +1226,7 @@ class TestDAiSyGripperSpecificationRouting:
         end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
         motion = self._motion_through_dispatch(
             immutable_daisy_world,
-            end_effector.default_specification(GripperState.CLOSE),
+            end_effector.default_configuration(GripperState.CLOSE),
         )
         with semi_real_robot:
             chart = motion.motion_chart
@@ -1239,72 +1236,71 @@ class TestDAiSyGripperSpecificationRouting:
     def test_grip_motion_forwards_default_preset(self, immutable_daisy_world):
         _, robot, _ = immutable_daisy_world
         end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
-        specification = end_effector.default_specification(GripperState.CLOSE)
-        motion = self._motion_through_dispatch(immutable_daisy_world, specification)
+        configuration = end_effector.default_configuration(GripperState.CLOSE)
+        motion = self._motion_through_dispatch(immutable_daisy_world, configuration)
         with real_robot:
             chart = motion.motion_chart
         task = chart.nodes[0]
         assert isinstance(task, GriplinkPresetActionServerTask)
-        assert task.grip_preset is specification.configuration.grip_preset
+        assert task.grip_preset is configuration.grip_preset
 
     def test_grip_motion_explicit_configuration_overrides_default(
         self, immutable_daisy_world
     ):
         _, robot, _ = immutable_daisy_world
         end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
-        override = GriplinkGripperConfiguration(grip_preset=GriplinkGripPreset.PRESET_3)
-        specification = GriplinkPresetSpecification.from_state_type(
-            end_effector, GripperState.CLOSE, configuration=override
+        configuration = GriplinkPresetConfiguration.from_state_type(
+            end_effector,
+            GripperState.CLOSE,
+            grip_preset=GriplinkGripPreset.PRESET_3,
         )
-        motion = self._motion_through_dispatch(immutable_daisy_world, specification)
+        motion = self._motion_through_dispatch(immutable_daisy_world, configuration)
         with real_robot:
             chart = motion.motion_chart
         task = chart.nodes[0]
         assert isinstance(task, GriplinkPresetActionServerTask)
-        assert task.grip_preset is override.grip_preset
+        assert task.grip_preset is configuration.grip_preset
 
     def test_flexgrip_motion_forwards_position_force_speed_acceleration(
         self, immutable_daisy_world
     ):
         _, robot, _ = immutable_daisy_world
         end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
-        config = GriplinkGripperConfiguration(
+        configuration = GriplinkFlexConfiguration.from_state_type(
+            end_effector,
+            GripperState.FLEXCLOSE,
             grip_position=60,
             grip_force=100,
             grip_speed=50,
             grip_acceleration=2000,
         )
-        specification = GriplinkFlexSpecification.from_state_type(
-            end_effector, GripperState.FLEXCLOSE, configuration=config
-        )
-        motion = self._motion_through_dispatch(immutable_daisy_world, specification)
+        motion = self._motion_through_dispatch(immutable_daisy_world, configuration)
         with real_robot:
             chart = motion.motion_chart
         task = chart.nodes[0]
         assert isinstance(task, GriplinkFlexActionServerTask)
-        assert task.grip_position == config.grip_position
-        assert task.grip_force == config.grip_force
-        assert task.grip_speed == config.grip_speed
-        assert task.grip_acceleration == config.grip_acceleration
+        assert task.grip_position == configuration.grip_position
+        assert task.grip_force == configuration.grip_force
+        assert task.grip_speed == configuration.grip_speed
+        assert task.grip_acceleration == configuration.grip_acceleration
 
     def test_flexrelease_motion_forwards_position_speed_acceleration(
         self, immutable_daisy_world
     ):
         _, robot, _ = immutable_daisy_world
         end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
-        config = GriplinkGripperConfiguration(
+        configuration = GriplinkFlexConfiguration.from_state_type(
+            end_effector,
+            GripperState.FLEXOPEN,
             grip_position=30,
             grip_speed=80,
             grip_acceleration=1500,
         )
-        specification = GriplinkFlexSpecification.from_state_type(
-            end_effector, GripperState.FLEXOPEN, configuration=config
-        )
-        motion = self._motion_through_dispatch(immutable_daisy_world, specification)
+        motion = self._motion_through_dispatch(immutable_daisy_world, configuration)
         with real_robot:
             chart = motion.motion_chart
         task = chart.nodes[0]
         assert isinstance(task, GriplinkFlexActionServerTask)
-        assert task.grip_position == config.grip_position
-        assert task.grip_speed == config.grip_speed
-        assert task.grip_acceleration == config.grip_acceleration
+        assert task.grip_position == configuration.grip_position
+        assert task.grip_speed == configuration.grip_speed
+        assert task.grip_acceleration == configuration.grip_acceleration

@@ -147,7 +147,7 @@ class PlaceAction(
                     orientation_threshold=self.orientation_threshold,
                 ),
                 MoveGripperMotion(
-                    specification=end_effector.default_specification(
+                    configuration=end_effector.default_configuration(
                         GripperState.OPEN,
                         finger_velocity=self.release_opening_velocity,
                     ),

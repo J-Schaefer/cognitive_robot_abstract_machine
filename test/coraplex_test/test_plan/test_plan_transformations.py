@@ -168,7 +168,7 @@ def gripper_motion(
     """
     end_effector = ViewManager.get_end_effector_view(arm, plan_node.plan.robot)
     return MoveGripperMotion(
-        specification=end_effector.default_specification(state_type)
+        configuration=end_effector.default_configuration(state_type)
     )
 
 
@@ -473,7 +473,7 @@ def test_a_transformation_inserts_its_nodes_before_the_anchor(pr2_apartment_cont
         MoveGripperMotion,
         MoveJointsMotion,
     ]
-    assert [motion.designator.specification.end_effector for motion in motions[:2]] == [
+    assert [motion.designator.configuration.end_effector for motion in motions[:2]] == [
         ViewManager.get_end_effector_view(Arms.LEFT, view),
         ViewManager.get_end_effector_view(Arms.RIGHT, view),
     ]
@@ -496,7 +496,7 @@ def test_a_transformation_inserts_its_nodes_after_the_anchor(pr2_apartment_conte
         MoveGripperMotion,
         MoveGripperMotion,
     ]
-    assert [motion.designator.specification.end_effector for motion in motions[1:]] == [
+    assert [motion.designator.configuration.end_effector for motion in motions[1:]] == [
         ViewManager.get_end_effector_view(Arms.LEFT, view),
         ViewManager.get_end_effector_view(Arms.RIGHT, view),
     ]
@@ -987,7 +987,7 @@ def test_the_transformations_that_collide_are_still_applied(pr2_apartment_contex
     plan.notify()
 
     assert [
-        motion.designator.specification.end_effector for motion in motions_of(plan)
+        motion.designator.configuration.end_effector for motion in motions_of(plan)
     ] == [
         ViewManager.get_end_effector_view(Arms.LEFT, view),
         ViewManager.get_end_effector_view(Arms.RIGHT, view),

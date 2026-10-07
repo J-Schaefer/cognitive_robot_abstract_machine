@@ -48,7 +48,7 @@ def main() -> None:
     plan = sequential(
         [
             SetGripperAction(
-                specification=pr2.right_arm.end_effector.default_specification(
+                configuration=pr2.right_arm.end_effector.default_configuration(
                     GripperState.CLOSE
                 )
             ),
