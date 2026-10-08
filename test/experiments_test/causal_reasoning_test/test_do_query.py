@@ -145,7 +145,7 @@ def test_the_answer_reports_the_question_it_was_asked(
     question = CountCausesMutagenicity(count=MoleculeCount.BRANCHING_ATOMS)
 
     assert branching_atoms_answer.asked == question.asked
-    assert branching_atoms_answer.training_molecule_count == molecule_count
+    assert branching_atoms_answer.training_example_count == molecule_count
 
 
 def test_one_region_per_value_the_molecules_take(
@@ -190,3 +190,22 @@ def test_the_shift_from_adjusting_is_the_distance_between_the_two_answers(
     assert branching_atoms_answer.largest_shift_from_adjusting == pytest.approx(
         max(abs(one.shift_from_adjusting) for one in branching_atoms_answer.regions)
     )
+
+
+# %% adjusting for nothing changes nothing
+
+
+def test_adjusting_for_nothing_leaves_the_conditioned_answer_alone(
+    molecules: List[MutagenesisMolecule],
+) -> None:
+    """
+    With no confounder to adjust for, the adjusted circuit is the conditioned one, so
+    every region's two answers agree exactly.
+    """
+    answer = MutagenesisDoQuery(
+        question=CountCausesMutagenicity(
+            count=MoleculeCount.BRANCHING_ATOMS, adjusted_for=()
+        )
+    ).run(molecules)
+
+    assert answer.largest_shift_from_adjusting == pytest.approx(0.0)

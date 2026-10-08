@@ -9,6 +9,7 @@ import coraplex.orm.ormatic_interface
 from krrood.ormatic.ormatic import ORMatic
 from krrood.ormatic.utils import classes_of_module
 import experiments.control_loop_experiments.control_loop_profiler
+import experiments.causal_reasoning.do_query
 import experiments.causal_reasoning.mutagenesis.do_query
 
 # benchmarking measures a running system instead of describing it
@@ -20,11 +21,14 @@ ignored_classes |= set(
     classes_of_module(experiments.control_loop_experiments.control_loop_profiler)
 )
 
-# the questions put to a circuit and the answers read back describe a measurement of the
-# molecules rather than the molecules themselves
-ignored_classes |= set(
-    classes_of_module(experiments.causal_reasoning.mutagenesis.do_query)
-)
+# a question put to a circuit and the answer read back are not stored, so mapping them
+# would add a table per question and one for every answer, with nothing ever writing to
+# them
+for measuring_module in (
+    experiments.causal_reasoning.do_query,
+    experiments.causal_reasoning.mutagenesis.do_query,
+):
+    ignored_classes |= set(classes_of_module(measuring_module))
 
 # Create an ORMatic object with the classes to be mapped
 ormatic = ORMatic.from_package(

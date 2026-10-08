@@ -10,7 +10,7 @@ side.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from enum import StrEnum
 
 import numpy as np
@@ -21,6 +21,7 @@ from random_events.product_algebra import Event, SimpleEvent
 from random_events.variable import Variable
 from typing_extensions import Any, Dict, List, Tuple
 
+from experiments.causal_reasoning.do_query import CauseRegion, DoQueryAnswer
 from experiments.causal_reasoning.mutagenesis.domain import (
     MutagenesisAtom,
     MutagenesisBond,
@@ -42,7 +43,7 @@ from probabilistic_model.probabilistic_circuit.relational.rspn import (
 
 class MoleculeAttribute(StrEnum):
     """
-    An attribute a molecule itself carries.
+    A molecule attribute a question names as its cause or adjusts for.
     """
 
     INDICATOR_1 = "indicator_1"
@@ -50,32 +51,12 @@ class MoleculeAttribute(StrEnum):
     The dataset's ``ind1`` structural indicator.
     """
 
-    MUTAGENIC = "mutagenic"
-    """
-    Whether the molecule is mutagenic.
-    """
-
-    LOG_P = "logp"
-    """
-    The octanol-water partition coefficient.
-    """
-
-    LUMO = "lumo"
-    """
-    The energy of the lowest unoccupied molecular orbital.
-    """
-
     @property
     def noun(self) -> str:
         """
         What the attribute is, in words.
         """
-        return {
-            MoleculeAttribute.INDICATOR_1: "the ind1 indicator",
-            MoleculeAttribute.MUTAGENIC: "mutagenicity",
-            MoleculeAttribute.LOG_P: "the partition coefficient",
-            MoleculeAttribute.LUMO: "the orbital energy",
-        }[self]
+        return {MoleculeAttribute.INDICATOR_1: "the ind1 indicator"}[self]
 
     @property
     def circuit_variable_name(self) -> str:
@@ -83,12 +64,7 @@ class MoleculeAttribute(StrEnum):
         The name a fitted circuit gives the attribute.
         """
         molecule = variable(MutagenesisMolecule)
-        return {
-            MoleculeAttribute.INDICATOR_1: molecule.indicator_1,
-            MoleculeAttribute.MUTAGENIC: molecule.mutagenic,
-            MoleculeAttribute.LOG_P: molecule.logp,
-            MoleculeAttribute.LUMO: molecule.lumo,
-        }[self]._name_
+        return {MoleculeAttribute.INDICATOR_1: molecule.indicator_1}[self]._name_
 
 
 class MoleculeCount(StrEnum):
@@ -147,74 +123,6 @@ class MoleculeCount(StrEnum):
             MoleculeCount.DOUBLE_BONDS: aggregations.double_bond_count(),
             MoleculeCount.AROMATIC_BONDS: aggregations.aromatic_bond_count(),
         }[self]._name_
-
-
-# %% what asking one question yields
-
-
-@dataclass(frozen=True)
-class CauseRegion:
-    """
-    One region of the cause, with how likely the effect is on it.
-    """
-
-    description: str
-    """
-    The values of the cause this region covers.
-    """
-
-    probability: float
-    """
-    How much of the training population the region accounts for.
-    """
-
-    conditioned_probability: float
-    """
-    How likely the effect is given the region, read off the circuit with no adjustment.
-    """
-
-    adjusted_probability: float
-    """
-    How likely the effect is under an intervention setting the cause to the region,
-    adjusted for the question's confounders.
-    """
-
-    @property
-    def shift_from_adjusting(self) -> float:
-        """
-        How far adjusting moves the answer away from plain conditioning.
-        """
-        return self.adjusted_probability - self.conditioned_probability
-
-
-@dataclass(frozen=True)
-class DoQueryAnswer:
-    """
-    What one question yielded on one fitted circuit.
-    """
-
-    asked: str
-    """
-    The question, in words.
-    """
-
-    training_molecule_count: int
-    """
-    How many molecules the circuit was fitted on.
-    """
-
-    regions: Tuple[CauseRegion, ...]
-    """
-    One entry per region of the cause the grounded circuit's support covers.
-    """
-
-    @property
-    def largest_shift_from_adjusting(self) -> float:
-        """
-        The largest distance between a conditioned and an adjusted answer over the
-        regions: how much the confounders mattered at all.
-        """
-        return max(abs(region.shift_from_adjusting) for region in self.regions)
 
 
 # %% the questions
@@ -287,22 +195,24 @@ class MutagenesisQuestion(ABC):
         :param specified: Molecule attributes to mark or fix; the rest are left open.
         :return: The molecule query.
         """
-        attributes: Dict[str, Any] = {
-            MoleculeAttribute.MUTAGENIC.value: ...,
-            MoleculeAttribute.LOG_P.value: ...,
-            MoleculeAttribute.LUMO.value: ...,
-        }
-        attributes.update(specified)
-        return a(MutagenesisMolecule)(
-            atoms=[
+        parts: Dict[str, Any] = {
+            "atoms": [
                 a(MutagenesisAtom)(
                     element=..., atom_type=..., charge=..., bond_count=...
                 )
                 for _ in range(self.atom_count)
             ],
-            bonds=[a(MutagenesisBond)(bond_type=...) for _ in range(self.bond_count)],
-            **attributes,
-        )
+            "bonds": [
+                a(MutagenesisBond)(bond_type=...) for _ in range(self.bond_count)
+            ],
+        }
+        attributes: Dict[str, Any] = {
+            field.name: ...
+            for field in fields(MutagenesisMolecule)
+            if field.name not in parts
+        }
+        attributes.update(specified)
+        return a(MutagenesisMolecule)(**parts, **attributes)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -323,12 +233,20 @@ class CountCausesMutagenicity(MutagenesisQuestion):
 
     @property
     def name(self) -> str:
-        adjusting = "_and_".join(attribute.value for attribute in self.adjusted_for)
+        adjusting = (
+            "_and_".join(attribute.value for attribute in self.adjusted_for)
+            if self.adjusted_for
+            else "nothing"
+        )
         return f"{self.count.value}_causes_mutagenicity_adjusting_{adjusting}"
 
     @property
     def asked(self) -> str:
-        adjusting = " and ".join(attribute.noun for attribute in self.adjusted_for)
+        adjusting = (
+            " and ".join(attribute.noun for attribute in self.adjusted_for)
+            if self.adjusted_for
+            else "nothing"
+        )
         return (
             f"Does how many {self.count.noun} a molecule holds cause it to be "
             f"mutagenic, adjusting for {adjusting}?"
@@ -515,9 +433,10 @@ class CountCausesTerminalAtom(MutagenesisQuestion):
 def question_catalogue() -> List[MutagenesisQuestion]:
     """
     :return: The questions asked of the dataset: each count as a cause of mutagenicity
-        adjusting for the ind1 indicator, the indicator as a cause of mutagenicity
-        adjusting for the molecule's size, and two whose effect is an atom's own
-        attribute rather than the molecule's.
+        adjusting for the ind1 indicator, the branching atoms again adjusting for
+        nothing so the difference adjusting makes is visible, the indicator as a cause
+        of mutagenicity adjusting for the molecule's size, and two whose effect is an
+        atom's own attribute rather than the molecule's.
     """
     return [
         *(
@@ -528,6 +447,7 @@ def question_catalogue() -> List[MutagenesisQuestion]:
                 MoleculeCount.AROMATIC_BONDS,
             )
         ),
+        CountCausesMutagenicity(count=MoleculeCount.BRANCHING_ATOMS, adjusted_for=()),
         IndicatorCausesMutagenicity(),
         IndicatorCausesElement(element=MutagenesisElement.CARBON),
         CountCausesTerminalAtom(),
@@ -596,7 +516,7 @@ class MutagenesisDoQuery:
         ]
         return DoQueryAnswer(
             asked=self.question.asked,
-            training_molecule_count=len(training_molecules),
+            training_example_count=len(training_molecules),
             regions=tuple(sorted(regions, key=lambda region: region.description)),
         )
 
