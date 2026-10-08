@@ -161,14 +161,9 @@ class MutagenesisMoleculeAggregations(AggregationStatistic[MutagenesisMolecule])
         A larger molecule holds more of every kind of atom and bond and is more often
         mutagenic, so its size confounds every question about one of the other counts.
         """
-        element_variable = variable(MutagenesisAtom, self.instance.atoms).element
-        [result] = (
-            entity(count_range(element_variable))
-            .where(
-                or_(*(element_variable == element for element in MutagenesisElement))
-            )
-            .tolist()
-        )
+        [result] = entity(
+            count_range(variable(MutagenesisAtom, self.instance.atoms).element)
+        ).tolist()
         return result
 
     @aggregation_statistic("atoms")

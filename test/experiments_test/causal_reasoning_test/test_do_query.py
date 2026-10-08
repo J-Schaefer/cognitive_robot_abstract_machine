@@ -30,6 +30,7 @@ from experiments.causal_reasoning.mutagenesis.domain import (
     MutagenesisMoleculeAggregations,
 )
 
+
 @pytest.fixture(scope="module")
 def molecule_count() -> int:
     """
@@ -73,6 +74,22 @@ def test_every_attribute_is_named_after_its_own_field() -> None:
 def test_every_count_and_attribute_reads_as_words() -> None:
     assert all(count.noun for count in MoleculeCount)
     assert all(attribute.noun for attribute in MoleculeAttribute)
+
+
+# %% the size of a molecule
+
+
+def test_the_atom_count_is_how_many_atoms_the_molecule_holds(
+    molecules: List[MutagenesisMolecule],
+) -> None:
+    """
+    The statistic counts every atom, whatever its element, so it is the length of the
+    molecule's own atom list.
+    """
+    for molecule in molecules:
+        assert MutagenesisMoleculeAggregations(instance=molecule).atom_count() == len(
+            molecule.atoms
+        )
 
 
 # %% how a question describes itself
