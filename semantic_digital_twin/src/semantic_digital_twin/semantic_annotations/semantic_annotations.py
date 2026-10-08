@@ -406,7 +406,7 @@ class Door(HasHandle, HasMovableJoint):
             raise MissingSemanticAnnotationError(self.__class__, Handle)
 
         connection = self.handle.root.parent_connection
-        door_P_handle = connection.origin_expression.to_position()
+        door_P_handle = connection.origin_expression.position
         scale = self.root.collision.scale
 
         # The axis' sign only decides which way the door swings, not which edge it
@@ -979,7 +979,7 @@ class Bowl(HasSupportingSurface, Container, Tableware, IsPerceivable):
                     position=section.center,
                     orientation=RotationMatrix.from_vectors(
                         x=Vector3.NEGATIVE_Z(), y=section.outward
-                    ).to_quaternion(),
+                    ).quaternion,
                     reference_frame=self.root,
                 ),
             )
@@ -1411,7 +1411,7 @@ class Cutlery(Tableware):
                 Pose(
                     orientation=RotationMatrix.from_vectors(
                         x=Vector3.NEGATIVE_Z(), y=finger_axis
-                    ).to_quaternion(),
+                    ).quaternion,
                     reference_frame=self.root,
                 ),
             )
@@ -1798,7 +1798,7 @@ class Sponge(Tool):
         reference_frame = (
             pose.reference_frame if pose.reference_frame is not None else self.root
         )
-        rotation = pose.to_rotation_matrix().to_np()[:3, :3]
+        rotation = pose.rotation_matrix.to_np()[:3, :3]
         return Vector3.from_iterable(
             rotation @ np.array([0.0, 0.0, 1.0]),
             reference_frame=reference_frame,
