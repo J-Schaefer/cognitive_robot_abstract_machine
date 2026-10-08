@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Generic, Optional, List
+from typing import Generic
 
+from giskardpy.motion_statechart.binding_policy import GoalBindingPolicy
 from giskardpy.motion_statechart.data_types import DefaultWeights
 from giskardpy.motion_statechart.goals.templates import Parallel, Sequence
 from giskardpy.motion_statechart.graph_node import MotionStatechartNode, Task
-from giskardpy.motion_statechart.binding_policy import GoalBindingPolicy
+from giskardpy.motion_statechart.monitors.monitors import LocalMinimumReached
 from giskardpy.motion_statechart.tasks.align_planes import AlignPlanes
 from giskardpy.motion_statechart.tasks.cartesian_tasks import (
     CartesianPose,
@@ -19,7 +20,6 @@ from giskardpy.motion_statechart.tasks.joint_tasks import (
     JointPositionList,
     JointVelocityLimit,
 )
-from giskardpy.motion_statechart.monitors.monitors import LocalMinimumReached
 from krrood.patterns.subclass_safe_generic import SubClassSafeGeneric
 from semantic_digital_twin.datastructures.alignment import AlignmentPair
 from semantic_digital_twin.datastructures.robots.gripper_configuration import (
@@ -31,6 +31,11 @@ from semantic_digital_twin.robots.robot_parts import Arm, EndEffector
 from semantic_digital_twin.spatial_types import Point3, Vector3
 from semantic_digital_twin.spatial_types.spatial_types import Pose
 from semantic_digital_twin.world_description.world_entity import Body
+
+from coraplex.datastructures.enums import (
+    MovementType,
+    WaypointsMovementType,
+)
 from coraplex.exceptions import MissingToolFrame, MissingWaypoints
 from coraplex.robot_plans.mixins import (
     CartesianVelocityLimitParameters,
@@ -38,91 +43,6 @@ from coraplex.robot_plans.mixins import (
     HasTcpGoalThresholds,
 )
 from coraplex.robot_plans.motions.base import BaseMotion
-from coraplex.datastructures.enums import (
-    MovementType,
-    WaypointsMovementType,
-)
-from coraplex.datastructures.grasp import GraspDescription
-from coraplex.view_manager import ViewManager
-from coraplex.utils import translate_pose_along_local_axis
-
-
-@dataclass
-class ReachMotion(BaseMotion, HasTcpGoalThresholds):
-    """
-    Moves the tool center point through the grasp description's pre-grasp and grasp
-    poses for an object.
-    """
-
-    object_designator: Body
-    """
-    Object designator_description describing the object that should be picked up.
-    """
-
-    arm: Arms
-    """
-    The arm that should be used for pick up.
-    """
-
-    grasp_description: GraspDescription
-    """
-    The grasp description that should be used for picking up the object.
-    """
-
-    movement_type: MovementType = MovementType.CARTESIAN
-    """
-    The type of movement that should be performed.
-    """
-
-    reverse_pose_sequence: bool = False
-    """
-    Reverses the sequence of poses, i.e., moves away from the object instead of towards
-    it.
-
-    Used for placing objects.
-    """
-
-    def _calculate_pose_sequence(self) -> List[Pose]:
-        end_effector = ViewManager.get_end_effector_view(self.arm, self.robot_view)
-
-        target_pose = GraspDescription.get_grasp_pose(
-            self.grasp_description, end_effector, self.object_designator
-        )
-        target_pose.rotate_by_quaternion(
-            GraspDescription.calculate_grasp_orientation(
-                self.grasp_description,
-                end_effector.front_facing_orientation.to_np(),
-            )
-        )
-        target_pre_pose = translate_pose_along_local_axis(
-            target_pose,
-            end_effector.front_facing_axis.to_np()[:3],
-            -0.05,  # TODO: Maybe put these values in the semantic annotates
-        )
-
-        pose = self.world.transform(target_pre_pose, self.world.root)
-
-        sequence = [target_pre_pose, pose]
-        return sequence.reverse() if self.reverse_pose_sequence else sequence
-
-    def perform(self):
-        pass
-
-    @property
-    def _motion_chart(self):
-        tip = ViewManager().get_end_effector_view(self.arm, self.robot_view).tool_frame
-        nodes = [
-            CartesianPose(
-                root_link=self.robot_view.root,
-                tip_link=tip,
-                goal_pose=pose,
-                translation_threshold=self.resolved_position_threshold(),
-                orientation_threshold=self.resolved_orientation_threshold(),
-                name="Reach",
-            )
-            for pose in self._calculate_pose_sequence()
-        ]
-        return Sequence(nodes=nodes)
 
 
 @dataclass
@@ -141,12 +61,7 @@ class MoveGripperMotion(
     The gripper configuration to command.
     """
 
-    gripper: EndEffector
-    """
-    The gripper that should be moved.
-    """
-
-    allow_gripper_collision: Optional[bool] = None
+    allow_gripper_collision: bool | None = None
     """
     If the gripper is allowed to collide with something.
     """
@@ -161,8 +76,8 @@ class MoveGripperMotion(
             configuration commands, with the velocity limit and collision rules the
             configuration and parameters ask for.
         """
-        name = "OpenGripper" if self.motion == GripperState.OPEN else "CloseGripper"
-        goal_state = self.gripper.get_joint_state_by_type(self.motion)
+        goal_state = self.configuration.joint_state
+        name = goal_state.name.name
         joint_task = JointPositionList(goal_state=goal_state, name=name)
 
         done_node = joint_task
@@ -243,12 +158,12 @@ class MoveToolCenterPointMotion(
     Arm with the TCP that should be moved to the target.
     """
 
-    allow_gripper_collision: Optional[bool] = None
+    allow_gripper_collision: bool | None = None
     """
     If the gripper can collide with something.
     """
 
-    movement_type: Optional[MovementType] = MovementType.CARTESIAN
+    movement_type: MovementType | None = MovementType.CARTESIAN
     """
     The type of movement that should be performed.
     """
@@ -256,7 +171,7 @@ class MoveToolCenterPointMotion(
     def perform(self):
         return
 
-    def _velocity_limit_nodes(self, root: Body, tip: Body) -> List[Task]:
+    def _velocity_limit_nodes(self, root: Body, tip: Body) -> list[Task]:
         """
         :return: The :class:`CartesianPositionVelocityLimit`/
             :class:`CartesianRotationVelocityLimit` nodes requested via
@@ -312,14 +227,12 @@ class MoveToolCenterPointMotion(
                 translation_threshold=self.resolved_position_threshold(),
                 orientation_threshold=self.resolved_orientation_threshold(),
             )
-        accompanying_nodes: List[MotionStatechartNode] = list(
+        accompanying_nodes: list[MotionStatechartNode] = list(
             self._velocity_limit_nodes(root, tip)
         )
         if self.allow_gripper_collision:
             accompanying_nodes.extend(
-                self._only_allow_gripper_collision_rules(
-                    ViewManager().get_end_effector_view(self.arm, self.robot)
-                )
+                self._only_allow_gripper_collision_rules(self.arm.end_effector)
             )
         if not accompanying_nodes:
             return task
@@ -332,7 +245,7 @@ class MoveTCPWaypointsMotion(BaseMotion, HasTcpGoalThresholds):
     Moves the Tool center point (TCP) of the robot.
     """
 
-    waypoints: List[Pose]
+    waypoints: list[Pose]
     """
     Waypoints the TCP should move along.
     """
@@ -342,7 +255,7 @@ class MoveTCPWaypointsMotion(BaseMotion, HasTcpGoalThresholds):
     Arm with the TCP that should be moved to the target.
     """
 
-    allow_gripper_collision: Optional[bool] = None
+    allow_gripper_collision: bool | None = None
     """
     If the gripper can collide with something.
     """
@@ -388,7 +301,7 @@ class MoveTCPWaypointsAlignedMotion(BaseMotion, HasTcpGoalThresholds):
     given plane alignments.
     """
 
-    waypoints: List[Point3]
+    waypoints: list[Point3]
     """
     Waypoints the TCP should move along.
     """
@@ -398,17 +311,17 @@ class MoveTCPWaypointsAlignedMotion(BaseMotion, HasTcpGoalThresholds):
     Arm with the TCP that should be moved along the waypoints.
     """
 
-    alignment_pairs: List[AlignmentPair] = field(default_factory=list)
+    alignment_pairs: list[AlignmentPair] = field(default_factory=list)
     """
     Normal pairs kept aligned during the motion.
     """
 
-    allow_gripper_collision: Optional[bool] = None
+    allow_gripper_collision: bool | None = None
     """
     If the gripper can collide with something.
     """
 
-    tip: Optional[Body] = None
+    tip: Body | None = None
     """
     The body that should follow the waypoints.
 
@@ -480,9 +393,7 @@ class MoveTCPWaypointsAlignedMotion(BaseMotion, HasTcpGoalThresholds):
         if isinstance(self.robot, Justin):
             tasks.append(self._upright_torso_task(tip_link, root_link))
         motion_statechart_nodes = (
-            self._only_allow_gripper_collision_rules(
-                ViewManager().get_end_effector_view(self.arm, self.robot)
-            )
+            self._only_allow_gripper_collision_rules(self.arm.end_effector)
             if self.allow_gripper_collision
             else []
         )

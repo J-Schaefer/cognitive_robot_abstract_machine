@@ -21,7 +21,7 @@ def test_closed_configuration_carries_the_end_effectors_own_joint_state(daisy_wo
     """
     daisy = daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
 
-    for end_effector in daisy.get_end_effectors():
+    for end_effector in daisy.all_end_effectors:
         expected = end_effector.get_joint_state_by_type(GripperState.CLOSE)
         configuration = GripperStateConfiguration.closed(end_effector)
         assert configuration.joint_state is expected
@@ -144,8 +144,8 @@ def test_flexclose_target_closes_the_fingers(daisy_world):
     def tip_separation(joint_state):
         for connection, target in joint_state.items():
             connection.position = target
-        left_tip = end_effector.fingers[0].tip.global_pose.to_position().to_np()[:3]
-        right_tip = end_effector.fingers[1].tip.global_pose.to_position().to_np()[:3]
+        left_tip = end_effector.fingers[0].tip.global_pose.position.to_np()[:3]
+        right_tip = end_effector.fingers[1].tip.global_pose.position.to_np()[:3]
         return float(np.linalg.norm(left_tip - right_tip))
 
     open_separation = tip_separation(open_configuration.joint_state)

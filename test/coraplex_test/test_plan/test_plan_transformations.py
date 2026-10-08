@@ -3,12 +3,10 @@ from dataclasses import dataclass
 
 import numpy as np
 import pytest
-from typing_extensions import List
-
 from coraplex.datastructures.enums import InsertionPosition, ReachFraction
 from coraplex.exceptions import CannotMatchOnType, ReachHasNoFinalApproach
-from coraplex.orm.ormatic_interface import *  # type: ignore
 from coraplex.language import SequentialNode
+from coraplex.orm.ormatic_interface import *  # type: ignore
 from coraplex.plans.factories import execute_single, sequential
 from coraplex.plans.plan import logger as plan_logger
 from coraplex.plans.plan_node import ActionLike, ActionNode, MotionNode, PlanNode
@@ -17,26 +15,26 @@ from coraplex.plans.plan_transformation import (
     PlanTransformation,
 )
 from coraplex.plans.underspecified import UnderspecifiedNode
-from coraplex.robot_plans.actions.core.misc import DetectAction
 from coraplex.robot_plans.actions.composite.facing import FaceAndLookAtAction
+from coraplex.robot_plans.actions.composite.transporting import (
+    MoveAndOpenAction,
+    MoveAndPickUpAction,
+    TransportAction,
+)
+from coraplex.robot_plans.actions.core.misc import DetectAction
 from coraplex.robot_plans.actions.core.navigation import (
     FaceAtAction,
     LookAtAction,
     NavigateAction,
 )
 from coraplex.robot_plans.actions.core.pick_up import PickUpAction, ReachAction
+from coraplex.robot_plans.actions.core.placing import PlaceAction
 from coraplex.robot_plans.actions.core.robot_body import MoveTorsoAction, ParkArmsAction
 from coraplex.robot_plans.motions.gripper import (
     MoveGripperMotion,
     MoveToolCenterPointMotion,
 )
 from coraplex.robot_plans.motions.robot_body import MoveJointsMotion
-from coraplex.robot_plans.actions.composite.transporting import (
-    MoveAndOpenAction,
-    MoveAndPickUpAction,
-    TransportAction,
-)
-from coraplex.robot_plans.actions.core.placing import PlaceAction
 from coraplex.robot_plans.plan_transformations import (
     DetectBeforeGrasp,
     OpenDrawerBeforeMoveAndPickUp,
@@ -48,9 +46,9 @@ from krrood.entity_query_language.factories import a, variable
 from krrood.entity_query_language.query.match import Match
 from krrood.exceptions import UnboundGenericParameter
 from semantic_digital_twin.datastructures.definitions import GripperState, TorsoState
+from semantic_digital_twin.grasping.grasp_candidates import GraspCandidate
 from semantic_digital_twin.robots.robot_parts import Arm, EndEffector
 from semantic_digital_twin.semantic_annotations.mixins import HasRootBody
-from semantic_digital_twin.grasping.grasp_candidates import GraspCandidate
 from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Drawer,
     Handle,
@@ -59,9 +57,10 @@ from semantic_digital_twin.semantic_annotations.semantic_annotations import (
 )
 from semantic_digital_twin.spatial_types.spatial_types import Pose
 from semantic_digital_twin.world import World
+from typing_extensions import List
 
-from .test_graph_parsing import detect_actions_of, reach_action
 from ..test_transporting import pick_and_place_of_the_milk
+from .test_graph_parsing import detect_actions_of, reach_action
 
 # %% transformations under test
 
@@ -111,7 +110,7 @@ class MoveGrippersBeforeTorsoMotion(InsertionTransformation[MoveTorsoAction]):
     def nodes_to_insert(self, plan_node: ActionNode) -> List[ActionLike]:
         return [
             gripper_motion(left_gripper(plan_node), GripperState.OPEN),
-            gripper_motion(left_gripper(plan_node), GripperState.CLOSE),
+            gripper_motion(right_gripper(plan_node), GripperState.CLOSE),
         ]
 
 

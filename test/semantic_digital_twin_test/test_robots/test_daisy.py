@@ -14,7 +14,7 @@ def test_daisy_grippers_build_griplink_configurations(daisy_world):
     """
     daisy = daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
 
-    for end_effector in daisy.get_end_effectors():
+    for end_effector in daisy.all_end_effectors:
         open_configuration = end_effector.default_configuration(GripperState.OPEN)
         close_configuration = end_effector.default_configuration(GripperState.CLOSE)
         flex_close_configuration = end_effector.default_configuration(

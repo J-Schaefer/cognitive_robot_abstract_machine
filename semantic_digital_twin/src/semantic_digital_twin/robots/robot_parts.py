@@ -8,51 +8,49 @@ from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import (
-    Optional,
-    Self,
     TYPE_CHECKING,
-    Set,
-    List,
-    DefaultDict,
-    Type,
-    Union,
     Any,
+    Generic,
+    Self,
+    Union,
+    Unpack,
     cast,
+    get_args,
+    get_origin,
 )
 from uuid import UUID
 
 import numpy as np
-
-from typing_extensions import get_origin, get_args, Generic, TypeVar, Unpack
-
 from krrood.adapters.json_serializer import list_like_classes
 from krrood.class_diagrams.attribute_introspector import (
     DataclassOnlyIntrospector,
 )
-from krrood.entity_query_language.factories import variable, contains, a, entity
+from krrood.entity_query_language.factories import a, contains, entity, variable
 from krrood.ormatic.utils import classproperty
 from krrood.utils import get_generic_type_parameters
+from typing_extensions import TypeVar
+
 from semantic_digital_twin.datastructures.definitions import (
-    JointStateType,
     GripperState,
+    JointStateType,
 )
 from semantic_digital_twin.datastructures.field_of_view import FieldOfView
+from semantic_digital_twin.datastructures.joint_state import JointState
+from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.datastructures.robots.gripper_configuration import (
     GripperConfiguration,
     GripperStateConfiguration,
 )
-from semantic_digital_twin.datastructures.joint_state import JointState
-from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.exceptions import (
+    CopiedWorldDiffersFromOriginalError,
+    DuplicateRobotAssignmentsError,
     GripperAxesNotPerpendicular,
+    MissingDefaultCameraError,
     MoreThanOneBodyHeld,
     NoJointStateWithType,
     NothingHeld,
-    UselessConceptError,
-    DuplicateRobotAssignmentsError,
-    MissingDefaultCameraError,
-    CopiedWorldDiffersFromOriginalError,
     RobotPartBelongsToAnotherRobotError,
+    UselessConceptError,
 )
 from semantic_digital_twin.input_synchronization import InputSynchronizer
 from semantic_digital_twin.robots.exceptions import MissingDriveConnectionError
@@ -66,13 +64,13 @@ from semantic_digital_twin.robots.input_source import (
 from semantic_digital_twin.robots.robot_part_mixins import (
     HasEndEffector,
     HasInputSource,
+    HasLeftRightArm,
     HasMobileBase,
     HasSensors,
+    RobotPartMixin,
     TGenericEndEffector,
-    HasLeftRightArm,
     TGenericInputSource,
     TGenericSensors,
-    RobotPartMixin,
 )
 from semantic_digital_twin.semantic_annotations.mixins import (
     HasRootBody,
@@ -82,32 +80,32 @@ from semantic_digital_twin.semantic_annotations.semantic_annotations import (
     Table,
 )
 from semantic_digital_twin.spatial_types import (
-    Vector3,
-    RotationMatrix,
     HomogeneousTransformationMatrix,
+    RotationMatrix,
+    Vector3,
 )
-from semantic_digital_twin.spatial_types.spatial_types import Pose, Quaternion
 from semantic_digital_twin.spatial_types.derivatives import DerivativeMap
+from semantic_digital_twin.spatial_types.spatial_types import Pose
+from semantic_digital_twin.world_description.connection_properties import JointServo
 from semantic_digital_twin.world_description.connections import (
     ActiveConnection,
-    FixedConnection,
-    WheeledDrive,
     ActiveConnection1DOF,
+    FixedConnection,
     PrismaticConnection,
+    WheeledDrive,
 )
 from semantic_digital_twin.world_description.degree_of_freedom import (
     DegreeOfFreedom,
 )
 from semantic_digital_twin.world_description.geometry import (
-    VolumetricBoundingBox,
     Scale,
+    VolumetricBoundingBox,
 )
-from semantic_digital_twin.world_description.connection_properties import JointServo
 from semantic_digital_twin.world_description.world_entity import (
     Body,
+    Connection,
     GravityCompensation,
     KinematicStructureEntity,
-    Connection,
     PositionServo,
 )
 from semantic_digital_twin.world_description.world_modification import (
@@ -117,11 +115,11 @@ from semantic_digital_twin.world_description.world_modification import (
 if TYPE_CHECKING:
     from rclpy.node import Node
 
-    from semantic_digital_twin.world import World
     from semantic_digital_twin.api import (
         BodySpecification,
         ConnectionSpecification,
     )
+    from semantic_digital_twin.world import World
 else:
     World = Any
 
@@ -147,7 +145,7 @@ class HasRobotParts(ABC):
         """
         return self._aggregate_robot_parts(set())
 
-    def _aggregate_robot_parts(self, seen: Set[UUID]) -> list[AbstractRobotPart]:
+    def _aggregate_robot_parts(self, seen: set[UUID]) -> list[AbstractRobotPart]:
         """
         Recursively aggregates all robot parts assigned to this robot part, including
         itself if it is a robot part.
@@ -285,7 +283,7 @@ class AbstractRobotPart(HasRootBody, HasRobotParts, ABC):
         """
 
     @abstractmethod
-    def setup_joint_states(self) -> List[JointState]:
+    def setup_joint_states(self) -> list[JointState]:
         """
         Sets up default joint states for this robot part.
 
@@ -336,9 +334,9 @@ class AbstractRobotPart(HasRootBody, HasRobotParts, ABC):
         cls,
         name: str,
         world: World,
-        world_root_T_self: Optional[HomogeneousTransformationMatrix] = None,
-        parent_connection_specification: Optional[ConnectionSpecification] = None,
-        scale: Optional[Scale] = None,
+        world_root_T_self: HomogeneousTransformationMatrix | None = None,
+        parent_connection_specification: ConnectionSpecification | None = None,
+        scale: Scale | None = None,
     ) -> Self:
         """
         Robot-part bodies originate from the parsed URDF, so they cannot be spawned from
@@ -354,9 +352,9 @@ class AbstractRobotPart(HasRootBody, HasRobotParts, ABC):
     @classmethod
     def get_default_root_kinematic_structure_entity_specification(
         cls,
-        name: Optional[str] = None,
-        scale: Optional[Scale] = None,
-        connection_specification: Optional[ConnectionSpecification] = None,
+        name: str | None = None,
+        scale: Scale | None = None,
+        connection_specification: ConnectionSpecification | None = None,
     ) -> BodySpecification:
         """
         Robot-part geometry comes from the parsed URDF, not from a scale, so a default
@@ -370,7 +368,7 @@ class AbstractRobotPart(HasRootBody, HasRobotParts, ABC):
         )
 
     @property
-    def _robot(self) -> Optional[AbstractRobot]:
+    def _robot(self) -> AbstractRobot | None:
         """
         Computes backreference to the robot this robot part belongs to.
         """
@@ -501,7 +499,7 @@ class KinematicChain(AbstractRobotPart, HasInputSource[JointPositionSource], ABC
         )
 
     def _kinematic_structure_entities(
-        self, visited: Set[int]
+        self, visited: set[int]
     ) -> list[KinematicStructureEntity]:
         """
         Computes the kinematic structure entities of this kinematic chain, which are the
@@ -631,7 +629,7 @@ class Finger(KinematicChain, ABC):
     A finger is a kinematic chain attached to a gripper to manipulate objects.
     """
 
-    finger_tip_frame: Optional[Body] = None
+    finger_tip_frame: Body | None = None
     """
     The frame of the finger tip.
 
@@ -652,17 +650,6 @@ class EndEffector(AbstractRobotPart, ABC):
     The tool frame or tool center point of the end_effector.
 
     Usually the point the robot tries to align with the object.
-    """
-
-    front_facing_orientation: Quaternion = field(kw_only=True)
-    """
-    The orientation of the end_effector's tool frame, which is usually the front-facing
-    orientation.
-    """
-
-    front_facing_axis: Vector3 = field(init=False)
-    """
-The axis of the end_effector's tool frame that is facing forward.
     """
 
     def default_configuration(
@@ -743,7 +730,7 @@ The axis of the end_effector's tool frame that is facing forward.
         )
 
     @property
-    def held_body(self) -> Optional[Body]:
+    def held_body(self) -> Body | None:
         """
         The body hanging off the tool frame.
 
@@ -834,7 +821,7 @@ class MountingTable(Table, AbstractRobotPart, ABC):
     def setup_hardware_interfaces(self):
         pass
 
-    def setup_joint_states(self) -> List[JointState]:
+    def setup_joint_states(self) -> list[JointState]:
         return []
 
     @classmethod
@@ -922,7 +909,7 @@ class MobileBase(
         ).pose
 
     @classmethod
-    def get_drive_connection_type(cls) -> Type[TGenericDrive]:
+    def get_drive_connection_type(cls) -> type[TGenericDrive]:
         """
         The connection type attaching this mobile base to its ``odom`` frame.
 
@@ -1045,7 +1032,7 @@ class AbstractRobot(Agent, HasRobotParts, ABC):
         """
 
     @classmethod
-    def get_drive_connection_type(cls) -> Type[Connection]:
+    def get_drive_connection_type(cls) -> type[Connection]:
         """
         The connection type attaching this robot to its ``odom`` frame.
 
@@ -1110,7 +1097,7 @@ class AbstractRobot(Agent, HasRobotParts, ABC):
         ]
 
     @property
-    def degrees_of_freedom_with_hardware_interface(self) -> List[DegreeOfFreedom]:
+    def degrees_of_freedom_with_hardware_interface(self) -> list[DegreeOfFreedom]:
         """
         The number of degrees of freedom of the robot, which is the sum of the degrees
         of freedom of all its end_effectors.
@@ -1177,7 +1164,7 @@ class AbstractRobot(Agent, HasRobotParts, ABC):
         self.tighten_dof_velocity_limits_proportionally(maximum_velocity=1)
 
     @property
-    def drive(self) -> Optional[WheeledDrive]:
+    def drive(self) -> WheeledDrive | None:
         """
         The connection which the robot uses for driving.
         """
@@ -1224,7 +1211,7 @@ class AbstractRobot(Agent, HasRobotParts, ABC):
 
     def tighten_dof_velocity_limits_of_1dof_connections(
         self,
-        new_limits: DefaultDict[ActiveConnection1DOF, float],
+        new_limits: defaultdict[ActiveConnection1DOF, float],
     ):
         """
         Convenience method for tightening the velocity limits of all one degree-of-
@@ -1360,7 +1347,7 @@ class AbstractRobot(Agent, HasRobotParts, ABC):
         [torso] = [p for p in self._robot_parts if isinstance(p, Torso)]
         return torso
 
-    def get_torso_if_specified(self) -> Optional[Torso]:
+    def get_torso_if_specified(self) -> Torso | None:
         """
         :return: The robot's torso, or None for a robot built without one.
         """
@@ -1369,7 +1356,7 @@ class AbstractRobot(Agent, HasRobotParts, ABC):
                 return part
         return None
 
-    def get_left_arm_if_specified(self) -> Optional[Arm]:
+    def get_left_arm_if_specified(self) -> Arm | None:
         if isinstance(self, HasLeftRightArm):
             return self.left_arm
         for part in self._robot_parts:
@@ -1377,7 +1364,7 @@ class AbstractRobot(Agent, HasRobotParts, ABC):
                 return part.left_arm
         return None
 
-    def get_right_arm_if_specified(self) -> Optional[Arm]:
+    def get_right_arm_if_specified(self) -> Arm | None:
         if isinstance(self, HasLeftRightArm):
             return self.right_arm
         for part in self._robot_parts:
