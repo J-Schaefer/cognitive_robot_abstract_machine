@@ -23,12 +23,22 @@ from experiments.causal_reasoning.mutagenesis.do_query import (
     MoleculeAttribute,
     MoleculeCount,
     MutagenesisDoQuery,
+    MutagenesisQuestion,
     question_catalogue,
 )
 from experiments.causal_reasoning.mutagenesis.domain import (
     MutagenesisMolecule,
     MutagenesisMoleculeAggregations,
 )
+
+
+@pytest.fixture(scope="module")
+def probability_tolerance() -> float:
+    """
+    How far outside ``[0, 1]`` a probability read off a circuit may land through
+    floating-point arithmetic alone.
+    """
+    return 1e-9
 
 
 @pytest.fixture(scope="module")
@@ -100,7 +110,9 @@ def test_a_question_is_named_after_its_cause_and_what_it_adjusts_for() -> None:
 
     assert question.name.startswith(MoleculeCount.CHLORINE_ATOMS.value)
     assert question.name.endswith(MoleculeAttribute.INDICATOR_1.value)
-    assert question.adjustment_names == (MoleculeAttribute.INDICATOR_1.value,)
+    assert question.adjustment_variable_names == (
+        MoleculeAttribute.INDICATOR_1.circuit_variable_name,
+    )
 
 
 def test_a_question_stratifies_the_fit_by_its_own_cause() -> None:
@@ -117,7 +129,9 @@ def test_the_indicator_question_adjusts_for_the_size_of_the_molecule() -> None:
     assert question.cause_variable_name == (
         MoleculeAttribute.INDICATOR_1.circuit_variable_name
     )
-    assert question.adjustment_names == (MoleculeCount.ATOMS.value,)
+    assert question.adjustment_variable_names == (
+        MoleculeCount.ATOMS.circuit_variable_name,
+    )
 
 
 def test_the_catalogue_asks_each_question_once() -> None:
@@ -172,11 +186,19 @@ def test_the_regions_hold_the_whole_population_between_them(
 
 
 def test_every_answer_on_a_region_is_a_probability(
-    branching_atoms_answer: DoQueryAnswer,
+    branching_atoms_answer: DoQueryAnswer, probability_tolerance: float
 ) -> None:
     for region in branching_atoms_answer.regions:
-        assert 0.0 <= region.conditioned_probability <= 1.0
-        assert 0.0 <= region.adjusted_probability <= 1.0
+        assert (
+            -probability_tolerance
+            <= region.conditioned_probability
+            <= (1.0 + probability_tolerance)
+        )
+        assert (
+            -probability_tolerance
+            <= region.adjusted_probability
+            <= (1.0 + probability_tolerance)
+        )
 
 
 def test_the_shift_from_adjusting_is_the_distance_between_the_two_answers(
@@ -209,3 +231,36 @@ def test_adjusting_for_nothing_leaves_the_conditioned_answer_alone(
     ).run(molecules)
 
     assert answer.largest_shift_from_adjusting == pytest.approx(0.0)
+
+
+# %% every question in the catalogue can actually be asked
+
+
+@pytest.mark.parametrize(
+    "question", question_catalogue(), ids=lambda question: question.name
+)
+def test_every_question_of_the_catalogue_is_answered(
+    question: MutagenesisQuestion,
+    molecules: List[MutagenesisMolecule],
+    probability_tolerance: float,
+) -> None:
+    """
+    Each question has to ground, adjust and come back with regions that hold the whole
+    population: a cause or a confounder the fitted circuit names differently would fail
+    here rather than in a run.
+    """
+    answer = MutagenesisDoQuery(question=question).run(molecules)
+
+    assert answer.regions
+    assert sum(region.probability for region in answer.regions) == pytest.approx(1.0)
+    for region in answer.regions:
+        assert (
+            -probability_tolerance
+            <= region.conditioned_probability
+            <= (1.0 + probability_tolerance)
+        )
+        assert (
+            -probability_tolerance
+            <= region.adjusted_probability
+            <= (1.0 + probability_tolerance)
+        )

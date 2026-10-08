@@ -168,9 +168,9 @@ class MutagenesisQuestion(ABC):
 
     @property
     @abstractmethod
-    def adjustment_names(self) -> Tuple[str, ...]:
+    def adjustment_variable_names(self) -> Tuple[str, ...]:
         """
-        The attributes or statistics to adjust for.
+        The names a fitted circuit gives the variables to adjust for.
         """
 
     @property
@@ -257,8 +257,8 @@ class CountCausesMutagenicity(MutagenesisQuestion):
         return self.count.circuit_variable_name
 
     @property
-    def adjustment_names(self) -> Tuple[str, ...]:
-        return tuple(attribute.value for attribute in self.adjusted_for)
+    def adjustment_variable_names(self) -> Tuple[str, ...]:
+        return tuple(attribute.circuit_variable_name for attribute in self.adjusted_for)
 
     @property
     def effect_value(self) -> bool:
@@ -303,8 +303,8 @@ class IndicatorCausesMutagenicity(MutagenesisQuestion):
         return MoleculeAttribute.INDICATOR_1.circuit_variable_name
 
     @property
-    def adjustment_names(self) -> Tuple[str, ...]:
-        return tuple(count.value for count in self.adjusted_for)
+    def adjustment_variable_names(self) -> Tuple[str, ...]:
+        return tuple(count.circuit_variable_name for count in self.adjusted_for)
 
     @property
     def effect_value(self) -> bool:
@@ -362,7 +362,7 @@ class IndicatorCausesElement(MutagenesisQuestion):
         return MoleculeAttribute.INDICATOR_1.circuit_variable_name
 
     @property
-    def adjustment_names(self) -> Tuple[str, ...]:
+    def adjustment_variable_names(self) -> Tuple[str, ...]:
         return ()
 
     @property
@@ -415,7 +415,7 @@ class CountCausesTerminalAtom(MutagenesisQuestion):
         return self.count.circuit_variable_name
 
     @property
-    def adjustment_names(self) -> Tuple[str, ...]:
+    def adjustment_variable_names(self) -> Tuple[str, ...]:
         return ()
 
     @property
@@ -559,7 +559,7 @@ class MutagenesisDoQuery:
             RelationalCausalCircuit.resolve_variable(
                 causal_circuit.probabilistic_circuit, name
             )
-            for name in self.question.adjustment_names
+            for name in self.question.adjustment_variable_names
         ]
 
     def _effect_probability(
