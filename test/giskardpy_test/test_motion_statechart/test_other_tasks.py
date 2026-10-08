@@ -30,7 +30,6 @@ from giskardpy.motion_statechart.tasks.feature_functions import (
     HeightGoal,
 )
 from giskardpy.motion_statechart.tasks.pointing import Pointing, PointingCone
-from giskardpy.utils.math import angle_between_vector
 from semantic_digital_twin.specifications.connections import (
     RevoluteConnectionSpecification,
     ScrewConnectionSpecification,

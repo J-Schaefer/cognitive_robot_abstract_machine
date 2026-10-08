@@ -976,6 +976,17 @@ def test_reconnect_keeps_the_child_where_it_is_when_the_joint_starts_away_from_z
     )
 
 
+def test_reconnect_keeps_the_name_of_the_specification(empty_world):
+    door = BodySpecification.box("door", Scale(0.03, 1, 2)).spawn(empty_world)
+    specification = RevoluteConnectionSpecification(
+        name="front_door_hinge", axis=Vector3.Z(), connection_T_child=_hinge_T_door()
+    )
+
+    connection = specification.reconnect(empty_world, door)
+
+    assert empty_world.get_connection_by_name(specification.name) is connection
+
+
 def test_reconnect_releases_the_degrees_of_freedom_of_the_replaced_connection(
     empty_world,
 ):

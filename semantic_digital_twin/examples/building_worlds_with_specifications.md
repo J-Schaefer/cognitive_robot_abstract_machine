@@ -595,7 +595,7 @@ world.notify_state_change()
 # The door's centre swung a quarter turn around the hinge, not around itself.
 expected = hinge_T_door.inverse() @ HomogeneousTransformationMatrix.from_xyz_rpy(yaw=np.pi / 2) @ hinge_T_door
 assert np.allclose(door.root.global_transform.to_np(), expected.to_np())
-print("Door centre after opening:", door.root.global_transform.to_position().to_np()[:3])
+print("Door centre after opening:", door.root.global_transform.position.to_np()[:3])
 ```
 
 The specification validates part keys *at construction time*, so misuse — a list on a singular
