@@ -9,6 +9,7 @@ import coraplex.orm.ormatic_interface
 from krrood.ormatic.ormatic import ORMatic
 from krrood.ormatic.utils import classes_of_module
 import experiments.control_loop_experiments.control_loop_profiler
+import experiments.causal_reasoning.mutagenesis.do_query
 
 # benchmarking measures a running system instead of describing it
 ignored_classes = set(classes_of_module(experiments.control_loop_experiments.scenarios))
@@ -17,6 +18,12 @@ ignored_classes |= set(
 )
 ignored_classes |= set(
     classes_of_module(experiments.control_loop_experiments.control_loop_profiler)
+)
+
+# the questions put to a circuit and the answers read back describe a measurement of the
+# molecules rather than the molecules themselves
+ignored_classes |= set(
+    classes_of_module(experiments.causal_reasoning.mutagenesis.do_query)
 )
 
 # Create an ORMatic object with the classes to be mapped
