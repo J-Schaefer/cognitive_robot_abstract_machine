@@ -19,14 +19,14 @@ from ..dataset.example_classes import (
     SceneObject,
     SceneObjectType,
     SceneRoom,
-    TestExParts,
+    SceneWithExchangeableParts,
 )
 
 
 # %% scenario
 def _nested_scenario(room_counts: list[int]) -> list:
     """
-    Build ``TestExParts`` instances whose rooms each hold objects.
+    Build ``SceneWithExchangeableParts`` instances whose rooms each hold objects.
 
     The first instance decides the shape of the whole fit: ``_fit_exchangeable_part``
     reads the child type off ``instances[0]`` and ``_process_many_to_many`` skips empty
@@ -36,7 +36,7 @@ def _nested_scenario(room_counts: list[int]) -> list:
     :return: The requested instances.
     """
     return [
-        TestExParts(
+        SceneWithExchangeableParts(
             objects=[SceneObject(type=SceneObjectType.TABLE)],
             rooms=[
                 SceneRoom(
@@ -57,14 +57,14 @@ def _nested_scenario(room_counts: list[int]) -> list:
 # %% fixtures
 @pytest.fixture
 def nested_relational_probabilistic_circuit():
-    model = RelationalProbabilisticCircuit(TestExParts)
+    model = RelationalProbabilisticCircuit(SceneWithExchangeableParts)
     model.fit(_nested_scenario([2, 3]))
     return model
 
 
 @pytest.fixture
 def nested_query():
-    query = a(TestExParts)(
+    query = a(SceneWithExchangeableParts)(
         objects=[a(SceneObject)(type=...)],
         rooms=[
             a(SceneRoom)(
@@ -129,7 +129,8 @@ def test_grounded_nested_circuit_models_a_variable_per_inner_part(
     for room_index in range(2):
         for object_index in range(2):
             assert (
-                f"TestExParts.rooms[{room_index}].objects[{object_index}].type" in names
+                f"SceneWithExchangeableParts.rooms[{room_index}].objects[{object_index}].type"
+                in names
             )
 
 

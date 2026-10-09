@@ -1708,14 +1708,13 @@ class ProbabilisticCircuit(ProbabilisticModel, SubclassJSONSerializer):
         :param prefix: String prefix to prepend to every variable name.
         :param excluded_variables: Variables that should keep their current names.
         """
-        namespace = f"{prefix}."
         variable_renames = {
             variable: type(variable)(
-                f"{namespace}{variable.name}", domain=variable.domain
+                f"{prefix}.{variable.name}", domain=variable.domain
             )
             for variable in self.variables
             if variable not in excluded_variables
-            and not variable.name.startswith(namespace)
+            and not variable.name.startswith(f"{prefix}.")
         }
         self.update_variables(variable_renames)
 

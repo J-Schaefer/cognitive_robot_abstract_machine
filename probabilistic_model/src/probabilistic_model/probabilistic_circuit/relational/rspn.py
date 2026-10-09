@@ -750,11 +750,7 @@ class RelationalProbabilisticCircuit:
             for child in getattr(instance, exchangeable_part):
                 child_features = child_feature_extractor.apply_mapping(child)
                 rows.append(aggregation_row + child_features)
-        child_aggregation_features = {
-            aggregation
-            for aggregations in child_feature_extractor.exchangeable_features.values()
-            for aggregation in aggregations
-        }
+        child_aggregation_features = child_feature_extractor.aggregation_features
         child_column_names = [
             (
                 feature._name_

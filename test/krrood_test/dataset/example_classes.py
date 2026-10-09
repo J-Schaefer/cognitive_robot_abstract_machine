@@ -902,7 +902,7 @@ class SceneRoom:
 
 
 @dataclass
-class TestExParts:
+class SceneWithExchangeableParts:
     objects: List[SceneObject]
     rooms: List[SceneRoom]
 
@@ -959,9 +959,11 @@ class SceneRoomAggregations(SceneObjectAggregationBase[SceneRoom]):
 
 
 @dataclass
-class TestExPartsAggregations(SceneObjectAggregationBase[TestExParts]):
+class SceneWithExchangeablePartsAggregations(
+    SceneObjectAggregationBase[SceneWithExchangeableParts]
+):
     """
-    Aggregation statistics for :class:`TestExParts` over its ``objects`` and
+    Aggregation statistics for :class:`SceneWithExchangeableParts` over its ``objects`` and
     ``rooms`` fields.
     """
 
