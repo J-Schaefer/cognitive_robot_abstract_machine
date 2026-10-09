@@ -852,32 +852,6 @@ def test_direct_attachment_reports_one_pair_of_boundaries(
     assert attachment.body.parent_connection.parent is robot.root
 
 
-def test_attachment_with_explicit_transform_places_body_at_given_transform(
-    pr2_apartment_context,
-) -> None:
-    """
-    An explicit ``parent_T_connection_expression`` must be used directly as the
-    attachment transform instead of preserving the body's current global pose.
-    """
-    world, robot, context = pr2_apartment_context
-    body = world.get_body_by_name("milk.stl")
-    explicit_transform = HomogeneousTransformationMatrix.from_xyz_rpy(
-        x=0.4, y=0.1, z=0.2, yaw=0.3, reference_frame=robot.root
-    )
-    attachment = ReAttachNode(
-        body=body,
-        new_parent=robot.root,
-        parent_T_connection_expression=explicit_transform,
-    )
-    sequential([attachment], context=context)
-    attachment.perform()
-
-    assert body.parent_connection.parent is robot.root
-    assert np.allclose(
-        body.global_transform, robot.root.global_transform @ explicit_transform
-    )
-
-
 def test_parsed_attachment_reports_its_own_failure(
     monkeypatch, pr2_apartment_context
 ) -> None:

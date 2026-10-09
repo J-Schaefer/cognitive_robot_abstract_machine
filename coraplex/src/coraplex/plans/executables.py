@@ -478,9 +478,6 @@ class MoveBranchExecutable(Executable):
     """
     Executable that moves a body under a new parent, keeping the body's own connection
     so an actively driven body stays drivable afterwards.
-
-    By default, the body's current global pose is preserved. Pass
-    ``parent_T_connection_expression`` to override the attachment transform.
     """
 
     body: Body = field(kw_only=True)
@@ -491,17 +488,6 @@ class MoveBranchExecutable(Executable):
     new_parent: Body = field(kw_only=True)
     """
     The new parent to which the branch is moved.
-    """
-
-    parent_T_connection_expression: Optional[HomogeneousTransformationMatrix] = field(
-        default=None, kw_only=True
-    )
-    """
-    Explicit transform from ``new_parent`` to the body.
-
-    When ``None`` (default), the transform is computed to preserve the body's current
-    global pose. When provided, it is used directly as the transform from ``new_parent``
-    to the branch root.
     """
 
     giskard_idle_settle_delta: timedelta = field(
@@ -527,7 +513,6 @@ class MoveBranchExecutable(Executable):
             self.context.world.move_branch(
                 self.body,
                 self.new_parent,
-                parent_T_connection_expression=self.parent_T_connection_expression,
             )
         if GiskardExecutable.execution_type == ExecutionType.REAL:
             time.sleep(self.giskard_idle_settle_delta.total_seconds())
