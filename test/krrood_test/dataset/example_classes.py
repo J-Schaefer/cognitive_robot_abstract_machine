@@ -974,6 +974,61 @@ class TestExPartsAggregations(SceneObjectAggregationBase[TestExParts]):
         return cou
 
 
+@dataclass
+class SceneFloor:
+    """
+    A level of a building, holding rooms; a mimic of an entity that is itself an
+    exchangeable part and holds exchangeable parts.
+    """
+
+    rooms: List[SceneRoom]
+    """
+    The rooms on this floor.
+    """
+
+
+@dataclass
+class SceneBuilding:
+    """
+    A building, holding floors; the root of a three-level chain of exchangeable parts.
+    """
+
+    floors: List[SceneFloor]
+    """
+    The floors of this building.
+    """
+
+
+@dataclass
+class SceneFloorAggregations(AggregationStatistic[SceneFloor]):
+    """
+    Aggregation statistics for :class:`SceneFloor` over its ``rooms`` field.
+    """
+
+    @aggregation_statistic("rooms")
+    def room_count(self) -> int:
+        """
+        Total number of rooms on the floor.
+        """
+        [cou] = count(variable(SceneRoom, self.instance.rooms)).tolist()
+        return cou
+
+
+@dataclass
+class SceneBuildingAggregations(AggregationStatistic[SceneBuilding]):
+    """
+    Aggregation statistics for :class:`SceneBuilding` over its ``floors`` field.
+    """
+
+    @aggregation_statistic("floors")
+    def floor_count(self) -> int:
+        """
+        Total number of floors in the building.
+        """
+        [cou] = count(variable(SceneFloor, self.instance.floors)).tolist()
+        return cou
+
+
 # %% Relational causal experiment (skill-confounded grasp attempts)
 
 

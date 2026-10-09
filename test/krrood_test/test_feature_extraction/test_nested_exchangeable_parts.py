@@ -14,6 +14,8 @@ from ..dataset import ormatic_interface  # type: ignore
 from ..dataset.example_classes import (
     KRROODOrientation,
     KRROODPosition,
+    SceneBuilding,
+    SceneFloor,
     SceneObject,
     SceneObjectType,
     SceneRoom,
@@ -150,3 +152,126 @@ def test_a_nested_query_samples_back_into_an_instance(
     assert len(sampled.rooms) == 2
     for room in sampled.rooms:
         assert len(room.objects) == 2
+
+
+# %% three levels deep
+def _room_query(object_count: int):
+    return a(SceneRoom)(
+        position=a(KRROODPosition)(x=..., y=..., z=...),
+        orientation=a(KRROODOrientation)(x=..., y=..., z=..., w=...),
+        objects=[a(SceneObject)(type=...) for _ in range(object_count)],
+    )
+
+
+@pytest.fixture
+def three_level_relational_probabilistic_circuit():
+    buildings = [
+        SceneBuilding(
+            floors=[
+                SceneFloor(
+                    rooms=[
+                        SceneRoom(
+                            position=KRROODPosition(x=float(room), y=1.0, z=0.0),
+                            orientation=KRROODOrientation(x=0.0, y=0.0, z=0.0, w=1.0),
+                            objects=[
+                                SceneObject(type=SceneObjectType.CHAIR)
+                                for _ in range(2 + floor)
+                            ],
+                        )
+                        for room in range(2)
+                    ]
+                )
+                for floor in range(2)
+            ]
+        )
+        for _ in range(4)
+    ]
+    return RelationalProbabilisticCircuit(SceneBuilding).fit(buildings)
+
+
+@pytest.fixture
+def three_level_query():
+    query = a(SceneBuilding)(
+        floors=[
+            a(SceneFloor)(rooms=[_room_query(2) for _ in range(2)]) for _ in range(2)
+        ]
+    )
+    query.resolve()
+    return query
+
+
+def test_exchangeable_parts_nest_three_levels_deep(
+    three_level_relational_probabilistic_circuit,
+):
+    """
+    The recursion must not stop at the second level: the objects of a room of a floor
+    get a template inside the rooms template inside the floors template.
+    """
+    floors_template = three_level_relational_probabilistic_circuit.exchangeable_distribution_templates[
+        "floors"
+    ]
+    rooms_template = (
+        floors_template.template_distribution.exchangeable_distribution_templates[
+            "rooms"
+        ]
+    )
+    objects_template = (
+        rooms_template.template_distribution.exchangeable_distribution_templates[
+            "objects"
+        ]
+    )
+    assert (
+        objects_template.template_distribution.class_probabilistic_circuit is not None
+    )
+
+
+def test_three_level_query_grounds_to_a_variable_per_innermost_part(
+    three_level_relational_probabilistic_circuit, three_level_query
+):
+    """
+    Variables of the innermost parts are namespaced exactly once per level, so every
+    object of every room of every floor keeps its own variable.
+    """
+    np.random.seed(0)
+    grounded = three_level_relational_probabilistic_circuit.ground(three_level_query)
+    names = {variable.name for variable in grounded.variables}
+    assert grounded.is_valid()
+    for floor in range(2):
+        for room in range(2):
+            for obj in range(2):
+                assert (
+                    f"SceneBuilding.floors[{floor}].rooms[{room}].objects[{obj}].type"
+                    in names
+                )
+
+
+def test_three_level_query_with_uneven_part_counts_grounds(
+    three_level_relational_probabilistic_circuit,
+):
+    query = a(SceneBuilding)(
+        floors=[
+            a(SceneFloor)(rooms=[_room_query(1)]),
+            a(SceneFloor)(rooms=[_room_query(3), _room_query(2), _room_query(1)]),
+        ]
+    )
+    query.resolve()
+    np.random.seed(0)
+    assert three_level_relational_probabilistic_circuit.ground(query).is_valid()
+
+
+def test_three_level_query_samples_back_into_an_instance(
+    three_level_relational_probabilistic_circuit, three_level_query
+):
+    np.random.seed(0)
+    backend = ProbabilisticBackend(
+        model_registry=RelationalCircuitRegistry(
+            relational_probabilistic_circuit=three_level_relational_probabilistic_circuit
+        ),
+        number_of_samples=1,
+    )
+    sampled = next(iter(backend.evaluate(three_level_query)))
+    assert len(sampled.floors) == 2
+    for floor in sampled.floors:
+        assert len(floor.rooms) == 2
+        for room in floor.rooms:
+            assert len(room.objects) == 2
