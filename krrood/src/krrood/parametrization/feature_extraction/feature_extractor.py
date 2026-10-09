@@ -83,6 +83,8 @@ class FeatureExtractor:
     def aggregation_features(self) -> set[MappedVariable]:
         """
         The aggregation variables of all exchangeable parts.
+
+        :return: The aggregation variables of all exchangeable parts, flattened into one set.
         """
         return set(itertools.chain.from_iterable(self.exchangeable_features.values()))
 
