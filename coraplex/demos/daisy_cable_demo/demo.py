@@ -8,11 +8,13 @@ from math import pi
 from time import sleep
 
 # Monorepo imports
-from coraplex.datastructures.enums import (
-    Arms,
-    ExecutionType,
+from coraplex.datastructures.enums import ExecutionType
+from coraplex.execution_environment import (
+    kinematically_simulated_robot,
+    real_robot,
+    semi_real_robot,
 )
-from coraplex.execution_environment import real_robot, semi_real_robot, simulated_robot
+from coraplex.language import ParallelNode
 from coraplex.plans.factories import parallel, sequential
 from coraplex.robot_plans import MoveGripperMotion, MoveJointsMotion
 from coraplex.robot_plans.actions.core.cable_actions import (
@@ -23,7 +25,6 @@ from coraplex.robot_plans.actions.core.cable_actions import (
 from coraplex.robot_plans.actions.core.robot_body import (
     ParkArmsAction,
 )
-from coraplex.view_manager import ViewManager
 
 # Custom imports
 from define_real_daisy import setup_real_daisy
@@ -34,16 +35,13 @@ from semantic_digital_twin.collision_checking.collision_rules import (
 )
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
-from semantic_digital_twin.datastructures.robots.gripper_configurations import (
-    GriplinkGripperConfiguration,
-    GriplinkGripPreset,
-)
-from semantic_digital_twin.datastructures.robots.gripper_specification import (
-    GriplinkFlexSpecification,
-    GriplinkPresetSpecification,
-)
 from semantic_digital_twin.exceptions import WorldEntityNotFoundError
 from semantic_digital_twin.robots.daisy import DAiSy
+from semantic_digital_twin.robots.griplink_gripper import (
+    GriplinkFlexConfiguration,
+    GriplinkGripPreset,
+    GriplinkPresetConfiguration,
+)
 from semantic_digital_twin.semantic_annotations.cable import Cable
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import FixedConnection
@@ -54,6 +52,11 @@ execution_mode = ExecutionType.REAL
 # execution_mode = ExecutionType.SEMI_REAL
 
 print(f"Running in: {execution_mode}")
+execution_environment = {
+    ExecutionType.REAL: real_robot,
+    ExecutionType.SEMI_REAL: semi_real_robot,
+    ExecutionType.KINEMATICALLY_SIMULATED: kinematically_simulated_robot,
+}[execution_mode]
 
 # %% Robot and World Setup
 if execution_mode == ExecutionType.REAL or execution_mode == ExecutionType.SEMI_REAL:
@@ -206,21 +209,21 @@ daisy_safe_right_arm_positions = [
 ]
 
 
-left_gripper = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
-right_gripper = ViewManager.get_end_effector_view(Arms.RIGHT, context.robot)
+left_gripper = context.robot.left_arm.end_effector
+right_gripper = context.robot.right_arm.end_effector
 
 
-def _both_grippers(state_type: GripperState) -> MoveGripperMotion:
+def _both_grippers(state_type: GripperState) -> ParallelNode:
     """
     Open or close both WPG/Griplink grippers simultaneously.
     """
     return parallel(
         [
             MoveGripperMotion(
-                specification=left_gripper.default_specification(state_type)
+                configuration=left_gripper.default_configuration(state_type)
             ),
             MoveGripperMotion(
-                specification=right_gripper.default_specification(state_type)
+                configuration=right_gripper.default_configuration(state_type)
             ),
         ]
     )
@@ -233,43 +236,41 @@ plan_home = sequential(
         parallel(
             [
                 MoveGripperMotion(
-                    specification=GriplinkPresetSpecification.from_state_type(
+                    configuration=GriplinkPresetConfiguration.from_state_type(
                         left_gripper,
                         GripperState.OPEN,
-                        GriplinkGripperConfiguration(
-                            grip_preset=GriplinkGripPreset.PRESET_0
-                        ),
+                        grip_preset=GriplinkGripPreset.PRESET_0,
                     )
                 ),
                 MoveGripperMotion(
-                    specification=GriplinkPresetSpecification.from_state_type(
+                    configuration=GriplinkPresetConfiguration.from_state_type(
                         right_gripper,
                         GripperState.OPEN,
-                        GriplinkGripperConfiguration(
-                            grip_preset=GriplinkGripPreset.PRESET_0
-                        ),
+                        grip_preset=GriplinkGripPreset.PRESET_0,
                     )
                 ),
             ]
         ),
-        ParkArmsAction(arm=Arms.RIGHT),
+        ParkArmsAction(arms=[context.robot.right_arm]),
         MoveJointsMotion(  # TODO Move this motion to the CableGraspAction and add generic version depending on the arm
             names=daisy_left_arm_names, positions=daisy_safe_left_arm_positions
         ),
         parallel(
             [
                 MoveGripperMotion(
-                    specification=GriplinkFlexSpecification.from_state_type(
+                    configuration=GriplinkFlexConfiguration.from_state_type(
                         left_gripper,
                         GripperState.FLEXCLOSE,
-                        GriplinkGripperConfiguration(grip_position=70, grip_speed=300),
+                        grip_position=70,
+                        grip_velocity=300,
                     )
                 ),
                 MoveGripperMotion(
-                    specification=GriplinkFlexSpecification.from_state_type(
+                    configuration=GriplinkFlexConfiguration.from_state_type(
                         right_gripper,
                         GripperState.FLEXCLOSE,
-                        GriplinkGripperConfiguration(grip_position=70, grip_speed=300),
+                        grip_position=70,
+                        grip_velocity=300,
                     )
                 ),
             ]
@@ -278,15 +279,8 @@ plan_home = sequential(
     context,
 )
 
-if execution_mode == ExecutionType.REAL:
-    with real_robot(collision_avoidance=False):
-        plan_home.perform()
-elif execution_mode == ExecutionType.SEMI_REAL:
-    with semi_real_robot(collision_avoidance=False):
-        plan_home.perform()
-else:
-    with simulated_robot:
-        plan_home.perform()
+with execution_environment(collision_avoidance=False):
+    plan_home.perform()
 
 sleep(3)
 
@@ -307,20 +301,13 @@ plan = sequential(
     context,
 )
 
-if execution_mode == ExecutionType.REAL:
-    with real_robot(collision_avoidance=collision_avoidance):
-        plan.perform()
-elif execution_mode == ExecutionType.SEMI_REAL:
-    with semi_real_robot(collision_avoidance=collision_avoidance):
-        plan.perform()
-else:
-    with simulated_robot:
-        plan.perform()
+with execution_environment(collision_avoidance=collision_avoidance):
+    plan.perform()
 
 plan_regrasp = sequential(
     [
         ParkArmsAction(
-            arm=Arms.RIGHT
+            arms=[context.robot.right_arm]
         ),  # TODO: this should be in the action description
         MoveJointsMotion(  # TODO Move this motion to the CableGraspAction and add generic version depending on the arm
             names=daisy_right_arm_names, positions=daisy_safe_right_arm_positions
@@ -332,26 +319,19 @@ plan_regrasp = sequential(
             approach_sign=-1,  # y-axis pointing to the back
             regrasp_height=0.6,  # height above the table to perform the regrasp
         ),
-        # ParkArmsAction(arm=Arms.BOTH),
+        # ParkArmsAction(arms=[context.robot.left_arm, context.robot.right_arm]),
     ],
     context,
 )
 
-if execution_mode == ExecutionType.REAL:
-    with real_robot(collision_avoidance=collision_avoidance):
-        plan_regrasp.perform()
-elif execution_mode == ExecutionType.SEMI_REAL:
-    with semi_real_robot(collision_avoidance=collision_avoidance):
-        plan_regrasp.perform()
-else:
-    with simulated_robot:
-        plan_regrasp.perform()
+with execution_environment(collision_avoidance=collision_avoidance):
+    plan_regrasp.perform()
 
 # %% Rehang Cable
 plan_rehang = sequential(
     [
         ParkArmsAction(
-            arm=Arms.RIGHT
+            arms=[context.robot.right_arm]
         ),  # TODO: this should be in the action description
         MoveJointsMotion(  # TODO Move this motion to the CableGraspAction and add generic version depending on the arm
             names=daisy_right_arm_names, positions=daisy_safe_right_arm_positions
@@ -369,14 +349,7 @@ plan_rehang = sequential(
     context,
 )
 
-if execution_mode == ExecutionType.REAL:
-    with real_robot(collision_avoidance=collision_avoidance):
-        plan_rehang.perform()
-elif execution_mode == ExecutionType.SEMI_REAL:
-    with semi_real_robot(collision_avoidance=collision_avoidance):
-        plan_rehang.perform()
-else:
-    with simulated_robot:
-        plan_rehang.perform()
+with execution_environment(collision_avoidance=collision_avoidance):
+    plan_rehang.perform()
 
 print("Plan finished.")
