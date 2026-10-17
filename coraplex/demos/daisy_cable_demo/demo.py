@@ -14,8 +14,8 @@ from coraplex.execution_environment import (
     real_robot,
     semi_real_robot,
 )
-from coraplex.language import ParallelNode
-from coraplex.plans.factories import parallel, sequential
+from coraplex.language import SequentialNode
+from coraplex.plans.factories import sequential
 from coraplex.robot_plans import MoveGripperMotion, MoveJointsMotion
 from coraplex.robot_plans.actions.core.cable_actions import (
     CableGraspAction,
@@ -213,11 +213,13 @@ left_gripper = context.robot.left_arm.end_effector
 right_gripper = context.robot.right_arm.end_effector
 
 
-def _both_grippers(state_type: GripperState) -> ParallelNode:
+def _both_grippers(state_type: GripperState) -> SequentialNode:
     """
-    Open or close both WPG/Griplink grippers simultaneously.
+    Open or close both WPG/Griplink grippers, one after the other.
     """
-    return parallel(
+    # shortcut: sequential because parallel() sends one Giskard goal per thread, which
+    # collides on the real robot; switch back once ParallelNode is fixed in coraplex.
+    return sequential(
         [
             MoveGripperMotion(
                 configuration=left_gripper.default_configuration(state_type)
@@ -233,7 +235,7 @@ plan_home = sequential(
     [
         _both_grippers(GripperState.OPEN),
         _both_grippers(GripperState.CLOSE),
-        parallel(
+        sequential(
             [
                 MoveGripperMotion(
                     configuration=GriplinkPresetConfiguration.from_state_type(
@@ -255,7 +257,7 @@ plan_home = sequential(
         MoveJointsMotion(  # TODO Move this motion to the CableGraspAction and add generic version depending on the arm
             names=daisy_left_arm_names, positions=daisy_safe_left_arm_positions
         ),
-        parallel(
+        sequential(
             [
                 MoveGripperMotion(
                     configuration=GriplinkFlexConfiguration.from_state_type(
