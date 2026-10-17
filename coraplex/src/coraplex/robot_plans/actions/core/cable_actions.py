@@ -14,14 +14,9 @@ from krrood.entity_query_language.factories import (
     variable_from,
 )
 from semantic_digital_twin.datastructures.definitions import GripperState
-from semantic_digital_twin.datastructures.robots.gripper_configurations import (
-    GriplinkGripperConfiguration,
-)
-from semantic_digital_twin.datastructures.robots.gripper_specification import (
-    GriplinkFlexSpecification,
-)
 from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
-from semantic_digital_twin.robots.robot_parts import EndEffector
+from semantic_digital_twin.robots.griplink_gripper import GriplinkFlexConfiguration
+from semantic_digital_twin.robots.robot_parts import AbstractRobot, Arm, EndEffector
 from semantic_digital_twin.semantic_annotations.cable import Cable
 from semantic_digital_twin.spatial_types.spatial_types import (
     HomogeneousTransformationMatrix,
@@ -33,7 +28,7 @@ from semantic_digital_twin.spatial_types.spatial_types import (
 from semantic_digital_twin.world_description.world_entity import Body
 
 from coraplex.datastructures.dataclasses import Context
-from coraplex.datastructures.enums import Arms, MovementType
+from coraplex.datastructures.enums import MovementType
 from coraplex.plans.attachment_nodes import ReAttachNode
 from coraplex.plans.factories import sequential
 from coraplex.plans.plan_node import PlanNode
@@ -48,8 +43,6 @@ from coraplex.robot_plans.motions.gripper import (
     MoveGripperMotion,
     MoveToolCenterPointMotion,
 )
-from coraplex.utils import translate_pose_along_local_axis
-from coraplex.view_manager import ViewManager
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +55,26 @@ def _cross(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 def _normalized(v: np.ndarray) -> np.ndarray:
     return v / np.linalg.norm(v)
+
+
+def translate_pose_along_local_axis(
+    pose: Pose, axis: list[float], distance: float
+) -> Pose:
+    """
+    :param pose: The pose to translate.
+    :param axis: The direction of the translation in the local frame of the pose.
+    :param distance: The distance in metres to translate along the normalized axis.
+    :return: The pose moved by the distance along the axis, with unchanged orientation.
+    """
+    rotation = pose.rotation_matrix.to_np()[:3, :3]
+    position = (
+        pose.position.to_np()[:3] + rotation @ _normalized(np.array(axis)) * distance
+    )
+    return Pose(
+        Point3(*position, reference_frame=pose.reference_frame),
+        pose.quaternion,
+        reference_frame=pose.reference_frame,
+    )
 
 
 def _rotation_matrix_from_axes(
@@ -173,40 +186,21 @@ def _hanger_axes(
     return rotation @ front_local, rotation @ side_local, rotation @ up_local
 
 
-def _determine_holding_arm(cable_body: Body, robot: Any) -> Arms:
+def _determine_holding_arm(cable_body: Body, robot: AbstractRobot) -> Arm:
     """
     Return the arm that is currently holding the cable body.
     """
-    left_end_effector = ViewManager.get_end_effector_view(Arms.LEFT, robot)
-    right_end_effector = ViewManager.get_end_effector_view(Arms.RIGHT, robot)
+    left_end_effector = robot.left_arm.end_effector
+    right_end_effector = robot.right_arm.end_effector
 
     parent = cable_body.parent_kinematic_structure_entity
 
     if parent == left_end_effector.tool_frame:
-        return Arms.LEFT
+        return robot.left_arm
     elif parent == right_end_effector.tool_frame:
-        return Arms.RIGHT
+        return robot.right_arm
 
     raise RuntimeError("Cable is not attached to any end effector")
-
-
-def _attachment_transform(
-    end_effector: EndEffector,
-) -> HomogeneousTransformationMatrix:
-    """
-    Compute the transform from the end effector's tool frame to the cable body.
-
-    The cable body's Z axis is aligned with the tool frame's Y axis so that the cable
-    cylinder is held correctly between the gripper fingers. The cable body is centered
-    at the tool frame origin (TCP).
-    """
-    return HomogeneousTransformationMatrix.from_xyz_rpy(
-        x=0.0,
-        y=0.0,
-        z=0.0,
-        roll=-pi / 2,
-        reference_frame=end_effector.tool_frame,
-    )
 
 
 def _open_gripper_motion(end_effector: EndEffector) -> MoveGripperMotion:
@@ -214,7 +208,7 @@ def _open_gripper_motion(end_effector: EndEffector) -> MoveGripperMotion:
     Build the motion that opens the given end effector.
     """
     return MoveGripperMotion(
-        specification=end_effector.default_specification(GripperState.OPEN)
+        configuration=end_effector.default_configuration(GripperState.OPEN)
     )
 
 
@@ -238,15 +232,13 @@ def _flex_gripper_motion(
         second squared [100..4000].
     """
     return MoveGripperMotion(
-        specification=GriplinkFlexSpecification.from_state_type(
+        configuration=GriplinkFlexConfiguration.from_state_type(
             end_effector,
             state_type,
-            GriplinkGripperConfiguration(
-                grip_position=grip_position,
-                grip_force=grip_force,
-                grip_speed=grip_speed,
-                grip_acceleration=grip_acceleration,
-            ),
+            grip_position=grip_position,
+            grip_force=grip_force,
+            grip_velocity=grip_speed,
+            grip_acceleration=grip_acceleration,
         )
     )
 
@@ -259,8 +251,8 @@ def _pre_condition_both_grippers_free(
     context: Context,
     kwargs: dict[str, Any],
 ) -> ConditionType:
-    left_end_effector = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
-    right_end_effector = ViewManager.get_end_effector_view(Arms.RIGHT, context.robot)
+    left_end_effector = context.robot.left_arm.end_effector
+    right_end_effector = context.robot.right_arm.end_effector
     return and_(
         GripperIsFree(left_end_effector),
         GripperIsFree(right_end_effector),
@@ -272,8 +264,8 @@ def _pre_condition_one_gripper_free(
     context: Context,
     kwargs: dict[str, Any],
 ) -> ConditionType:
-    left_end_effector = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
-    right_end_effector = ViewManager.get_end_effector_view(Arms.RIGHT, context.robot)
+    left_end_effector = context.robot.left_arm.end_effector
+    right_end_effector = context.robot.right_arm.end_effector
     return or_(
         and_(
             GripperIsNotFree(left_end_effector),
@@ -291,8 +283,8 @@ def _post_condition_cable_in_either_gripper(
     context: Context,
     kwargs: dict[str, Any],
 ) -> ConditionType:
-    left_end_effector = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
-    right_end_effector = ViewManager.get_end_effector_view(Arms.RIGHT, context.robot)
+    left_end_effector = context.robot.left_arm.end_effector
+    right_end_effector = context.robot.right_arm.end_effector
     cable_body = kwargs["cable_annotation"].root
     return or_(
         is_body_in_gripper(variable_from(cable_body), left_end_effector) > 0.9,
@@ -313,8 +305,8 @@ def _post_condition_cable_in_both_grippers(
     context: Context,
     kwargs: dict[str, Any],
 ) -> ConditionType:
-    left_end_effector = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
-    right_end_effector = ViewManager.get_end_effector_view(Arms.RIGHT, context.robot)
+    left_end_effector = context.robot.left_arm.end_effector
+    right_end_effector = context.robot.right_arm.end_effector
     cable_body = kwargs["cable_annotation"].root
     return and_(
         is_body_in_gripper(variable_from(cable_body), left_end_effector) > 0.9,
@@ -396,11 +388,15 @@ class CableGraspAction(ActionDescription):
     @property
     def _action_plan(self) -> PlanNode:
         scoop_arm = self._choose_scoop_arm()
-        grasp_arm = Arms.RIGHT if scoop_arm == Arms.LEFT else Arms.LEFT
+        grasp_arm = (
+            self.robot.right_arm
+            if scoop_arm == self.robot.left_arm
+            else self.robot.left_arm
+        )
         print(f"Scooping with {scoop_arm.name}, Grasping with {grasp_arm.name}")
 
-        scoop_end_effector = ViewManager.get_end_effector_view(scoop_arm, self.robot)
-        grasp_end_effector = ViewManager.get_end_effector_view(grasp_arm, self.robot)
+        scoop_end_effector = scoop_arm.end_effector
+        grasp_end_effector = grasp_arm.end_effector
 
         scoop_poses = self._calculate_scoop_poses(scoop_arm, scoop_end_effector)
 
@@ -425,7 +421,7 @@ class CableGraspAction(ActionDescription):
             self.approach_sign,
         )
 
-        approach_offset = pre_scoop_pose.to_position().to_np()[:3] + front_world * 0.1
+        approach_offset = pre_scoop_pose.position.to_np()[:3] + front_world * 0.1
         approach_pose = Pose(
             position=Point3(
                 x=approach_offset[0],
@@ -437,25 +433,25 @@ class CableGraspAction(ActionDescription):
             reference_frame=self.world.root,
         )
 
-        print(f"Approach pose: {approach_pose.to_position()}")
-        print(f"Pre-scoop pose: {pre_scoop_pose.to_position()}")
-        print(f"Scoop pose: {scoop_pose.to_position()}")
-        print(f"Post-scoop pose: {post_scoop_pose.to_position()}")
-        print(f"Clear scoop pose: {clear_scoop_pose.to_position()}")
-        print(f"Return scoop pose: {return_scoop_pose.to_position()}")
-        print(f"Pre free cable pose: {pre_free_cable_pose.to_position()}")
-        print(f"Free cable pose: {free_cable_pose.to_position()}")
+        print(f"Approach pose: {approach_pose.position}")
+        print(f"Pre-scoop pose: {pre_scoop_pose.position}")
+        print(f"Scoop pose: {scoop_pose.position}")
+        print(f"Post-scoop pose: {post_scoop_pose.position}")
+        print(f"Clear scoop pose: {clear_scoop_pose.position}")
+        print(f"Return scoop pose: {return_scoop_pose.position}")
+        print(f"Pre free cable pose: {pre_free_cable_pose.position}")
+        print(f"Free cable pose: {free_cable_pose.position}")
 
-        print(f"Grasp arm pose, scoop phase: {grasp_arm_scoop_pose.to_position()}")
-        print(f"Approach pose, scoop phase: {approach_grasp_pose.to_position()}")
-        print(f"Pre-grasp pose: {pre_grasp_pose.to_position()}")
-        print(f"Grasp pose: {grasp_pose.to_position()}")
+        print(f"Grasp arm pose, scoop phase: {grasp_arm_scoop_pose.position}")
+        print(f"Approach pose, scoop phase: {approach_grasp_pose.position}")
+        print(f"Pre-grasp pose: {pre_grasp_pose.position}")
+        print(f"Grasp pose: {grasp_pose.position}")
 
         return sequential(
             children=[
                 _open_gripper_motion(scoop_end_effector),
                 _open_gripper_motion(grasp_end_effector),
-                ParkArmsAction(arm=scoop_arm),
+                ParkArmsAction(arms=[scoop_arm]),
                 MoveToolCenterPointMotion(
                     approach_pose,
                     scoop_arm,
@@ -481,9 +477,6 @@ class CableGraspAction(ActionDescription):
                 ReAttachNode(
                     body=self.cable_annotation.root,
                     new_parent=scoop_end_effector.tool_frame,
-                    parent_T_connection_expression=_attachment_transform(
-                        scoop_end_effector
-                    ),
                 ),
                 MoveToolCenterPointMotion(
                     post_scoop_pose,
@@ -530,17 +523,14 @@ class CableGraspAction(ActionDescription):
                 ReAttachNode(
                     body=self.cable_annotation.root,
                     new_parent=grasp_end_effector.tool_frame,
-                    parent_T_connection_expression=_attachment_transform(
-                        grasp_end_effector
-                    ),
                 ),
                 MoveToolCenterPointMotion(
                     clear_scoop_pose, scoop_arm, movement_type=MovementType.CARTESIAN
                 ),
                 MoveToolCenterPointMotion(
                     Pose(
-                        position=clear_scoop_pose.to_position(),
-                        orientation=clear_scoop_pose.to_quaternion().multiply(
+                        position=clear_scoop_pose.position,
+                        orientation=clear_scoop_pose.quaternion.multiply(
                             Quaternion.from_rpy(0, 0, pi / 2)
                         ),
                         reference_frame=self.world.root,
@@ -564,8 +554,8 @@ class CableGraspAction(ActionDescription):
                             ),
                             axis=[1, 0, 0],
                             distance=0.2,
-                        ).to_position(),
-                        orientation=grasp_pose.to_quaternion().multiply(
+                        ).position,
+                        orientation=grasp_pose.quaternion.multiply(
                             Quaternion.from_rpy(0, 0, pi / 6)
                         ),
                         reference_frame=self.world.root,
@@ -604,7 +594,7 @@ class CableGraspAction(ActionDescription):
         )
 
     def _calculate_scoop_poses(
-        self, scoop_arm: Arms, scoop_end_effector
+        self, scoop_arm: Arm, scoop_end_effector
     ) -> dict[str, Pose]:
         """
         Calculate the pre-scoop, scoop-end and post-scoop poses for the scooping arm.
@@ -621,7 +611,7 @@ class CableGraspAction(ActionDescription):
             self.approach_direction,
             self.approach_sign,
         )
-        side_sign = 1.0 if scoop_arm == Arms.RIGHT else -1.0
+        side_sign = 1.0 if scoop_arm == self.robot.right_arm else -1.0
 
         hanging_pos = self._hanging_point_position().to_np()
 
@@ -761,7 +751,7 @@ class CableGraspAction(ActionDescription):
         return poses
 
     def _calculate_grasp_poses(
-        self, grasp_arm: Arms, post_scoop_pose: Pose
+        self, grasp_arm: Arm, post_scoop_pose: Pose
     ) -> dict[str, Pose]:
 
         poses = {}
@@ -771,16 +761,16 @@ class CableGraspAction(ActionDescription):
             self.approach_direction,
             self.approach_sign,
         )
-        side_sign = 1.0 if grasp_arm == Arms.LEFT else -1.0
+        side_sign = 1.0 if grasp_arm == self.robot.left_arm else -1.0
 
-        grasp_end_effector = ViewManager.get_end_effector_view(grasp_arm, self.robot)
+        grasp_end_effector = grasp_arm.end_effector
 
         current_grasp_arm_transform = grasp_end_effector.tool_frame.global_transform
-        current_grasp_arm_position = current_grasp_arm_transform.to_position()
+        current_grasp_arm_position = current_grasp_arm_transform.position
         grasp_arm_scoop_pos = current_grasp_arm_position.to_np()[:3] - side_world * (
             0.15 * side_sign
         )
-        current_grasp_arm_orientation = current_grasp_arm_transform.to_quaternion()
+        current_grasp_arm_orientation = current_grasp_arm_transform.quaternion
         grasp_arm_scoop_pose = Pose(
             Point3(
                 x=grasp_arm_scoop_pos[0],
@@ -795,7 +785,7 @@ class CableGraspAction(ActionDescription):
         poses["grasp_arm_scoop_pose"] = grasp_arm_scoop_pose
 
         approach_grasp_pos = (
-            post_scoop_pose.to_position().to_np()[:3]
+            post_scoop_pose.position.to_np()[:3]
             - side_world * (0.4 * side_sign)
             - up_world * (0.1)
         )
@@ -813,7 +803,7 @@ class CableGraspAction(ActionDescription):
         poses["approach_grasp_pose"] = approach_grasp_pose
 
         pre_grasp_pos = (
-            post_scoop_pose.to_position().to_np()[:3]
+            post_scoop_pose.position.to_np()[:3]
             - side_world * (0.2 * side_sign)
             + up_world * (0.1)
         )
@@ -837,7 +827,7 @@ class CableGraspAction(ActionDescription):
         poses["pre_grasp_pose"] = pre_grasp_pose
 
         grasp_pos = (
-            post_scoop_pose.to_position().to_np()[:3]
+            post_scoop_pose.position.to_np()[:3]
             - front_world * (0.01 * self.approach_sign)
             - side_world * (0.014 * side_sign)
             + up_world * (0.04)
@@ -864,20 +854,20 @@ class CableGraspAction(ActionDescription):
             y=self.cable_annotation.mount_offset_y,
             z=self.cable_annotation.height_offset,
         )
-        return (parent_global @ local_offset).to_position()
+        return (parent_global @ local_offset).position
 
-    def _choose_scoop_arm(self) -> Arms:
-        left_arm = ViewManager.get_arm_view(Arms.LEFT, self.robot)
-        right_arm = ViewManager.get_arm_view(Arms.RIGHT, self.robot)
+    def _choose_scoop_arm(self) -> Arm:
+        left_arm = self.robot.left_arm
+        right_arm = self.robot.right_arm
 
         hanger_pos = self._hanging_point_position().to_np()
         print(f"hanger_pos: {hanger_pos}")
 
         left_tip_pos = (
-            left_arm.end_effector.tool_frame.global_transform.to_position().to_np()
+            left_arm.end_effector.tool_frame.global_transform.position.to_np()
         )
         right_tip_pos = (
-            right_arm.end_effector.tool_frame.global_transform.to_position().to_np()
+            right_arm.end_effector.tool_frame.global_transform.position.to_np()
         )
 
         print(f"left_tip_pos: {left_tip_pos}, right_tip_pos: {right_tip_pos}")
@@ -886,7 +876,7 @@ class CableGraspAction(ActionDescription):
         right_distance = float(np.linalg.norm(right_tip_pos - hanger_pos))
         print(f"left_distance: {left_distance}, right_distance: {right_distance}")
 
-        return Arms.RIGHT
+        return self.robot.right_arm
 
 
 # %% CableRegraspAction
@@ -950,8 +940,12 @@ class CableRegraspAction(ActionDescription):
     @property
     def _action_plan(self) -> PlanNode:
         holding_arm = _determine_holding_arm(self.cable_annotation.root, self.robot)
-        free_arm = Arms.RIGHT if holding_arm == Arms.LEFT else Arms.LEFT
-        side_sign = 1.0 if free_arm == Arms.LEFT else -1.0
+        free_arm = (
+            self.robot.right_arm
+            if holding_arm == self.robot.left_arm
+            else self.robot.left_arm
+        )
+        side_sign = 1.0 if free_arm == self.robot.left_arm else -1.0
 
         front_world, side_world, up_world = _hanger_axes(
             self.cable_annotation.hanging_from.global_transform,
@@ -962,10 +956,8 @@ class CableRegraspAction(ActionDescription):
         table_z = 0.605
         target_z = table_z + self.regrasp_height
 
-        free_arm_end_effector = ViewManager.get_end_effector_view(free_arm, self.robot)
-        holding_arm_end_effector = ViewManager.get_end_effector_view(
-            holding_arm, self.robot
-        )
+        free_arm_end_effector = free_arm.end_effector
+        holding_arm_end_effector = holding_arm.end_effector
 
         holding_pose = self._build_mid_pose(
             up_offset=target_z,
@@ -1020,15 +1012,15 @@ class CableRegraspAction(ActionDescription):
         )
 
         print(f"Regrasping: holding={holding_arm.name}, free={free_arm.name}")
-        print(f"Target holding pose: {holding_pose.to_position()}")
-        print(f"Target free grasp pose: {free_grasp_pose.to_position()}")
-        print(f"Target hold spread pose: {hold_spread_pose.to_position()}")
-        print(f"Target free spread pose: {free_spread_pose.to_position()}")
+        print(f"Target holding pose: {holding_pose.position}")
+        print(f"Target free grasp pose: {free_grasp_pose.position}")
+        print(f"Target hold spread pose: {hold_spread_pose.position}")
+        print(f"Target free spread pose: {free_spread_pose.position}")
 
         return sequential(
             children=[
                 _open_gripper_motion(free_arm_end_effector),
-                ParkArmsAction(holding_arm),
+                ParkArmsAction(arms=[holding_arm]),
                 MoveToolCenterPointMotion(
                     holding_pose,
                     holding_arm,
@@ -1056,9 +1048,6 @@ class CableRegraspAction(ActionDescription):
                 ReAttachNode(
                     body=self.cable_annotation.root,
                     new_parent=free_arm_end_effector.tool_frame,
-                    parent_T_connection_expression=_attachment_transform(
-                        free_arm_end_effector
-                    ),
                 ),
                 MoveToolCenterPointMotion(
                     target=translate_pose_along_local_axis(
@@ -1136,7 +1125,7 @@ class CableRegraspAction(ActionDescription):
 
     def _build_spread_pose(
         self,
-        arm: Arms,
+        arm: Arm,
         z: float,
         half_length: float,
         orientation: Quaternion,
@@ -1152,7 +1141,7 @@ class CableRegraspAction(ActionDescription):
         :param half_length: Half the cable length in metres for the offset.
         :param orientation: The gripper orientation quaternion.
         """
-        side_sign = -1.0 if arm == Arms.LEFT else 1.0
+        side_sign = -1.0 if arm == self.robot.left_arm else 1.0
 
         front_world, side_world, up_world = _hanger_axes(
             self.cable_annotation.hanging_from.global_transform,
@@ -1236,12 +1225,14 @@ class CableRehangAction(ActionDescription):
     @property
     def _action_plan(self) -> PlanNode:
         holding_arm = _determine_holding_arm(self.cable_annotation.root, self.robot)
-        free_arm = Arms.RIGHT if holding_arm == Arms.LEFT else Arms.LEFT
+        free_arm = (
+            self.robot.right_arm
+            if holding_arm == self.robot.left_arm
+            else self.robot.left_arm
+        )
         print(f"Holding with {holding_arm.name}, Free arm {free_arm.name}")
 
-        holding_arm_end_effector = ViewManager.get_end_effector_view(
-            holding_arm, self.robot
-        )
+        holding_arm_end_effector = holding_arm.end_effector
 
         hang_poses = self._calculate_hang_pose(holding_arm)
 
@@ -1256,10 +1247,10 @@ class CableRehangAction(ActionDescription):
         pre_hang_pose = hang_poses["pre_hang_pose"]
         hang_pose = hang_poses["hang_pose"]
 
-        print(f"Inter hang pose: {inter_hang_pose.to_position()}")
-        print(f"Approach hang pose: {approach_hang_pose.to_position()}")
-        print(f"Pre hang pose: {pre_hang_pose.to_position()}")
-        print(f"Hang pose: {hang_pose.to_position()}")
+        print(f"Inter hang pose: {inter_hang_pose.position}")
+        print(f"Approach hang pose: {approach_hang_pose.position}")
+        print(f"Pre hang pose: {pre_hang_pose.position}")
+        print(f"Hang pose: {hang_pose.position}")
 
         return sequential(
             [
@@ -1288,12 +1279,6 @@ class CableRehangAction(ActionDescription):
                 ReAttachNode(
                     body=self.cable_annotation.root,
                     new_parent=self.hanger_body,
-                    parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
-                        x=self.side_offset,
-                        y=-self.front_offset,
-                        z=-self.cable_annotation.length / 2,
-                        reference_frame=self.hanger_body,
-                    ),
                 ),
                 _open_gripper_motion(holding_arm_end_effector),
                 MoveToolCenterPointMotion(
@@ -1304,7 +1289,7 @@ class CableRehangAction(ActionDescription):
             ],
         )
 
-    def _calculate_hang_pose(self, holding_arm: Arms) -> dict[str, Pose]:
+    def _calculate_hang_pose(self, holding_arm: Arm) -> dict[str, Pose]:
         """
         Calculate the pose to hang the cable back on the hanger.
         """
@@ -1315,7 +1300,7 @@ class CableRehangAction(ActionDescription):
             self.approach_direction,
             self.approach_sign,
         )
-        side_sign = 1.0 if holding_arm == Arms.RIGHT else -1.0
+        side_sign = 1.0 if holding_arm == self.robot.right_arm else -1.0
 
         hang_pos = self._hanging_point_position().to_np()
         print(f"Hanging pose: {hang_pos[:3]}")
@@ -1405,4 +1390,4 @@ class CableRehangAction(ActionDescription):
             y=offset_local[1],
             z=offset_local[2],
         )
-        return (parent_global @ local_offset).to_position()
+        return (parent_global @ local_offset).position
