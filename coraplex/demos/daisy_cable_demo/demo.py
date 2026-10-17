@@ -358,9 +358,8 @@ class CableDemoPlans:
                         grip_preset=GriplinkGripPreset.PRESET_0,
                     ),
                 ),
-                ParkArmsAction(arms=[self.robot.right_arm]),
+                ParkArmsAction(arms=self.robot.all_arms),
                 # TODO Move this motion to the CableGraspAction and add generic version depending on the arm
-                self._move_to_posture(self.robot.left_arm, self.left_safe_posture),
                 self._both_grippers(
                     GriplinkFlexConfiguration.from_state_type(
                         left_gripper,
@@ -407,7 +406,6 @@ class CableDemoPlans:
         """
         return sequential(
             [
-                *self._move_right_arm_to_safe_posture(),
                 CableRegraspAction(
                     cable_annotation=self.workcell.cable,
                     hanger_body=self.workcell.hanger,
@@ -426,7 +424,6 @@ class CableDemoPlans:
         """
         return sequential(
             [
-                *self._move_right_arm_to_safe_posture(),
                 CableRehangAction(
                     cable_annotation=self.workcell.cable,
                     hanger_body=self.workcell.hanger,
@@ -489,8 +486,8 @@ class CableDemoPlans:
 if __name__ == "__main__":
     verbose = True
     collision_avoidance = False
-    execution_mode = ExecutionType.REAL
-    # execution_mode = ExecutionType.SEMI_REAL
+    # execution_mode = ExecutionType.REAL
+    execution_mode = ExecutionType.SEMI_REAL
     # execution_mode = ExecutionType.KINEMATICALLY_SIMULATED
 
     print(f"Running in: {execution_mode}")
