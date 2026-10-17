@@ -112,3 +112,42 @@ class StoppedWhenTrue(MonitoredGoal):
                 Scalar.const_trinary_unknown(),
             )
         )
+
+
+@dataclass(repr=False, eq=False)
+class ReplacedWhenTrue(StoppedWhenTrue):
+    """
+    Ends the monitored node as soon as the monitor observes True, and runs a replacement
+    in its place.
+
+    It observes True once the monitored node or the replacement reached its goal, False
+    once the replacement ended short of its goal, and Unknown otherwise.
+    """
+
+    replacement: MotionStatechartNode = field(kw_only=True)
+    """
+    The node run once the monitor stopped the monitored node.
+    """
+
+    def expand(self, context: MotionStatechartContext) -> None:
+        super().expand(context)
+        self._add_child_to_motion_statechart(self.replacement)
+        self.replacement.start_condition = self.monitored_node.is_failed_or_interrupted
+
+    def build_artifacts(self, context: MotionStatechartContext) -> NodeArtifacts:
+        return NodeArtifacts(
+            observation=if_cases(
+                [
+                    (
+                        self.monitored_node.goal_reached.is_true(),
+                        Scalar.const_true(),
+                    ),
+                    (self.replacement.goal_reached.is_true(), Scalar.const_true()),
+                    (
+                        self.replacement.ended_without_reaching_its_goal.is_true(),
+                        Scalar.const_false(),
+                    ),
+                ],
+                Scalar.const_trinary_unknown(),
+            )
+        )

@@ -13,6 +13,7 @@ dependencies = [
     "coraplex",
     "giskardpy",
     "krrood",
+    "ompl>=2.0.1",
     "probabilistic_model",
     "pymysql",
     "random_events",

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import field, dataclass
+
+import numpy as np
 from typing_extensions import List
 
 import krrood.symbolic_math.symbolic_math as sm
@@ -9,6 +12,9 @@ from giskardpy.motion_statechart.data_types import DefaultWeights
 from giskardpy.motion_statechart.exceptions import EmptyGoalStateError
 from giskardpy.motion_statechart.graph_node import NodeArtifacts, Task
 from giskardpy.motion_statechart.graph_node import ConvergingTask
+from giskardpy.motion_statechart.monitors.joint_monitors import (
+    CloseToJointConfigurations,
+)
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.spatial_types.derivatives import Derivatives
@@ -155,3 +161,140 @@ class JointVelocityLimit(Task):
             sm.abs(sm.Vector(velocities)) <= self.max_velocity
         )
         return artifacts
+
+
+# %% paths planned at runtime
+
+
+@dataclass(eq=False, repr=False)
+class JointWaypointPath(JointPositionList, ABC):
+    """
+    Moves a group of connections through waypoints that are planned only once the task
+    starts, from wherever the connections are at that moment.
+
+    The error is the distance still to cover along the waypoints, so moving along the
+    path counts as approaching the goal.
+    """
+
+    connections: list[ActiveConnection1DOF] = field(kw_only=True)
+    """
+    The connections moved along the waypoints.
+    """
+
+    waypoint_threshold: float = field(default=0.05, kw_only=True)
+    """
+    Largest position error at which a waypoint before the last one counts as passed.
+    """
+
+    goal_state: JointState = field(init=False)
+    """
+    The waypoint currently aimed at, whose targets are set while the task runs.
+    """
+
+    _goal: sm.Vector = field(init=False, repr=False)
+    """
+    The positions of the waypoint currently aimed at.
+    """
+
+    _remaining_path_length: sm.FloatVariable = field(init=False, repr=False)
+    """
+    The length of the path behind the waypoint currently aimed at, measured as the sum
+    of the largest position differences between consecutive waypoints.
+    """
+
+    _waypoints: list[np.ndarray] = field(init=False, default_factory=list, repr=False)
+    """
+    The waypoints planned when the task started.
+    """
+
+    _next_waypoint: int = field(init=False, default=0, repr=False)
+    """
+    Index of the waypoint currently aimed at.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self._goal = sm.Vector(
+            [
+                sm.FloatVariable(name=f"{self._node_id}/goal/{connection.name}")
+                for connection in self.connections
+            ]
+        )
+        self._remaining_path_length = sm.FloatVariable(
+            name=f"{self._node_id}/remaining_path_length"
+        )
+        self.goal_state = JointState.from_lists(
+            self.connections,
+            [self._goal[index] for index in range(len(self.connections))],
+        )
+
+    @abstractmethod
+    def plan_waypoints(self, context: MotionStatechartContext) -> list[np.ndarray]:
+        """
+        Plan the path from the positions the connections are at now.
+
+        :param context: The context the task runs in.
+        :return: At least one waypoint, each giving positions of :attr:`connections`;
+            the last one is the goal.
+        """
+
+    def build_artifacts(self, context: MotionStatechartContext) -> NodeArtifacts:
+        context.float_variable_data.register_expression(self._goal)
+        context.float_variable_data.register_expression(self._remaining_path_length)
+        artifacts = super().build_artifacts(context)
+        artifacts.error = artifacts.error + self._remaining_path_length
+        return artifacts
+
+    def on_start(self, context: MotionStatechartContext):
+        self._waypoints = self.plan_waypoints(context)
+        self._next_waypoint = 0
+        self._aim_at_next_waypoint(context)
+
+    def on_tick(self, context: MotionStatechartContext) -> None:
+        if self._next_waypoint == len(self._waypoints) - 1:
+            return
+        positions = np.array([connection.position for connection in self.connections])
+        waypoint = self._waypoints[self._next_waypoint]
+        if np.max(np.abs(positions - waypoint)) <= self.waypoint_threshold:
+            self._next_waypoint += 1
+            self._aim_at_next_waypoint(context)
+
+    def _aim_at_next_waypoint(self, context: MotionStatechartContext) -> None:
+        """
+        Set the goal to the waypoint currently aimed at and the remaining path length to
+        the length of the path behind it.
+        """
+        remaining = self._waypoints[self._next_waypoint :]
+        remaining_length = sum(
+            float(np.max(np.abs(later - earlier)))
+            for earlier, later in zip(remaining, remaining[1:])
+        )
+        context.float_variable_data.set_value(self._goal, remaining[0])
+        context.float_variable_data.set_value(
+            self._remaining_path_length, remaining_length
+        )
+
+
+@dataclass(eq=False, repr=False)
+class RetractToLastSafeJointConfiguration(JointWaypointPath):
+    """
+    Moves the connections a :class:`CloseToJointConfigurations` monitor watches back to
+    the last positions it found safe.
+    """
+
+    monitor: CloseToJointConfigurations = field(kw_only=True)
+    """
+    The monitor that remembers the last safe positions.
+    """
+
+    connections: list[ActiveConnection1DOF] = field(init=False)
+    """
+    The connections the monitor watches.
+    """
+
+    def __post_init__(self):
+        self.connections = self.monitor.configurations.connections
+        super().__post_init__()
+
+    def plan_waypoints(self, context: MotionStatechartContext) -> list[np.ndarray]:
+        return [self.monitor.last_safe_positions]
