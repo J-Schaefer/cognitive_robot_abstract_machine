@@ -67,10 +67,26 @@ class Command(StrEnum):
     Record one seed with and without replanning and put the videos side by side.
     """
 
+    BROWSE = "browse"
+    """
+    Open the window listing recorded illegal joint states and keeping chosen ones.
+    """
+
     TRIAL = "trial"
     """
     Run the demo once; used by the other commands to run each trial in a process of its
     own.
+    """
+
+
+class EnvironmentVariable(StrEnum):
+    """
+    Environment variables the experiment sets for the processes it starts.
+    """
+
+    MUJOCO_GRAPHICS_BACKEND = "MUJOCO_GL"
+    """
+    The OpenGL backend MuJoCo renders with, chosen when MuJoCo is imported.
     """
 
 

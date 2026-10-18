@@ -44,3 +44,30 @@ class NoJointPathFound(DataclassException):
             "illegal joint states, or check whether start and goals are themselves in "
             "collision."
         )
+
+
+@dataclass
+class IncompatibleJointNames(DataclassException):
+    """
+    Raised when two databases of illegal joint states give positions of different
+    joints, so their states cannot be compared.
+    """
+
+    recorded_joint_names: list[str]
+    """
+    The joints of the recorded database.
+    """
+
+    kept_joint_names: list[str]
+    """
+    The joints of the kept database.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"The recorded database gives positions of {self.recorded_joint_names}, "
+            f"the kept one of {self.kept_joint_names}."
+        )
+
+    def suggest_correction(self) -> str:
+        return "Choose a kept database recorded for the same robot."

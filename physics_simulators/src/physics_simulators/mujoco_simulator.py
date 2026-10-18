@@ -1599,7 +1599,11 @@ class MujocoSimulator(BaseSimulator):
 
     @BaseSimulator.simulator_callback
     def capture_rgb(
-        self, camera_name: str = None, height=240, width=320
+        self,
+        camera_name: str = None,
+        height=240,
+        width=320,
+        free_camera: mujoco.MjvCamera | None = None,
     ) -> SimulatorCallbackResult:
         """
         This method returns a NumPy uint8 array of RGB values.
@@ -1608,11 +1612,16 @@ class MujocoSimulator(BaseSimulator):
             None, the default camera is used.
         :param height: The height of the image to capture.
         :param width: The width of the image to capture.
+        :param free_camera: A camera that is not part of the model, placed by its
+            look-at point, distance, azimuth and elevation, to capture from instead of
+            the named one.
         :return: A SimulatorCallbackResult object with the captured RGB data.
         """
         with self._model_lock:
             with mujoco.Renderer(self._mj_model, height, width) as renderer:
-                if camera_name is not None:
+                if free_camera is not None:
+                    renderer.update_scene(self._mj_data, free_camera)
+                elif camera_name is not None:
                     renderer.update_scene(self._mj_data, camera_name)
                 else:
                     renderer.update_scene(self._mj_data)

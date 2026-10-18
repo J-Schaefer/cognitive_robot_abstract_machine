@@ -694,3 +694,43 @@ class TestOffscreenRenderingAvailability:
         monkeypatch.setenv(MujocoEnvironmentVariable.DISPLAY, ":1")
 
         assert MujocoSimulator.offscreen_rendering_available()
+
+
+@pytest.mark.skipif(
+    not MujocoSimulator.offscreen_rendering_available(),
+    reason="no OpenGL context for offscreen rendering",
+)
+class TestFreeCameraCapture:
+    """
+    Capturing from a camera that is not part of the model, placed by the caller.
+    """
+
+    @pytest.fixture
+    def simulator(self):
+        sim = MujocoSimulator(
+            _headless=True,
+            _step_size=1e-3,
+            file_path=os.path.join(resources_path, "mjx_single_cube_no_mesh.xml"),
+        )
+        sim.start(simulate_in_thread=False, render_in_thread=False)
+        yield sim
+        sim.stop()
+
+    @staticmethod
+    def _camera(elevation: float) -> mujoco.MjvCamera:
+        camera = mujoco.MjvCamera()
+        camera.type = mujoco.mjtCamera.mjCAMERA_FREE
+        camera.lookat[:] = [0.0, 0.0, 0.0]
+        camera.distance = 3.0
+        camera.azimuth = 0.0
+        camera.elevation = elevation
+        return camera
+
+    def test_capture_follows_the_free_camera(self, simulator):
+        shallow = simulator.capture_rgb(free_camera=self._camera(-10.0)).result
+        again = simulator.capture_rgb(free_camera=self._camera(-10.0)).result
+        steep = simulator.capture_rgb(free_camera=self._camera(-80.0)).result
+
+        assert shallow.shape == (240, 320, 3)
+        assert numpy.array_equal(shallow, again)
+        assert not numpy.array_equal(shallow, steep)

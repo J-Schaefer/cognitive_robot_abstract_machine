@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import os
+import sys
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
+from experiments.daisy_cable_replanning.curation import KeptDatabase
+from experiments.daisy_cable_replanning.joint_state_browser import JointStateBrowser
 from experiments.daisy_cable_replanning.summary import (
     ExperimentOutcome,
     ReplanningComparison,
@@ -11,6 +15,7 @@ from experiments.daisy_cable_replanning.trials import (
     CableDemoExperiment,
     CableDemoTrial,
     Command,
+    EnvironmentVariable,
     TrialFiles,
     TrialOption,
 )
@@ -37,8 +42,27 @@ def run_from_command_line() -> None:
             _summarize(arguments)
         case Command.VIDEO:
             print(_video(arguments).record())
+        case Command.BROWSE:
+            _with_egl_rendering()
+            sys.exit(JointStateBrowser.run(arguments.recorded, arguments.permanent))
         case Command.TRIAL:
             _trial(arguments).run()
+
+
+def _with_egl_rendering() -> None:
+    """
+    Run this command again with MuJoCo's EGL backend, if no backend was chosen.
+
+    MuJoCo chooses its OpenGL backend when it is imported, which happened before the
+    command line was read, and only EGL renders offscreen next to a Qt window.
+    """
+    if os.environ.get(EnvironmentVariable.MUJOCO_GRAPHICS_BACKEND):
+        return
+    os.execve(
+        sys.executable,
+        [sys.executable, *sys.orig_argv[1:]],
+        {**os.environ, EnvironmentVariable.MUJOCO_GRAPHICS_BACKEND: "egl"},
+    )
 
 
 def _summarize(arguments: Namespace) -> None:
@@ -141,6 +165,19 @@ def _parser() -> ArgumentParser:
     )
     video.add_argument("--baseline", type=Path, default=None)
     video.add_argument("--replanning", type=Path, default=None)
+
+    browse = commands.add_parser(
+        Command.BROWSE, help="choose recorded illegal joint states to keep"
+    )
+    browse.add_argument(
+        "--recorded", type=Path, default=None, help="recorded file to load at once"
+    )
+    browse.add_argument(
+        "--permanent",
+        type=Path,
+        default=KeptDatabase.DAISY_CABLE_WORKCELL.value,
+        help="permanent file to compare with and save to",
+    )
 
     trial = commands.add_parser(Command.TRIAL, help="run the demo once")
     trial.add_argument(TrialOption.NUMBER, type=int, required=True)

@@ -25,7 +25,9 @@ runs into are added to the database for the next round.
 | `collisions.py` | recording: `ArmCollisionRecorder`, `IllegalJointState`, `IllegalJointStateDatabase`, `MotionLabel` |
 | `replanning.py` | replanning: `ReplanningTransformation`, `ReplannedToolCenterPointMotion`, `JointSpacePlanner`, `GoalConfigurationSampler`, `ReplanningParameters` |
 | `summary.py` | `ExperimentOutcome` and `ReplanningComparison`, the numbers reported below |
-| `command_line.py`, `__main__.py` | the command line: `record`, `replan`, `summarize`, `video`, `trial` |
+| `curation.py` | `IllegalJointStateCuration`, choosing recorded states to keep; `KeptDatabase`, the permanent files |
+| `joint_state_browser.py`, `robot_snapshot.py` | the window for choosing states to keep, and the rendering of the robot in it |
+| `command_line.py`, `__main__.py` | the command line: `record`, `replan`, `summarize`, `video`, `browse`, `trial` |
 | `run_series.sh` | one complete series, as run for the results below |
 
 The generic Giskard pieces live in giskardpy. They are documented in
@@ -188,6 +190,48 @@ Every `record` or `replan` run writes into its output directory:
 
 All JSON is written by `krrood.adapters.json_serializer`. `IllegalJointStateDatabase.load`
 reads a database back.
+
+## Keeping illegal joint states for good
+
+The databases in `experiments/results/` belong to single runs. Illegal joint states
+worth keeping for this robot setup go into a permanent file, by default
+`resources/daisy_cable_workcell_illegal_joint_states.json` next to this README
+(`KeptDatabase.DAISY_CABLE_WORKCELL`). It has the same format as every recorded
+database, so it can be passed to `--illegal-joint-states` like any other.
+
+To choose the states, open the browser:
+
+```bash
+python -m experiments.daisy_cable_replanning browse \
+    [--recorded experiments/results/.../record/illegal_joint_states.json] \
+    [--permanent <permanent file, default: the one above>]
+```
+
+1. Enter or browse for the **recorded file** and the **permanent file**, then press
+   **Load**. A permanent file that does not exist yet counts as empty. Recorded states
+   the permanent file already holds are checked from the start, and marked
+   *In permanent file*.
+2. Click a row to see its joint state with the robot.
+   - Drag to orbit the camera, scroll to zoom.
+   - **Focus on contact** looks closely at the deepest contact.
+   - **Whole scene** looks at everything again.
+   - Below the image: the motion and trial the state was recorded in, the colliding
+     bodies, and which bodies touch in this state next to the *nominal* workcell (the
+     trial's workcell was shifted by noise).
+3. Check **Keep** for the states to keep, or highlight rows (shift- or ctrl-click,
+   sortable by every column) and press **Keep highlighted** or **Drop highlighted**.
+   **Keep all** and **Keep none** apply to every row.
+4. Press **Save to permanent file**. The permanent file then holds:
+   - every state it held that the recorded file does not contain, and
+   - every checked recorded state.
+
+   Unchecking a recorded state that was in the permanent file removes it. Both files
+   are loaded again, so the table shows the new content.
+
+Two records are the same joint state when their positions agree to a nanoradian.
+
+The command starts itself again with `MUJOCO_GL=egl` if no MuJoCo backend is set,
+because only EGL renders offscreen next to the Qt window.
 
 ## Results
 

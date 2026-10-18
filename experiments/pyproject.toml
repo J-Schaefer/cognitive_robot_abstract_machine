@@ -16,6 +16,7 @@ dependencies = [
     "ompl>=2.0.1",
     "probabilistic_model",
     "pymysql",
+    "PySide6",
     "random_events",
     "semantic_digital_twin",
 ]

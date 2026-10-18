@@ -126,6 +126,14 @@ class IllegalJointState:
     Number of the trial the collision happened in.
     """
 
+    @property
+    def rounded_positions(self) -> tuple[float, ...]:
+        """
+        :return: The positions rounded to nanoradians, the same for two records of one
+            joint state.
+        """
+        return tuple(round(position, 9) for position in self.positions)
+
 
 @dataclass
 class IllegalJointStateDatabase:
