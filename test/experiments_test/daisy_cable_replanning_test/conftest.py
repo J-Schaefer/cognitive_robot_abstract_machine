@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from experiments.daisy_cable_replanning.cable_demo import DemoScript
 from semantic_digital_twin.adapters.urdf import URDFParser
 from semantic_digital_twin.datastructures.definitions import StaticJointState
 from semantic_digital_twin.robots.daisy import DAiSy
@@ -42,3 +43,11 @@ def right_forearm_touching_gripper() -> np.ndarray:
     """
     data = Path(__file__).parent / "right_forearm_touches_gripper.json"
     return np.array(json.loads(data.read_text())["positions"])
+
+
+@pytest.fixture()
+def safe_right_posture() -> tuple[float, ...]:
+    """
+    A collision-free posture of the right DAiSy arm, from the cable demo script.
+    """
+    return DemoScript.daisy_cable_demo().load().SafeArmPosture.RIGHT.value

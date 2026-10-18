@@ -1,0 +1,190 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
+
+import imageio.v2 as imageio
+import numpy as np
+from experiments.daisy_cable_replanning.summary import ExperimentOutcome
+from experiments.daisy_cable_replanning.trials import CableDemoTrial, TrialFiles
+from PIL import Image, ImageDraw, ImageFont
+
+# %% side by side
+
+
+class VideoCaption(StrEnum):
+    """
+    The captions of the two halves of the comparison video.
+    """
+
+    WITHOUT_REPLANNING = "Giskard only"
+    WITH_REPLANNING = "Giskard + retract + OMPL replanning"
+
+
+@dataclass
+class SideBySideVideo:
+    """
+    Two videos played next to each other, each with a caption; the shorter one holds its
+    last frame until the longer one ends.
+    """
+
+    left: list[np.ndarray]
+    """
+    The frames of the left video.
+    """
+
+    right: list[np.ndarray]
+    """
+    The frames of the right video, of the same height as the left ones.
+    """
+
+    left_caption: str
+    """
+    The caption of the left video.
+    """
+
+    right_caption: str
+    """
+    The caption of the right video.
+    """
+
+    @property
+    def frames(self) -> list[np.ndarray]:
+        """
+        :return: The captioned frames of both videos, placed next to each other.
+        """
+        length = max(len(self.left), len(self.right))
+        return [
+            np.hstack(
+                [
+                    self._captioned(
+                        self._frame_at(self.left, index), self.left_caption
+                    ),
+                    self._captioned(
+                        self._frame_at(self.right, index), self.right_caption
+                    ),
+                ]
+            )
+            for index in range(length)
+        ]
+
+    def write(self, path: Path, frames_per_second: int = 30) -> Path:
+        """
+        :param path: The video file to write.
+        :param frames_per_second: The rate the video plays at.
+        :return: The path.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        writer = imageio.get_writer(path, fps=frames_per_second, macro_block_size=8)
+        for frame in self.frames:
+            writer.append_data(frame)
+        writer.close()
+        return path
+
+    @staticmethod
+    def _frame_at(frames: list[np.ndarray], index: int) -> np.ndarray:
+        """
+        :return: The frame at the index, or the last frame after the video ended.
+        """
+        return frames[min(index, len(frames) - 1)]
+
+    @staticmethod
+    def _captioned(frame: np.ndarray, caption: str) -> np.ndarray:
+        """
+        :return: The frame with the caption written into its top left corner.
+        """
+        image = Image.fromarray(frame)
+        ImageDraw.Draw(image).text(
+            (12, 10), caption, fill=(255, 255, 255), font=ImageFont.load_default(22)
+        )
+        return np.asarray(image)
+
+
+# %% comparison of one seed
+
+
+@dataclass
+class ReplanningVideo:
+    """
+    Videos of one seed performed once as the demo is and once with replanning, and of
+    the two side by side.
+    """
+
+    output_directory: Path
+    """
+    Directory the videos and the files of both trials are written to.
+    """
+
+    seed: int
+    """
+    The seed both trials are run with.
+    """
+
+    illegal_joint_states: list[Path]
+    """
+    The databases the replanning trial replans around.
+    """
+
+    @classmethod
+    def of_first_improved_seed(
+        cls,
+        output_directory: Path,
+        baseline: ExperimentOutcome,
+        replanning: ExperimentOutcome,
+        illegal_joint_states: list[Path],
+    ) -> ReplanningVideo:
+        """
+        :return: The video of the lowest seed that collided without replanning and
+            completed without any collision with it.
+        """
+        return cls(
+            output_directory=output_directory,
+            seed=min(baseline.colliding_seeds & replanning.successful_seeds),
+            illegal_joint_states=illegal_joint_states,
+        )
+
+    @property
+    def path(self) -> Path:
+        """
+        :return: The side by side video.
+        """
+        return self.output_directory / f"daisy_cable_replanning_seed{self.seed}.mp4"
+
+    def record(self) -> Path:
+        """
+        Run both trials with video, then write them side by side.
+
+        :return: The side by side video.
+        """
+        without = self._trial("without_replanning", [])
+        with_replanning = self._trial("with_replanning", self.illegal_joint_states)
+        for trial in (without, with_replanning):
+            trial.run_in_own_process()
+        return SideBySideVideo(
+            left=self._frames_of(without.video),
+            right=self._frames_of(with_replanning.video),
+            left_caption=VideoCaption.WITHOUT_REPLANNING,
+            right_caption=VideoCaption.WITH_REPLANNING,
+        ).write(self.path)
+
+    @staticmethod
+    def _frames_of(video: Path) -> list[np.ndarray]:
+        """
+        :return: The frames of the video file.
+        """
+        # Not list(reader): the reader reports an infinite length for MP4 files.
+        return [frame for frame in imageio.get_reader(video)]
+
+    def _trial(self, name: str, illegal_joint_states: list[Path]) -> CableDemoTrial:
+        """
+        :return: The trial of the seed writing its files and video under the name.
+        """
+        directory = self.output_directory / name
+        return CableDemoTrial(
+            number=0,
+            seed=self.seed,
+            files=TrialFiles(directory=directory, number=0),
+            illegal_joint_states=illegal_joint_states,
+            video=directory / f"{name}.mp4",
+        )

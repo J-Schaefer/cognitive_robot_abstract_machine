@@ -208,6 +208,22 @@ class IllegalJointStateDatabase:
         """
         return from_json(json.loads(path.read_text()))
 
+    @classmethod
+    def load_merged(cls, paths: list[Path]) -> Self:
+        """
+        :param paths: Files written by :meth:`save`, over the same joints.
+        :return: One database holding the states of all of them.
+        """
+        databases = [cls.load(path) for path in paths]
+        return cls(
+            joint_names=databases[0].joint_names,
+            illegal_joint_states=[
+                state
+                for database in databases
+                for state in database.illegal_joint_states
+            ],
+        )
+
     def extend_from_log(self, path: Path) -> None:
         """
         Add the states of a log written by :class:`ArmCollisionRecorder`.
@@ -249,7 +265,8 @@ class ActiveMotionTracker(PlanCallback):
 
         :param stage: The name of the stage about to be performed.
         """
-        self.stage = stage
+        # The plain value, so a label can be read without the module naming the stage.
+        self.stage = str(stage)
         self._motions_started = 0
 
     def on_start(self, node: PlanNode) -> None:

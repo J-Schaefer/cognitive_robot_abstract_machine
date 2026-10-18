@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from itertools import pairwise
-from math import ceil
+from math import ceil, pi
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +34,10 @@ from krrood.adapters.json_serializer import to_json
 from ompl import base as ompl_base
 from ompl import geometric as ompl_geometric
 from semantic_digital_twin.collision_checking.collision_matrix import CollisionMatrix
+from semantic_digital_twin.robots.daisy import DAiSy
+from semantic_digital_twin.robots.robot_parts import Arm
+from semantic_digital_twin.semantic_annotations.cable import Cable
+from semantic_digital_twin.spatial_computations.ik_solver import IKSolverException
 from semantic_digital_twin.spatial_types.spatial_types import Pose
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.connections import ActiveConnection1DOF
@@ -60,14 +65,20 @@ class ReplanningParameters:
     counts as safe to retract to.
     """
 
-    clearance: float = 0.1
+    clearance: float = 0.2
     """
     Joint distance, in radians, the planned path keeps from every illegal joint state.
     """
 
-    collision_margin: float = 0.005
+    collision_margin: float = 0.002
     """
     Distance in metres below which a body of the planned arm counts as colliding.
+    """
+
+    validity_checking_resolution: float = 0.002
+    """
+    Spacing at which the planner checks a path segment, as a fraction of the extent of
+    the joint space.
     """
 
     planning_time: float = 10.0
@@ -79,6 +90,28 @@ class ReplanningParameters:
     """
     Largest joint difference between consecutive waypoints of the planned path, in
     radians.
+    """
+
+    goal_seeds: int = 64
+    """
+    How many joint states, besides the current one, inverse kinematics starts from to
+    find alternative goal configurations.
+    """
+
+    goal_seed_spread: float = pi
+    """
+    Largest offset of a joint of a seed from its current position, in radians.
+    """
+
+    goal_sampling_seed: int = 0
+    """
+    Seed of the random offsets of the seeds, so a replanning is reproducible.
+    """
+
+    distinct_goal_distance: float = 0.05
+    """
+    Largest joint difference, in radians, below which two goal configurations count as
+    the same.
     """
 
 
@@ -122,7 +155,7 @@ class ProbedJointState:
         return self
 
     def __exit__(self, exception_type, exception, traceback) -> None:
-        self._write(self._original_positions)
+        self.write(self._original_positions)
 
     def is_collision_free(
         self, positions: np.ndarray, collision_matrix: CollisionMatrix
@@ -131,18 +164,133 @@ class ProbedJointState:
         :param positions: Positions of :attr:`connections` to probe.
         :param collision_matrix: The pairs that may not collide, each with the distance
             below which it counts as colliding.
-        :return: Whether no pair collides at the positions.
+        :return: Whether no pair is closer than its distance at the positions.
         """
-        self._write(positions)
+        self.write(positions)
+        # The detector may also report pairs that are a little further apart than
+        # their check's distance, so the distance is compared here.
+        allowed_distances = {
+            frozenset((check.body_a, check.body_b)): check.distance
+            for check in collision_matrix.collision_checks
+        }
         collision_detector = self.world.collision_manager.collision_detector
-        return not collision_detector.check_collisions(collision_matrix).any()
+        return not any(
+            contact.distance
+            < allowed_distances[frozenset((contact.body_a, contact.body_b))]
+            for contact in collision_detector.check_collisions(
+                collision_matrix
+            ).contacts
+        )
 
-    def _write(self, positions: np.ndarray) -> None:
+    def write(self, positions: np.ndarray) -> None:
         """
-        Write the positions and bring the collision detector up to date with them.
+        Write the positions of :attr:`connections` and bring the collision detector up
+        to date with them.
         """
         self.world.state.positions[self._columns] = positions
         self.world.collision_manager.collision_detector.world_state_updater.on_state_change()
+
+
+# %% goal configurations
+
+
+@dataclass
+class GoalConfigurationSampler:
+    """
+    Finds several joint configurations of an arm that put its tool frame at a pose, by
+    starting inverse kinematics from the current joint state and from randomly offset
+    ones.
+    """
+
+    world: World
+    """
+    The world the arm is in.
+    """
+
+    arm: Arm
+    """
+    The arm whose joint configurations are sought.
+    """
+
+    root: Body
+    """
+    The body the arm is mounted below.
+    """
+
+    parameters: ReplanningParameters
+    """
+    How many seeds are tried and how far they spread.
+    """
+
+    def configurations_reaching(self, pose: Pose) -> list[np.ndarray]:
+        """
+        :param pose: Where the tool frame is to be.
+        :return: The distinct configurations of the arm's joints that inverse
+            kinematics found from the seeds, the one from the current joint state
+            first; empty if it found none.
+        """
+        connections = self.arm.active_connections
+        configurations: list[np.ndarray] = []
+        with ProbedJointState(world=self.world, connections=connections) as probe:
+            for seed in self._seeds(connections):
+                probe.write(seed)
+                configuration = self._solve_from_current_state(pose)
+                if configuration is not None and self._is_distinct(
+                    configuration, configurations
+                ):
+                    configurations.append(configuration)
+        return configurations
+
+    def _solve_from_current_state(self, pose: Pose) -> np.ndarray | None:
+        """
+        :return: The configuration inverse kinematics converges to from the joint state
+            the world is in, or ``None`` if it does not converge to the pose.
+        """
+        # Approved exception to the no-try-except rule: the solver reports a seed that
+        # does not converge only by raising, and other seeds may still succeed.
+        try:
+            solution = self.world.compute_inverse_kinematics(
+                root=self.root,
+                tip=self.arm.end_effector.tool_frame,
+                target=pose.homogeneous_matrix,
+            )
+        except IKSolverException:
+            return None
+        return np.array(
+            [solution[connection.dof] for connection in self.arm.active_connections]
+        )
+
+    def _seeds(self, connections: list[ActiveConnection1DOF]) -> list[np.ndarray]:
+        """
+        :return: The current joint state, followed by randomly offset ones within the
+            joint limits.
+        """
+        current = np.array([connection.position for connection in connections])
+        lower = np.array(
+            [connection.dof.limits.lower.position for connection in connections]
+        )
+        upper = np.array(
+            [connection.dof.limits.upper.position for connection in connections]
+        )
+        random_generator = np.random.default_rng(self.parameters.goal_sampling_seed)
+        offsets = random_generator.uniform(
+            -self.parameters.goal_seed_spread,
+            self.parameters.goal_seed_spread,
+            size=(self.parameters.goal_seeds, len(connections)),
+        )
+        return [current, *np.clip(current + offsets, lower, upper)]
+
+    def _is_distinct(
+        self, configuration: np.ndarray, configurations: list[np.ndarray]
+    ) -> bool:
+        """
+        :return: Whether the configuration differs from every one found before.
+        """
+        return all(
+            np.max(np.abs(configuration - other))
+            > self.parameters.distinct_goal_distance
+            for other in configurations
+        )
 
 
 # %% planning
@@ -151,19 +299,30 @@ class ProbedJointState:
 @dataclass
 class JointSpacePlanner:
     """
-    Plans paths of a group of joints with OMPL's RRT-Connect that are free of
+    Plans paths of the joints of one arm with OMPL's RRT-Connect that are free of
     collisions and keep clear of a set of illegal joint configurations, with every other
     joint held where it is.
     """
 
     world: World
     """
-    The world the joints are in.
+    The world the arm is in.
     """
 
-    collision_matrix: CollisionMatrix
+    robot: DAiSy
     """
-    The pairs of bodies that may not collide along the path.
+    The robot the arm belongs to.
+    """
+
+    arm: Arm
+    """
+    The arm whose joints are planned.
+    """
+
+    ignored_bodies: set[Body]
+    """
+    Bodies whose collisions do not count, such as a soft cable that the arm is meant to
+    touch.
     """
 
     illegal_configurations: JointConfigurationSet
@@ -176,16 +335,33 @@ class JointSpacePlanner:
     How the path is planned.
     """
 
-    def plan(
-        self, connections: list[ActiveConnection1DOF], goal: np.ndarray
-    ) -> list[np.ndarray]:
+    def collision_matrix(self) -> CollisionMatrix:
         """
-        :param connections: The joints to move.
-        :param goal: Their positions at the goal.
-        :return: Waypoints from their current positions to the goal, no further apart
-            than :attr:`ReplanningParameters.waypoint_spacing`.
-        :raises NoJointPathFound: If no path is found within the planning time.
+        :return: The pairs of bodies, apart from :attr:`ignored_bodies`, the arm may
+            not bring closer than the collision margin, as the world is attached when
+            this is asked.
         """
+        collision_matrix = ArmCollisionPairs(
+            world=self.world, robot=self.robot
+        ).collision_matrix_of(self.arm, self.parameters.collision_margin)
+        return CollisionMatrix(
+            {
+                check
+                for check in collision_matrix.collision_checks
+                if not {check.body_a, check.body_b} & self.ignored_bodies
+            }
+        )
+
+    def plan(self, goals: list[np.ndarray]) -> list[np.ndarray]:
+        """
+        :param goals: Alternative positions of the arm's joints at the goal.
+        :return: Waypoints from their current positions to the nearest goal a path is
+            found to, no further apart than
+            :attr:`ReplanningParameters.waypoint_spacing`.
+        :raises NoJointPathFound: If no path to any goal is found.
+        """
+        connections = self.arm.active_connections
+        collision_matrix = self.collision_matrix()
         start = np.array([connection.position for connection in connections])
         held_configuration = self.illegal_configurations.current_positions()
         planned_columns = [
@@ -193,36 +369,63 @@ class JointSpacePlanner:
             for connection in connections
         ]
         space = self._state_space(connections)
-        setup = ompl_geometric.SimpleSetup(space)
         with ProbedJointState(world=self.world, connections=connections) as probe:
 
-            def is_valid(state) -> bool:
-                positions = np.array(
-                    [state[index] for index in range(len(connections))]
-                )
+            def is_valid(positions: np.ndarray) -> bool:
                 configuration = held_configuration.copy()
                 configuration[planned_columns] = positions
                 return self.illegal_configurations.distance_to(
                     configuration
                 ) >= self.parameters.clearance and probe.is_collision_free(
-                    positions, self.collision_matrix
+                    positions, collision_matrix
                 )
 
-            setup.setStateValidityChecker(is_valid)
-            setup.setStartAndGoalStates(
-                self._ompl_state(space, start), self._ompl_state(space, goal)
+            # The nearest goal keeps the arm close to the joint states the plan expects.
+            reachable_goals = sorted(
+                (goal for goal in goals if is_valid(goal)),
+                key=lambda goal: np.max(np.abs(goal - start)),
             )
-            setup.setPlanner(ompl_geometric.RRTConnect(setup.getSpaceInformation()))
-            setup.getSpaceInformation().setStateValidityCheckingResolution(0.005)
-            solved = setup.solve(self.parameters.planning_time)
-            if not (solved and setup.haveExactSolutionPath()):
-                raise NoJointPathFound(
-                    start=start.tolist(),
-                    goal=goal.tolist(),
-                    planning_time=self.parameters.planning_time,
-                )
-            setup.simplifySolution(self.parameters.planning_time)
-        return self._waypoints_along(setup.getSolutionPath(), len(connections))
+            for goal in reachable_goals:
+                waypoints = self._solve(space, is_valid, start, goal)
+                if waypoints is not None:
+                    return waypoints
+        raise NoJointPathFound(
+            start=start.tolist(),
+            goals=[goal.tolist() for goal in goals],
+            planning_time=self.parameters.planning_time,
+        )
+
+    def _solve(
+        self,
+        space: ompl_base.RealVectorStateSpace,
+        is_valid: Callable[[np.ndarray], bool],
+        start: np.ndarray,
+        goal: np.ndarray,
+    ) -> list[np.ndarray] | None:
+        """
+        :return: The waypoints of the simplified path RRT-Connect found from the start
+            to the goal, or ``None`` if it found none within the planning time.
+        """
+        setup = ompl_geometric.SimpleSetup(space)
+        setup.setStateValidityChecker(
+            lambda state: is_valid(
+                np.array([state[index] for index in range(len(start))])
+            )
+        )
+        setup.setStartAndGoalStates(
+            self._ompl_state(space, start), self._ompl_state(space, goal)
+        )
+        setup.setPlanner(ompl_geometric.RRTConnect(setup.getSpaceInformation()))
+        setup.getSpaceInformation().setStateValidityCheckingResolution(
+            self.parameters.validity_checking_resolution
+        )
+        solved = setup.solve(self.parameters.planning_time)
+        if not (solved and setup.haveExactSolutionPath()):
+            return None
+        # Without a duration, the simplification does a fixed amount of work, so the
+        # path does not depend on how fast the machine is.
+        setup.simplifySolution()
+        return self._waypoints_along(setup.getSolutionPath(), len(start))
 
     def _waypoints_along(self, path, dimension: int) -> list[np.ndarray]:
         """
@@ -356,14 +559,9 @@ class PlannedJointPathToPose(JointWaypointPath):
     Plans the path.
     """
 
-    root: Body = field(kw_only=True)
+    goal_sampler: GoalConfigurationSampler = field(kw_only=True)
     """
-    The body the arm is mounted below.
-    """
-
-    tool_frame: Body = field(kw_only=True)
-    """
-    The body that is brought to the goal pose.
+    Finds the joint configurations that put the arm's tool frame at the goal pose.
     """
 
     goal_pose: Pose = field(kw_only=True)
@@ -377,15 +575,8 @@ class PlannedJointPathToPose(JointWaypointPath):
     """
 
     def plan_waypoints(self, context: MotionStatechartContext) -> list[np.ndarray]:
-        goal_positions = context.world.compute_inverse_kinematics(
-            root=self.root,
-            tip=self.tool_frame,
-            target=self.goal_pose.homogeneous_matrix,
-        )
-        goal = np.array(
-            [goal_positions[connection.dof] for connection in self.connections]
-        )
-        waypoints = self.planner.plan(self.connections, goal)
+        goals = self.goal_sampler.configurations_reaching(self.goal_pose)
+        waypoints = self.planner.plan(goals)
         self.replanning_log.record(waypoints)
         return waypoints
 
@@ -452,9 +643,13 @@ class ReplannedToolCenterPointMotion(MoveToolCenterPointMotion):
         )
         planner = JointSpacePlanner(
             world=self.world,
-            collision_matrix=ArmCollisionPairs(
-                world=self.world, robot=self.robot
-            ).collision_matrix_of(self.arm, self.parameters.collision_margin),
+            robot=self.robot,
+            arm=self.arm,
+            # The cable is soft and meant to be touched; the demo allows its collisions.
+            ignored_bodies={
+                cable.root
+                for cable in self.world.get_semantic_annotations_by_type(Cable)
+            },
             illegal_configurations=illegal_configurations,
             parameters=self.parameters,
         )
@@ -472,8 +667,12 @@ class ReplannedToolCenterPointMotion(MoveToolCenterPointMotion):
                         name="planned joint path",
                         connections=self.arm.active_connections,
                         planner=planner,
-                        root=self.robot.root,
-                        tool_frame=self.arm.end_effector.tool_frame,
+                        goal_sampler=GoalConfigurationSampler(
+                            world=self.world,
+                            arm=self.arm,
+                            root=self.robot.root,
+                            parameters=self.parameters,
+                        ),
                         goal_pose=self.target,
                         replanning_log=self.replanning_log,
                     ),

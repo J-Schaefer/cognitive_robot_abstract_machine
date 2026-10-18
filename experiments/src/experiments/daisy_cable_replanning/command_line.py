@@ -3,6 +3,10 @@ from __future__ import annotations
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
+from experiments.daisy_cable_replanning.summary import (
+    ExperimentOutcome,
+    ReplanningComparison,
+)
 from experiments.daisy_cable_replanning.trials import (
     CableDemoExperiment,
     CableDemoTrial,
@@ -10,6 +14,7 @@ from experiments.daisy_cable_replanning.trials import (
     TrialFiles,
     TrialOption,
 )
+from experiments.daisy_cable_replanning.video import ReplanningVideo
 
 # %% command line
 
@@ -28,8 +33,48 @@ def run_from_command_line() -> None:
                 workers=arguments.workers,
                 illegal_joint_states=arguments.illegal_joint_states,
             ).run()
+        case Command.SUMMARIZE:
+            _summarize(arguments)
+        case Command.VIDEO:
+            print(_video(arguments).record())
         case Command.TRIAL:
             _trial(arguments).run()
+
+
+def _summarize(arguments: Namespace) -> None:
+    """
+    Print the summary of the experiment, and its comparison with the baseline if one is
+    given.
+    """
+    outcome = ExperimentOutcome.load(arguments.output)
+    print(outcome.describe())
+    if arguments.baseline is not None:
+        print("\ncompared with the baseline:")
+        print(
+            ReplanningComparison(
+                baseline=ExperimentOutcome.load(arguments.baseline),
+                replanning=outcome,
+            ).describe()
+        )
+
+
+def _video(arguments: Namespace) -> ReplanningVideo:
+    """
+    :return: The comparison video the arguments of the :attr:`Command.VIDEO` command
+        describe.
+    """
+    if arguments.seed is not None:
+        return ReplanningVideo(
+            output_directory=arguments.output,
+            seed=arguments.seed,
+            illegal_joint_states=arguments.illegal_joint_states,
+        )
+    return ReplanningVideo.of_first_improved_seed(
+        output_directory=arguments.output,
+        baseline=ExperimentOutcome.load(arguments.baseline),
+        replanning=ExperimentOutcome.load(arguments.replanning),
+        illegal_joint_states=arguments.illegal_joint_states,
+    )
 
 
 def _trial(arguments: Namespace) -> CableDemoTrial:
@@ -64,13 +109,45 @@ def _parser() -> ArgumentParser:
         experiment.add_argument("--trials", type=int, default=100)
         experiment.add_argument("--first-seed", type=int, default=0)
         experiment.add_argument("--workers", type=int, default=2)
-    record.set_defaults(illegal_joint_states=None)
-    replan.add_argument("--illegal-joint-states", type=Path, required=True)
+    record.set_defaults(illegal_joint_states=[])
+    replan.add_argument(
+        TrialOption.ILLEGAL_JOINT_STATES, type=Path, nargs="+", required=True
+    )
+
+    summarize = commands.add_parser(
+        Command.SUMMARIZE, help="summarize a finished experiment"
+    )
+    summarize.add_argument("--output", type=Path, required=True)
+    summarize.add_argument(
+        "--baseline",
+        type=Path,
+        default=None,
+        help="output of the experiment of the same seeds without replanning",
+    )
+
+    video = commands.add_parser(
+        Command.VIDEO, help="record one seed with and without replanning"
+    )
+    video.add_argument("--output", type=Path, required=True)
+    video.add_argument(
+        TrialOption.ILLEGAL_JOINT_STATES, type=Path, nargs="+", required=True
+    )
+    video.add_argument(
+        TrialOption.SEED,
+        type=int,
+        default=None,
+        help="seed to record; by default the first seed that collided in --baseline "
+        "and completed without any collision in --replanning",
+    )
+    video.add_argument("--baseline", type=Path, default=None)
+    video.add_argument("--replanning", type=Path, default=None)
 
     trial = commands.add_parser(Command.TRIAL, help="run the demo once")
     trial.add_argument(TrialOption.NUMBER, type=int, required=True)
     trial.add_argument(TrialOption.SEED, type=int, required=True)
     trial.add_argument(TrialOption.DIRECTORY, type=Path, required=True)
-    trial.add_argument(TrialOption.ILLEGAL_JOINT_STATES, type=Path, default=None)
+    trial.add_argument(
+        TrialOption.ILLEGAL_JOINT_STATES, type=Path, nargs="+", default=[]
+    )
     trial.add_argument(TrialOption.VIDEO, type=Path, default=None)
     return parser

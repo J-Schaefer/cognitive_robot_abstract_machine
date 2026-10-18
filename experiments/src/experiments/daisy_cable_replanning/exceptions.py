@@ -21,9 +21,9 @@ class NoJointPathFound(DataclassException):
     Positions of the planned joints at the start.
     """
 
-    goal: list[float]
+    goals: list[list[float]]
     """
-    Positions of the planned joints at the goal.
+    The alternative positions of the planned joints at the goal.
     """
 
     planning_time: float
@@ -33,12 +33,14 @@ class NoJointPathFound(DataclassException):
 
     def error_message(self) -> str:
         return (
-            f"No collision-free joint path from {self.start} to {self.goal} was found "
-            f"within {self.planning_time} s."
+            f"No collision-free joint path from {self.start} to any of "
+            f"{len(self.goals)} goal configurations was found within "
+            f"{self.planning_time} s."
         )
 
     def suggest_correction(self) -> str:
         return (
-            "Give the planner more time, lower the clearance to the illegal joint "
-            "states, or check whether start and goal are themselves in collision."
+            "Give the planner more time or more goal seeds, lower the clearance to the "
+            "illegal joint states, or check whether start and goals are themselves in "
+            "collision."
         )

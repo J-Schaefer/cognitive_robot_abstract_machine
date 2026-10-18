@@ -19,6 +19,7 @@ from experiments.daisy_cable_replanning.collisions import (
     IllegalJointStateDatabase,
 )
 from experiments.daisy_cable_replanning.replanning import (
+    GoalConfigurationSampler,
     JointSpacePlanner,
     ProbedJointState,
     ReplanningParameters,
@@ -28,11 +29,15 @@ from experiments.daisy_cable_replanning.trials import (
     TrialFiles,
     TrialNoise,
 )
+from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.daisy import DAiSy
+from semantic_digital_twin.semantic_annotations.cable import Cable
+from semantic_digital_twin.spatial_types.spatial_types import Pose
 from semantic_digital_twin.utils import daisy_installed
 from semantic_digital_twin.world import World
 
 pytestmark = pytest.mark.skipif(not daisy_installed(), reason="DAiSy not installed")
+
 
 # %% helpers
 
@@ -143,24 +148,26 @@ def _planner_around(world: World, illegal: np.ndarray) -> JointSpacePlanner:
     parameters = ReplanningParameters(planning_time=5.0)
     return JointSpacePlanner(
         world=world,
-        collision_matrix=ArmCollisionPairs(
-            world=world, robot=robot
-        ).collision_matrix_of(robot.right_arm, parameters.collision_margin),
+        robot=robot,
+        arm=robot.right_arm,
+        ignored_bodies={
+            cable.root for cable in world.get_semantic_annotations_by_type(Cable)
+        },
         illegal_configurations=configurations,
         parameters=parameters,
     )
 
 
 def test_planned_path_keeps_clear_of_the_illegal_configuration(
-    parked_daisy_world: World,
+    parked_daisy_world: World, safe_right_posture: tuple[float, ...]
 ):
     connections = _robot(parked_daisy_world).right_arm.active_connections
     start = np.array([connection.position for connection in connections])
-    goal = np.array(DemoScript.daisy_cable_demo().load().SafeArmPosture.RIGHT.value)
+    goal = np.array(safe_right_posture)
     illegal = np.concatenate([np.zeros(6), (start + goal) / 2])
     planner = _planner_around(parked_daisy_world, illegal)
 
-    waypoints = planner.plan(connections, goal)
+    waypoints = planner.plan([goal])
 
     assert waypoints[0] == pytest.approx(start)
     assert waypoints[-1] == pytest.approx(goal)
@@ -170,18 +177,19 @@ def test_planned_path_keeps_clear_of_the_illegal_configuration(
     )
     with ProbedJointState(world=parked_daisy_world, connections=connections) as probe:
         assert all(
-            probe.is_collision_free(waypoint, planner.collision_matrix)
+            probe.is_collision_free(waypoint, planner.collision_matrix())
             for waypoint in waypoints
         )
 
 
-def test_planning_leaves_the_world_state_unchanged(parked_daisy_world: World):
-    connections = _robot(parked_daisy_world).right_arm.active_connections
+def test_planning_leaves_the_world_state_unchanged(
+    parked_daisy_world: World, safe_right_posture: tuple[float, ...]
+):
     state_before = parked_daisy_world.state.positions.copy()
-    goal = np.array(DemoScript.daisy_cable_demo().load().SafeArmPosture.RIGHT.value)
+    goal = np.array(safe_right_posture)
     planner = _planner_around(parked_daisy_world, np.full(12, 10.0))
 
-    planner.plan(connections, goal)
+    planner.plan([goal])
 
     assert parked_daisy_world.state.positions == pytest.approx(state_before)
 
@@ -191,7 +199,7 @@ def test_planning_leaves_the_world_state_unchanged(parked_daisy_world: World):
 
 def test_replanning_avoids_the_collisions_a_recorded_trial_ran_into(tmp_path: Path):
     recording = CableDemoTrial(
-        number=0, seed=5, files=TrialFiles(directory=tmp_path / "record", number=0)
+        number=0, seed=8, files=TrialFiles(directory=tmp_path / "record", number=0)
     )
     recording.run()
     database = IllegalJointStateDatabase.for_daisy_arms()
@@ -199,9 +207,9 @@ def test_replanning_avoids_the_collisions_a_recorded_trial_ran_into(tmp_path: Pa
     database.save(tmp_path / "illegal_joint_states.json")
     replanning = CableDemoTrial(
         number=0,
-        seed=5,
+        seed=8,
         files=TrialFiles(directory=tmp_path / "replan", number=0),
-        illegal_joint_states=tmp_path / "illegal_joint_states.json",
+        illegal_joint_states=[tmp_path / "illegal_joint_states.json"],
     )
 
     replanning.run()
@@ -227,3 +235,112 @@ def test_trial_noise_moves_only_the_post():
     assert replace(perturbed, post_x=0, post_y=0, post_yaw=0) == replace(
         layout, post_x=0, post_y=0, post_yaw=0
     )
+
+
+def test_planner_leaves_a_cable_unchecked(parked_daisy_world: World):
+    robot = _robot(parked_daisy_world)
+    gripper = robot.right_arm.end_effector
+    with parked_daisy_world.modify_world():
+        cable = Cable.create_with_new_body_in_world(
+            name=PrefixedName("cable"),
+            world=parked_daisy_world,
+            hanging_from=gripper.tool_frame,
+            length=0.1,
+        ).root
+    planner = _planner_around(parked_daisy_world, np.full(12, 10.0))
+    arm_pairs = ArmCollisionPairs(world=parked_daisy_world, robot=robot)
+
+    checked_bodies = {
+        body
+        for check in planner.collision_matrix().collision_checks
+        for body in (check.body_a, check.body_b)
+    }
+
+    assert cable in {
+        body
+        for check in arm_pairs.collision_matrix_of(
+            robot.right_arm, 0.0
+        ).collision_checks
+        for body in (check.body_a, check.body_b)
+    }
+    assert cable not in checked_bodies
+    assert checked_bodies & arm_pairs.bodies_of_arm[robot.right_arm]
+
+
+def test_probe_counts_only_pairs_closer_than_their_distance(parked_daisy_world: World):
+    robot = _robot(parked_daisy_world)
+    connections = robot.right_arm.active_connections
+    pairs = ArmCollisionPairs(world=parked_daisy_world, robot=robot)
+    far = pairs.collision_matrix_of(robot.right_arm, distance=1.0)
+    closest = min(
+        contact.distance
+        for contact in parked_daisy_world.collision_manager.collision_detector.check_collisions(
+            far
+        ).contacts
+    )
+    positions = np.array([connection.position for connection in connections])
+
+    with ProbedJointState(world=parked_daisy_world, connections=connections) as probe:
+        free_below = probe.is_collision_free(
+            positions, pairs.collision_matrix_of(robot.right_arm, closest * 0.9)
+        )
+        free_above = probe.is_collision_free(
+            positions, pairs.collision_matrix_of(robot.right_arm, closest * 1.1)
+        )
+
+    assert closest > 0
+    assert free_below
+    assert not free_above
+
+
+# %% goal configurations
+
+
+def _tool_frame_pose_at(world: World, positions: np.ndarray) -> Pose:
+    """
+    :return: The pose of the right tool frame with the right arm at the positions.
+    """
+    robot = _robot(world)
+    with ProbedJointState(
+        world=world, connections=robot.right_arm.active_connections
+    ) as probe:
+        probe.write(positions)
+        return robot.right_arm.end_effector.tool_frame.global_transform.pose
+
+
+def test_goal_configurations_put_the_tool_frame_at_the_pose(
+    parked_daisy_world: World, safe_right_posture: tuple[float, ...]
+):
+    robot = _robot(parked_daisy_world)
+    pose = _tool_frame_pose_at(parked_daisy_world, np.array(safe_right_posture))
+    state_before = parked_daisy_world.state.positions.copy()
+    sampler = GoalConfigurationSampler(
+        world=parked_daisy_world,
+        arm=robot.right_arm,
+        root=robot.root,
+        parameters=ReplanningParameters(goal_seeds=4),
+    )
+
+    configurations = sampler.configurations_reaching(pose)
+
+    assert configurations != []
+    for configuration in configurations:
+        reached = _tool_frame_pose_at(parked_daisy_world, configuration)
+        assert reached.position.to_np() == pytest.approx(
+            pose.position.to_np(), abs=0.01
+        )
+    assert parked_daisy_world.state.positions == pytest.approx(state_before)
+
+
+def test_planner_reaches_the_valid_one_of_several_goals(
+    parked_daisy_world: World, safe_right_posture: tuple[float, ...]
+):
+    goal = np.array(safe_right_posture)
+    illegal_goal = goal + 0.5
+    planner = _planner_around(
+        parked_daisy_world, np.concatenate([np.zeros(6), illegal_goal])
+    )
+
+    waypoints = planner.plan([illegal_goal, goal])
+
+    assert waypoints[-1] == pytest.approx(goal)
