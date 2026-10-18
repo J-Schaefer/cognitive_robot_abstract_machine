@@ -183,10 +183,36 @@ Every `record` or `replan` run writes into its output directory:
 | file | content |
 |---|---|
 | `trial_results.json` | per trial: seed, failure (the error's last line, or none), number of illegal joint states, number of replanned motions |
-| `illegal_joint_states.json` | the `IllegalJointStateDatabase` of all illegal joint states the trials ran into. Pass it to `--illegal-joint-states` |
+| `illegal_joint_states.json` | the `IllegalJointStateDatabase` of the illegal joint states the trials ran into, without repeated poses (see below). Pass it to `--illegal-joint-states` |
 | `trials/trial_NNN.collisions.jsonl` | one `IllegalJointState` per line: the 12 arm joint positions, the joints of the colliding arms, the collision kind, the two bodies, the penetration depth, the motion (`MotionLabel`: stage, index in the stage, action, motion type) |
 | `trials/trial_NNN.replanning.jsonl` | one replanned motion per line: its label, where the arm retracted to, the planned waypoints |
 | `trials/trial_NNN.log`, `.errors.log` | the trial process's output and error streams |
+
+### Repeated poses
+
+The trials of a run often collide in almost the same pose, e.g. the same forearm
+contact in every trial. After all trials, `record` and `replan` therefore leave out
+of `illegal_joint_states.json` every state that repeats an earlier pose:
+
+- A repeat has the same colliding joints as an earlier state.
+- On those joints, it differs from that state by at most `--duplicate-tolerance`
+  (default 0.02 rad, the spacing the recorder logs states at; small against the
+  guard's 0.15 rad trigger distance).
+- The first state of each pose is kept.
+
+The run prints how many states were left out. The trials' `.collisions.jsonl` logs
+always keep every state.
+
+| option | effect |
+|---|---|
+| (none) | repeated poses are left out, tolerance 0.02 rad |
+| `--duplicate-tolerance 0.01` | a smaller (or larger) joint difference counts as the same pose |
+| `--keep-duplicate-poses` | every logged state is written into the database |
+
+For example, the series 2 recording holds 8,930 states. 3,547 of them are distinct
+poses at 0.02 rad, 6,126 at 0.01 rad. There are no exact duplicates. The runs reported
+below wrote their databases before this option existed, so they still hold every
+state.
 
 All JSON is written by `krrood.adapters.json_serializer`. `IllegalJointStateDatabase.load`
 reads a database back.

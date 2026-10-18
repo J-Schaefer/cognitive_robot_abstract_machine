@@ -37,6 +37,8 @@ def run_from_command_line() -> None:
                 first_seed=arguments.first_seed,
                 workers=arguments.workers,
                 illegal_joint_states=arguments.illegal_joint_states,
+                removes_duplicate_poses=arguments.removes_duplicate_poses,
+                duplicate_tolerance=arguments.duplicate_tolerance,
             ).run()
         case Command.SUMMARIZE:
             _summarize(arguments)
@@ -133,6 +135,20 @@ def _parser() -> ArgumentParser:
         experiment.add_argument("--trials", type=int, default=100)
         experiment.add_argument("--first-seed", type=int, default=0)
         experiment.add_argument("--workers", type=int, default=2)
+        experiment.add_argument(
+            "--keep-duplicate-poses",
+            dest="removes_duplicate_poses",
+            action="store_false",
+            help="write every logged state into the database, also those repeating "
+            "an earlier pose",
+        )
+        experiment.add_argument(
+            "--duplicate-tolerance",
+            type=float,
+            default=CableDemoExperiment.duplicate_tolerance,
+            help="largest joint difference in radians at which two states count as "
+            f"the same pose (default: {CableDemoExperiment.duplicate_tolerance})",
+        )
     record.set_defaults(illegal_joint_states=[])
     replan.add_argument(
         TrialOption.ILLEGAL_JOINT_STATES, type=Path, nargs="+", required=True

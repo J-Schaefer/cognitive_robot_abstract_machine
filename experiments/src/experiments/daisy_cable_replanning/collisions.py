@@ -232,6 +232,46 @@ class IllegalJointStateDatabase:
             ],
         )
 
+    def without_duplicate_poses(self, tolerance: float) -> Self:
+        """
+        :param tolerance: Largest joint difference, in radians, at which two states
+            count as the same pose.
+        :return: This database without the states that have the same colliding joints
+            as an earlier state and differ from it by at most the tolerance on those
+            joints; the first state of each pose is kept, in order.
+        """
+        positions = np.array(
+            [state.positions for state in self.illegal_joint_states], dtype=float
+        ).reshape(-1, len(self.joint_names))
+        colliding = np.array(
+            [
+                [name in state.colliding_joint_names for name in self.joint_names]
+                for state in self.illegal_joint_states
+            ],
+            dtype=bool,
+        ).reshape(-1, len(self.joint_names))
+        kept_positions = np.empty_like(positions)
+        kept_colliding = np.empty_like(colliding)
+        kept_states = []
+        for state, state_positions, state_colliding in zip(
+            self.illegal_joint_states, positions, colliding
+        ):
+            count = len(kept_states)
+            same_joints = np.all(kept_colliding[:count] == state_colliding, axis=1)
+            differences = np.where(
+                state_colliding, np.abs(kept_positions[:count] - state_positions), 0.0
+            )
+            if np.any(
+                same_joints & (np.max(differences, axis=1, initial=0.0) <= tolerance)
+            ):
+                continue
+            kept_positions[count] = state_positions
+            kept_colliding[count] = state_colliding
+            kept_states.append(state)
+        return type(self)(
+            joint_names=self.joint_names, illegal_joint_states=kept_states
+        )
+
     def extend_from_log(self, path: Path) -> None:
         """
         Add the states of a log written by :class:`ArmCollisionRecorder`.

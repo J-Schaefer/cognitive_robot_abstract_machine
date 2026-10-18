@@ -475,6 +475,18 @@ class CableDemoExperiment:
     the demo as it is.
     """
 
+    removes_duplicate_poses: bool = True
+    """
+    Whether states that repeat an earlier pose are left out of the database written
+    after all trials; the trials' own logs keep every state.
+    """
+
+    duplicate_tolerance: float = 0.02
+    """
+    Largest joint difference, in radians, at which two states with the same colliding
+    joints count as the same pose, the spacing the recorder logs states at.
+    """
+
     @property
     def database_path(self) -> Path:
         """
@@ -511,9 +523,27 @@ class CableDemoExperiment:
             results = list(pool.map(CableDemoTrial.run_in_own_process, trials))
 
         self.results_path.write_text(json.dumps(to_json(results)))
+        self.collected_database(trials).save(self.database_path)
+        return results
+
+    def collected_database(
+        self, trials: list[CableDemoTrial]
+    ) -> IllegalJointStateDatabase:
+        """
+        :return: The illegal joint states the trials logged, without repeated poses if
+            :attr:`removes_duplicate_poses`.
+        """
         database = IllegalJointStateDatabase.for_daisy_arms()
         for trial in trials:
             if trial.files.collisions.exists():
                 database.extend_from_log(trial.files.collisions)
-        database.save(self.database_path)
-        return results
+        if not self.removes_duplicate_poses:
+            return database
+        distinct = database.without_duplicate_poses(self.duplicate_tolerance)
+        print(
+            f"{len(database.illegal_joint_states) - len(distinct.illegal_joint_states)}"
+            f" of {len(database.illegal_joint_states)} illegal joint states repeat a "
+            f"pose within {self.duplicate_tolerance} rad and were left out",
+            flush=True,
+        )
+        return distinct
