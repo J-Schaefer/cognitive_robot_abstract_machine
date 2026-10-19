@@ -7,6 +7,10 @@ from pathlib import Path
 
 from experiments.daisy_cable_replanning.curation import KeptDatabase
 from experiments.daisy_cable_replanning.joint_state_browser import JointStateBrowser
+from experiments.daisy_cable_replanning.joint_state_metrics import (
+    SeriesJointStateMetrics,
+)
+from experiments.daisy_cable_replanning.replanning import ReplanningParameters
 from experiments.daisy_cable_replanning.summary import (
     ExperimentOutcome,
     ReplanningComparison,
@@ -42,6 +46,16 @@ def run_from_command_line() -> None:
             ).run()
         case Command.SUMMARIZE:
             _summarize(arguments)
+        case Command.JOINT_STATES:
+            print(
+                SeriesJointStateMetrics.of(
+                    series_directory=arguments.series,
+                    rounds=arguments.rounds,
+                    extra_databases=arguments.extra_databases,
+                    tolerance=arguments.duplicate_tolerance,
+                    trigger_distance=ReplanningParameters.trigger_distance,
+                ).describe()
+            )
         case Command.VIDEO:
             print(_video(arguments).record())
         case Command.BROWSE:
@@ -163,6 +177,26 @@ def _parser() -> ArgumentParser:
         type=Path,
         default=None,
         help="output of the experiment of the same seeds without replanning",
+    )
+
+    joint_states = commands.add_parser(
+        Command.JOINT_STATES, help="count the illegal joint states of a series"
+    )
+    joint_states.add_argument(
+        "--series", type=Path, required=True, help="output directory of run_series.sh"
+    )
+    joint_states.add_argument("--rounds", type=int, required=True)
+    joint_states.add_argument(
+        "--extra-databases",
+        type=Path,
+        nargs="*",
+        default=[],
+        help="databases of earlier series the replanning used",
+    )
+    joint_states.add_argument(
+        "--duplicate-tolerance",
+        type=float,
+        default=CableDemoExperiment.duplicate_tolerance,
     )
 
     video = commands.add_parser(

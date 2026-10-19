@@ -8,7 +8,8 @@
 # 3. replan_round_N:  training seeds, replanning around every database so far; the
 #                     illegal joint states each round still runs into are added
 # 4. heldout_replan:  held-out seeds, replanning around all databases
-# 5. video:           the first held-out seed that collided in the baseline, with and
+# 5. summary.txt, joint_state_metrics.md: the outcomes and the joint state counts
+# 6. video:           the first held-out seed that collided in the baseline, with and
 #                     without replanning, side by side
 #
 # Extra databases (e.g. of an earlier series) are used in every replanning step.
@@ -53,6 +54,10 @@ for RUN in record heldout_record $(seq -f "replan_round_%g" 1 "$ROUNDS") heldout
     python -m experiments.daisy_cable_replanning summarize --output "$OUTPUT/$RUN" \
         ${BASELINE:+--baseline "$BASELINE"}
 done > "$OUTPUT/summary.txt"
+
+python -m experiments.daisy_cable_replanning joint-states --series "$OUTPUT" \
+    --rounds "$ROUNDS" --extra-databases "${EXTRA_DATABASES[@]}" \
+    > "$OUTPUT/joint_state_metrics.md"
 
 experiment video --output "$OUTPUT/video" --baseline "$OUTPUT/heldout_record" \
     --replanning "$OUTPUT/heldout_replan" --illegal-joint-states "${DATABASES[@]}" \

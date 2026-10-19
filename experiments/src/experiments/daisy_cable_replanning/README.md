@@ -25,9 +25,10 @@ runs into are added to the database for the next round.
 | `collisions.py` | recording: `ArmCollisionRecorder`, `IllegalJointState`, `IllegalJointStateDatabase`, `MotionLabel` |
 | `replanning.py` | replanning: `ReplanningTransformation`, `ReplannedToolCenterPointMotion`, `JointSpacePlanner`, `GoalConfigurationSampler`, `ReplanningParameters` |
 | `summary.py` | `ExperimentOutcome` and `ReplanningComparison`, the numbers reported below |
+| `joint_state_metrics.py` | `SeriesJointStateMetrics`, the joint state counts of a series (`joint-states` command) |
 | `curation.py` | `IllegalJointStateCuration`, choosing recorded states to keep; `KeptDatabase`, the permanent files |
 | `joint_state_browser.py`, `robot_snapshot.py` | the window for choosing states to keep, and the rendering of the robot in it |
-| `command_line.py`, `__main__.py` | the command line: `record`, `replan`, `summarize`, `video`, `browse`, `trial` |
+| `command_line.py`, `__main__.py` | the command line: `record`, `replan`, `summarize`, `joint-states`, `video`, `browse`, `trial` |
 | `run_series.sh` | one complete series, as run for the results below |
 
 The generic Giskard pieces live in giskardpy. They are documented in
@@ -103,7 +104,8 @@ experiments/src/experiments/daisy_cable_replanning/run_series.sh \
 ```
 
 `TRIALS`, `WORKERS`, `MEMORY` and `HELDOUT_SEED` can be set as environment variables.
-The script writes `summary.txt` and `video/` into the series directory. With 6 workers
+The script writes `summary.txt`, `joint_state_metrics.md` and `video/` into the
+series directory. With 6 workers
 on a 16-core machine, a series of 100 trials per step takes about 1.5 hours.
 
 ### Step by step
@@ -130,8 +132,9 @@ $CAP $E replan --output $S/heldout_replan --first-seed 100 --trials 100 --worker
     --illegal-joint-states $S/record/illegal_joint_states.json \
                            $S/replan_round_*/illegal_joint_states.json
 
-# 4. numbers and video
+# 4. numbers, joint state counts and video
 $E summarize --output $S/heldout_replan --baseline $S/heldout_record
+$E joint-states --series $S --rounds 2 [--extra-databases <databases of earlier series>]
 $CAP $E video --output $S/video --baseline $S/heldout_record \
     --replanning $S/heldout_replan --illegal-joint-states <same databases as step 3>
 
@@ -216,6 +219,26 @@ state.
 
 All JSON is written by `krrood.adapters.json_serializer`. `IllegalJointStateDatabase.load`
 reads a database back.
+
+### Joint state metrics
+
+`joint-states` counts, for every run of a series (`joint_state_metrics.md`):
+
+| column | meaning |
+|---|---|
+| states replanned around | states of all databases the run used |
+| logged | states its trials logged (`trials/*.collisions.jsonl`) |
+| duplicate share | share of the logged states that repeat an earlier pose at the duplicate tolerance |
+| distinct poses | logged states left after removing the repeats |
+| written | states of the database the run wrote |
+| logged within guard reach | logged states within the trigger distance (0.15 rad) of a state the run replanned around. These are collisions the guard knew of and still did not prevent |
+
+Below the table it reports three more numbers:
+- the states of all training databases,
+- the **coverage**: the share of the held-out baseline's collisions within the trigger
+  distance of those databases, i.e. how many collisions of new seeds the guard would
+  recognize,
+- the time the guard's distance check takes per control cycle.
 
 ## Keeping illegal joint states for good
 
@@ -346,6 +369,79 @@ without any collision with it:
 
 - Left, Giskard alone: 59 illegal joint states.
 - Right, with replanning: 6 motions replanned, no collision, every stage completed.
+
+### Series 3: series 2 repeated with repeated poses removed
+
+Directory: `series_3_duplicate_poses_removed/`.
+
+Series 3 is `run_series.sh` with 3 rounds and series 1's database as an extra input,
+exactly as series 2 but with the current code: duplicate removal at its default (0.02
+rad), 64 goal seeds, nearest goal first, seeded OMPL. The runs without replanning
+reproduce series 2 exactly (8,930 and 8,260 logged states).
+
+Joint state metrics (`joint_state_metrics.md`):
+
+| run | states replanned around | logged | duplicate share | distinct poses | written | logged within guard reach |
+|---|---|---|---|---|---|---|
+| record | 0 | 8,930 | 60% | 3,547 | 3,547 | 0 |
+| heldout_record | 0 | 8,260 | 59% | 3,397 | 3,397 | 0 |
+| replan_round_1 | 4,996 | 3,264 | 43% | 1,874 | 1,874 | 28 |
+| replan_round_2 | 6,870 | 287 | 55% | 129 | 129 | 0 |
+| replan_round_3 | 6,999 | 4,582 | 51% | 2,223 | 2,223 | 0 |
+| heldout_replan | 9,222 | 2,261 | 56% | 995 | 995 | 0 |
+
+- The training databases hold 9,222 states; series 2's held 23,380.
+- They still cover 100 % of the held-out baseline's collisions, as series 2's did.
+
+Outcomes (`summary.txt`):
+
+| run | completed | trials colliding | completed without any collision |
+|---|---|---|---|
+| `record` / `heldout_record` | 79 / 76 | 94 / 87 | 0 / 0 |
+| `replan_round_1` | 72 | 82 | 0 |
+| `replan_round_2` | 60 | 15 | 47 |
+| `replan_round_3` | 68 | 30 | 38 |
+| `heldout_replan` | 28 | 37 | 26 |
+
+**Effect of removing repeated poses.** Series 2 and 3 cannot be compared directly,
+because their training rounds ran with different code. The feature was therefore
+measured on identical training data: the held-out replanning was repeated with
+databases of *all* logged states of the same series 3 runs
+(`all_logged_states/`, `heldout_replan_all_states/`).
+
+| held-out seeds 100-199 | repeated poses removed | all logged states |
+|---|---|---|
+| states in the training databases | 9,222 | 18,512 |
+| size of the database files | 10.0 MB | 20.1 MB |
+| guard check per control cycle | 0.27 ms | 0.59 ms |
+| planning time per replanned motion, mean / median | 0.53 s / 0.24 s | 1.00 s / 0.46 s |
+| completed | 28 | 29 |
+| trials colliding | 37 | 40 |
+| completed without any collision | 26 | 24 |
+| illegal joint states logged | 2,261 | 2,464 |
+| replanned motions | 509 | 505 |
+
+Removing repeated poses halves the databases, and with them the guard's check per
+control cycle and the planning time. The outcomes stay the same within the run-to-run
+variation of replanning.
+
+**Other findings.**
+- **Guard reach.** Collisions the guard knew of are rare: at most 28 logged states per
+  run lie within the trigger distance of the databases used. Nearly all collisions
+  after replanning happen in poses no earlier run has visited. The database
+  limits what the guard can prevent, not the guard itself.
+- **Rounds do not converge steadily.** Round 3 logs more collisions than round 2 (4,582
+  vs 287). Each round's replans lead the arms into new configurations, and those can
+  collide anew.
+- **Completion.** Compared with series 2, more held-out runs complete without any
+  collision (26 vs 3), but fewer complete at all (28 vs 61). 31 of them stall in a
+  Cartesian motion of the rehang (`MoveTCP/position#18`), right after a replanned
+  regrasp. The run with all logged
+  states stalls there just as often (30), so the stall comes from series 3's training
+  history, not from removing repeated poses.
+
+The video `series_3_duplicate_poses_removed/video/daisy_cable_replanning_seed102.mp4`
+shows held-out seed 102.
 
 ## Known limitations
 

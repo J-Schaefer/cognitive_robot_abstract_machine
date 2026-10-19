@@ -62,6 +62,12 @@ class Command(StrEnum):
     experiment of the same seeds without replanning.
     """
 
+    JOINT_STATES = "joint-states"
+    """
+    Count the illegal joint states of a finished series: logged, duplicated, written,
+    and within the guard's reach.
+    """
+
     VIDEO = "video"
     """
     Record one seed with and without replanning and put the videos side by side.
