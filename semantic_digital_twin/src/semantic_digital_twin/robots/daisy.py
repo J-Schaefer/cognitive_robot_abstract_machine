@@ -7,12 +7,15 @@ from __future__ import annotations
 
 # %% Imports
 import os
+from abc import ABC
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
 from typing_extensions import Self
+
+from typing_extensions import Generic
 
 from krrood.patterns.classproperty import classproperty
 
@@ -39,6 +42,7 @@ from semantic_digital_twin.robots.griplink_gripper import (
 from semantic_digital_twin.robots.robot_part_mixins import (
     HasLeftRightArm,
     HasTwoFingers,
+    TGenericEndEffector,
 )
 from semantic_digital_twin.robots.robot_parts import (
     AbstractRobot,
@@ -46,8 +50,13 @@ from semantic_digital_twin.robots.robot_parts import (
     EndEffector,
     Finger,
     RobotCamera,
+    ServoedRobotPart,
 )
 from krrood_spatial_math.spatial_types import HomogeneousTransformationMatrix, Vector3
+from semantic_digital_twin.world_description.connection_properties import (
+    JointDrive,
+    ServoGains,
+)
 from semantic_digital_twin.world_description.world_entity import (
     KinematicStructureEntity,
 )
@@ -186,9 +195,95 @@ class DAiSyRightGripperRightFinger(Finger):
         )
 
 
+# %% what drives DAiSy's joints in a physical simulation
+
+
+@dataclass(eq=False)
+class DAiSyGripper(GriplinkGripper, ServoedRobotPart, ABC):
+    """
+    A WEISS WPG 300-120 gripper of DAiSy, whose fingers are driven by a position servo
+    in a physical simulation.
+
+    No tuned reference model of this gripper exists; the gains are those of the parallel
+    jaw in robosimstudio's DAiSy cable demo.
+    """
+
+    @property
+    def approach_axis(self) -> Vector3:
+        return Vector3.Z(reference_frame=self.tool_frame)
+
+    @property
+    def closing_axis(self) -> Vector3:
+        return Vector3.X(reference_frame=self.tool_frame)
+
+    @property
+    def drive_of_each_joint(self) -> dict[str, JointDrive]:
+        """
+        Every finger joint, driven alike.
+        """
+        finger_drive = JointDrive(
+            gains=ServoGains(stiffness=2000.0, damping=40.0, torque_limit=100.0),
+            armature=0.01,
+            joint_damping=5.0,
+        )
+        return {
+            connection.name.name: finger_drive for connection in self.active_connections
+        }
+
+    @classproperty
+    def holds_its_own_weight(cls) -> bool:
+        return True
+
+
+@dataclass(eq=False)
+class DAiSyArm(
+    Arm[TGenericEndEffector], ServoedRobotPart, Generic[TGenericEndEffector], ABC
+):
+    """
+    A UR5 arm of DAiSy, servoed in a physical simulation like MuJoCo Menagerie's
+    ``universal_robots_ur5e``, whose link lengths match the UR5's.
+    """
+
+    @property
+    def drive_of_each_joint(self) -> dict[str, JointDrive]:
+        """
+        Menagerie's ``size3`` actuators for the shoulder and elbow joints, its ``size1``
+        actuators for the wrist joints.
+        """
+        large = JointDrive(
+            gains=ServoGains(stiffness=2000.0, damping=400.0, torque_limit=150.0),
+            armature=0.1,
+        )
+        small = JointDrive(
+            gains=ServoGains(stiffness=500.0, damping=100.0, torque_limit=28.0),
+            armature=0.1,
+        )
+        drive_by_unprefixed_name = {
+            "shoulder_pan_joint": large,
+            "shoulder_lift_joint": large,
+            "elbow_joint": large,
+            "wrist_1_joint": small,
+            "wrist_2_joint": small,
+            "wrist_3_joint": small,
+        }
+        return {
+            connection.name.name: drive_by_unprefixed_name[
+                connection.name.name.removeprefix("left_").removeprefix("right_")
+            ]
+            for connection in self.active_connections
+        }
+
+    @classproperty
+    def holds_its_own_weight(cls) -> bool:
+        return True
+
+
+# %% grippers and arms
+
+
 @dataclass(eq=False)
 class DAiSyLeftGripper(
-    GriplinkGripper,
+    DAiSyGripper,
     HasTwoFingers[DAiSyLeftGripperLeftFinger, DAiSyLeftGripperRightFinger],
 ):
     @classproperty
@@ -239,14 +334,6 @@ class DAiSyLeftGripper(
         )
         return [gripper_open, gripper_close]
 
-    @property
-    def approach_axis(self) -> Vector3:
-        return Vector3.Z(reference_frame=self.tool_frame)
-
-    @property
-    def closing_axis(self) -> Vector3:
-        return Vector3.X(reference_frame=self.tool_frame)
-
     @classmethod
     def setup_default_configuration_in_world_below_robot_root(
         cls, robot_root: KinematicStructureEntity
@@ -263,7 +350,7 @@ class DAiSyLeftGripper(
 
 @dataclass(eq=False)
 class DAiSyRightGripper(
-    GriplinkGripper,
+    DAiSyGripper,
     HasTwoFingers[DAiSyRightGripperLeftFinger, DAiSyRightGripperRightFinger],
 ):
     @classproperty
@@ -315,14 +402,6 @@ class DAiSyRightGripper(
 
         return [gripper_open, gripper_close]
 
-    @property
-    def approach_axis(self) -> Vector3:
-        return Vector3.Z(reference_frame=self.tool_frame)
-
-    @property
-    def closing_axis(self) -> Vector3:
-        return Vector3.X(reference_frame=self.tool_frame)
-
     @classmethod
     def setup_default_configuration_in_world_below_robot_root(
         cls, robot_root: KinematicStructureEntity
@@ -338,7 +417,7 @@ class DAiSyRightGripper(
 
 
 @dataclass(eq=False)
-class DAiSyLeftArm(Arm[DAiSyLeftGripper]):
+class DAiSyLeftArm(DAiSyArm[DAiSyLeftGripper]):
     def setup_hardware_interfaces(self) -> None:
         self._setup_hardware_interfaces_for_active_connections()
 
@@ -378,7 +457,7 @@ class DAiSyLeftArm(Arm[DAiSyLeftGripper]):
 
 
 @dataclass(eq=False)
-class DAiSyRightArm(Arm[DAiSyRightGripper]):
+class DAiSyRightArm(DAiSyArm[DAiSyRightGripper]):
     def setup_hardware_interfaces(self) -> None:
         self._setup_hardware_interfaces_for_active_connections()
 

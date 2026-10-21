@@ -1996,6 +1996,10 @@ class MujocoSingleJoint(MujocoConnectionJoints[ConnectionType]):
         return self.element_names.of(mimicked_connection)
 
     def home_joint_positions(self) -> list[float]:
+        # A mimic joint stands at its own position, not at the one of the degree of
+        # freedom it shares.
+        if isinstance(self.connection, ActiveConnection1DOF):
+            return [self.connection.position]
         return [
             self.world.state[degree_of_freedom.id].position
             for degree_of_freedom in self.connection.active_dofs

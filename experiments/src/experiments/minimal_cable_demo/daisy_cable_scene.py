@@ -1,0 +1,447 @@
+"""
+What the cable demonstrations with DAiSy share: the robot's world, the bodies a cable
+touches, the poses and finger positions that grip a cable, and running a plan
+kinematically or against the physics.
+
+The cable is simulated by SuperDex and the robot by MuJoCo.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+from datetime import timedelta
+from enum import StrEnum
+from pathlib import Path
+
+import imageio.v2 as imageio
+import mujoco
+import numpy
+from coraplex.plans.context_extensions import RobotAccess
+from coraplex.plans.executors import (
+    KinematicallySimulatedPlanExecutor,
+    PhysicallySimulatedPlanExecutor,
+    PlanExecutor,
+)
+from cramph.composites import Sequence
+from cramph.context import StatechartContext
+from cramph.node import StatechartNode
+from cramph.statechart import Statechart
+from giskardpy.motion_statechart.tasks.joint_tasks import JointPositionList
+from krrood_spatial_math.spatial_types import Pose
+from numpy.typing import NDArray
+from scipy.spatial.transform import Rotation
+from semantic_digital_twin.adapters.superdex.mujoco_cable_simulation import (
+    MujocoBodyPoses,
+    MujocoSuperdexSim,
+)
+from semantic_digital_twin.adapters.urdf import URDFParser
+from semantic_digital_twin.datastructures.joint_state import JointState
+from semantic_digital_twin.robots.daisy import DAiSy, DAiSyGripper
+from semantic_digital_twin.world import World
+from semantic_digital_twin.world_description.geometry import Color
+from typing_extensions import Any
+
+# %% names in the DAiSy description
+
+
+class DAiSyCableBody(StrEnum):
+    """
+    The bodies of DAiSy the cable can touch, as its description names them.
+    """
+
+    TABLE = "table_center"
+    LEFT_GRIPPER_LEFT_FINGER_TIP = "left_gripper_left_finger_tip_link"
+    LEFT_GRIPPER_RIGHT_FINGER_TIP = "left_gripper_right_finger_tip_link"
+    RIGHT_GRIPPER_LEFT_FINGER_TIP = "right_gripper_left_finger_tip_link"
+    RIGHT_GRIPPER_RIGHT_FINGER_TIP = "right_gripper_right_finger_tip_link"
+
+
+class CommandLineFlag(StrEnum):
+    """
+    The switches of the demonstrations' command lines.
+    """
+
+    HEADLESS = "--headless"
+    """
+    Run without the MuJoCo viewer.
+    """
+
+    VIDEO = "--video"
+    """
+    Record a video of the run into the file that follows.
+    """
+
+
+# %% video
+
+
+@dataclass
+class CableVideo:
+    """
+    Frames of a simulation with its cables, rendered offscreen from a fixed camera.
+    """
+
+    path: Path
+    """
+    The file the video is written to.
+    """
+
+    frames_per_second: int = 30
+    """
+    The rate the video plays back at, in simulated time.
+    """
+
+    width: int = 960
+    """
+    The width of a frame, in pixels.
+    """
+
+    height: int = 720
+    """
+    The height of a frame, in pixels.
+    """
+
+    look_at: tuple[float, float, float] = (0.4, 0.6, 0.75)
+    """
+    The point the camera looks at, in the frame of the world root, in metres.
+    """
+
+    distance: float = 1.4
+    """
+    How far the camera is from :attr:`look_at`, in metres.
+    """
+
+    azimuth: float = 200.0
+    """
+    The direction the camera looks along, about the vertical axis, in degrees.
+    """
+
+    elevation: float = -40.0
+    """
+    How far the camera looks down, in degrees.
+    """
+
+    frames: list[NDArray[numpy.uint8]] = field(init=False, default_factory=list)
+    """
+    The frames captured so far.
+    """
+
+    _renderer: Any = field(init=False, default=None)
+    """
+    The offscreen renderer, built with the first frame.
+    """
+
+    _simulated_time_since_frame: timedelta = field(
+        init=False, default_factory=timedelta
+    )
+    """
+    How much simulated time passed since the last frame was captured.
+    """
+
+    def __post_init__(self):
+        # Offscreen rendering needs a headless OpenGL backend.
+        os.environ.setdefault("MUJOCO_GL", "egl")
+
+    def advance(self, simulation: MujocoSuperdexSim, duration: timedelta) -> None:
+        """
+        Note that the simulation advanced, capturing a frame whenever a frame period
+        has passed.
+
+        :param simulation: The simulation, standing where the advance left it.
+        :param duration: How much simulated time passed.
+        """
+        self._simulated_time_since_frame += duration
+        frame_period = timedelta(seconds=1 / self.frames_per_second)
+        if self._simulated_time_since_frame < frame_period:
+            return
+        self._simulated_time_since_frame -= frame_period
+        self.frames.append(self._render(simulation))
+
+    def _render(self, simulation: MujocoSuperdexSim) -> NDArray[numpy.uint8]:
+        """
+        :param simulation: The simulation to render.
+        :return: The frame showing it as it stands, with its cables.
+        """
+        model = simulation.simulator._mj_model
+        data = simulation.simulator._mj_data
+        if self._renderer is None:
+            model.vis.global_.offwidth = max(model.vis.global_.offwidth, self.width)
+            model.vis.global_.offheight = max(model.vis.global_.offheight, self.height)
+            self._renderer = mujoco.Renderer(model, self.height, self.width)
+        camera = mujoco.MjvCamera()
+        camera.lookat[:] = self.look_at
+        camera.distance = self.distance
+        camera.azimuth = self.azimuth
+        camera.elevation = self.elevation
+        self._renderer.update_scene(data, camera=camera)
+        simulation.draw_cables(self._renderer.scene)
+        return self._renderer.render()
+
+    def write(self) -> None:
+        """
+        Encode the frames captured so far into :attr:`path`.
+        """
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        imageio.mimwrite(self.path, self.frames, fps=self.frames_per_second)
+
+
+class RecordedMujocoSuperdexSim(MujocoSuperdexSim):
+    """
+    A :class:`MujocoSuperdexSim` that captures a video while it is stepped.
+    """
+
+    video: CableVideo
+    """
+    The video the steps are captured into.
+    """
+
+    def __init__(self, video: CableVideo, **kwargs: Any):
+        """
+        :param video: The video to capture the steps into.
+        :param kwargs: See :class:`MujocoSuperdexSim`.
+        """
+        super().__init__(**kwargs)
+        self.video = video
+
+    def step_simulation(self, duration: timedelta) -> None:
+        super().step_simulation(duration)
+        self.video.advance(self, duration)
+
+
+# %% demonstration
+
+
+@dataclass
+class DAiSyCableDemonstration:
+    """
+    A demonstration in which DAiSy handles a cable.
+    """
+
+    headless: bool = False
+    """
+    Whether to run without the MuJoCo viewer.
+    """
+
+    video: CableVideo | None = None
+    """
+    The video to record the run into, if any.
+    """
+
+    cable_length: float = 0.4
+    """
+    The length of the cable, in metres.
+    """
+
+    cable_radius: float = 0.0025
+    """
+    The radius of the cable, in metres.
+    """
+
+    number_of_cable_segments: int = 20
+    """
+    How many segments the cable is simulated with.
+    """
+
+    grip_depth: float = 0.02
+    """
+    How far beyond the tool frame, along the approach axis, the ridges of DAiSy's
+    fingertips grip a cable that crosses the fingers, in metres: about the middle of the
+    ridges, which reach from 8 mm to 31 mm beyond the tool frame.
+    """
+
+    finger_position_on_cable: float = 0.041
+    """
+    The position of a gripper's finger joint when it closes on the cable, in metres. It
+    leaves 1.8 mm between the cable's axis and each ridge of the fingertips, 0.7 mm less
+    than the cable's radius; the ridges stand 85.6 mm apart with the gripper open and
+    each finger travels as far as its joint.
+    """
+
+    grip_position_threshold: float = 1.0e-4
+    """
+    How close, in metres, the fingers have to come to
+    :attr:`finger_position_on_cable` before a grip counts as done.
+    """
+
+    finger_closing_velocity: float = 0.02
+    """
+    How fast the fingers close on the cable, in metres per second.
+    """
+
+    control_period: timedelta = timedelta(milliseconds=20)
+    """
+    The period the physics is stepped by while the cable settles.
+    """
+
+    cable_color: Color = field(default_factory=Color.ORANGE)
+    """
+    The colour the cable is drawn in.
+    """
+
+    @staticmethod
+    def create_world() -> tuple[World, DAiSy]:
+        """
+        :return: A new world holding DAiSy, and DAiSy.
+        """
+        world = URDFParser.from_file(file_path=DAiSy.get_ros_file_path()).create_world()
+        return world, DAiSy.from_world(world)
+
+    def create_simulation(self, world: World) -> MujocoSuperdexSim:
+        """
+        :param world: The world holding DAiSy and the cable.
+        :return: A new, started simulation of the world in which the cable touches the
+            table and the fingertips, recording :attr:`video` if there is one.
+        """
+        colliding_bodies = [world.get_body_by_name(name) for name in DAiSyCableBody]
+        if self.video is None:
+            simulation = MujocoSuperdexSim(
+                world=world, colliding_bodies=colliding_bodies, headless=self.headless
+            )
+        else:
+            simulation = RecordedMujocoSuperdexSim(
+                video=self.video,
+                world=world,
+                colliding_bodies=colliding_bodies,
+                headless=self.headless,
+            )
+        simulation.start_stepped_simulation()
+        return simulation
+
+    def let_the_cable_settle(
+        self, simulation: MujocoSuperdexSim, duration: timedelta
+    ) -> None:
+        """
+        :param simulation: The running simulation.
+        :param duration: How long to step the physics for.
+        """
+        for _ in range(round(duration / self.control_period)):
+            simulation.step_simulation(self.control_period)
+
+    @staticmethod
+    def perform_kinematically(daisy: DAiSy, steps: list[StatechartNode]) -> None:
+        """
+        Perform steps one after the other, with the world following every command
+        exactly.
+
+        :param daisy: The robot performing them.
+        :param steps: The steps.
+        """
+        DAiSyCableDemonstration._perform(
+            KinematicallySimulatedPlanExecutor(
+                context=DAiSyCableDemonstration._context(daisy)
+            ),
+            steps,
+        )
+
+    @staticmethod
+    def perform_physically(
+        daisy: DAiSy, simulation: MujocoSuperdexSim, steps: list[StatechartNode]
+    ) -> None:
+        """
+        Perform steps one after the other, against the physics.
+
+        :param daisy: The robot performing them.
+        :param simulation: The running simulation.
+        :param steps: The steps.
+        """
+        DAiSyCableDemonstration._perform(
+            PhysicallySimulatedPlanExecutor(
+                context=DAiSyCableDemonstration._context(daisy), simulation=simulation
+            ),
+            steps,
+        )
+
+    @staticmethod
+    def _context(daisy: DAiSy) -> StatechartContext:
+        """
+        :param daisy: The robot.
+        :return: A new context of a plan DAiSy performs.
+        """
+        return StatechartContext.with_extensions(
+            world=daisy._world, extensions=[RobotAccess(robot=daisy)]
+        )
+
+    @staticmethod
+    def _perform(executor: PlanExecutor, steps: list[StatechartNode]) -> None:
+        """
+        :param executor: The executor to perform the steps with.
+        :param steps: The steps, performed one after the other.
+        """
+        statechart = Statechart(context=executor.context)
+        statechart.add_node(node=Sequence(nodes=steps))
+        executor.compile(statechart=statechart)
+        executor.execute()
+        executor.close()
+
+    def grip_point(
+        self, world_T_tool: NDArray[numpy.float64]
+    ) -> NDArray[numpy.float64]:
+        """
+        :param world_T_tool: The pose of a gripper's tool frame.
+        :return: The point that gripper grips a cable crossing its fingers at.
+        """
+        return world_T_tool[:3, 3] + self.grip_depth * world_T_tool[:3, 2]
+
+    def tool_pose(
+        self,
+        world: World,
+        grip_point: NDArray[numpy.float64],
+        pointing: NDArray[numpy.float64],
+        closing: NDArray[numpy.float64],
+    ) -> Pose:
+        """
+        :param world: The world.
+        :param grip_point: Where the gripper is to grip, in the frame of the world root.
+        :param pointing: The direction the gripper is to point along.
+        :param closing: The direction its fingers are to close along.
+        :return: The pose of the tool frame that grips there.
+        """
+        rotation = numpy.stack([closing, numpy.cross(pointing, closing), pointing], 1)
+        position = grip_point - self.grip_depth * pointing
+        x, y, z, w = Rotation.from_matrix(rotation).as_quat()
+        return Pose.from_xyz_quaternion(
+            *position, x, y, z, w, reference_frame=world.root
+        )
+
+    def close_on_cable(self, gripper: DAiSyGripper) -> JointPositionList:
+        """
+        :param gripper: A gripper of the robot.
+        :return: The task closing its fingers on the cable.
+        """
+        [finger_connection] = gripper.finger_connections
+        return JointPositionList(
+            goal_state=JointState(
+                connections=[finger_connection],
+                target_values=[self.finger_position_on_cable],
+            ),
+            threshold=self.grip_position_threshold,
+            cruise_velocity=self.finger_closing_velocity,
+        )
+
+    def measured_grip_point(
+        self, simulation: MujocoSuperdexSim, gripper: DAiSyGripper
+    ) -> NDArray[numpy.float64]:
+        """
+        :param simulation: The simulation the gripper moves in.
+        :param gripper: A gripper of the robot.
+        :return: Where the gripper grips a cable as the physics has it now.
+        """
+        return self.grip_point(
+            MujocoBodyPoses(simulator=simulation.simulator).world_T_body(
+                gripper.tool_frame
+            )
+        )
+
+    @staticmethod
+    def table_top(world: World) -> float:
+        """
+        :param world: The world holding DAiSy.
+        :return: The height of the top of DAiSy's table, in metres.
+        """
+        table = world.get_body_by_name(DAiSyCableBody.TABLE)
+        return (
+            table.collision.as_bounding_box_collection_in_frame(world.root)
+            .bounding_box()
+            .max_z
+        )
