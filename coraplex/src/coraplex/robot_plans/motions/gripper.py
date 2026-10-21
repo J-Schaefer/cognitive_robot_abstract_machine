@@ -81,12 +81,19 @@ class MoveGripperMotion(
     def _motion_chart(self):
         """
         :return: The chart driving the gripper's connections to the joint state the
-            configuration commands, with the velocity limit and collision rules the
-            configuration and parameters ask for.
+            configuration commands, with the position threshold, velocity limit and
+            collision rules the configuration and parameters ask for.
         """
         goal_state = self.configuration.joint_state
         name = goal_state.name.name
-        joint_task = JointPositionList(goal_state=goal_state, name=name)
+        position_threshold = self.configuration.position_threshold
+        joint_task = (
+            JointPositionList(goal_state=goal_state, name=name)
+            if position_threshold is None
+            else JointPositionList(
+                goal_state=goal_state, name=name, threshold=position_threshold
+            )
+        )
 
         done_node = joint_task
         if self.tolerate_stall:

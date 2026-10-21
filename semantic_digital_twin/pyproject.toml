@@ -108,6 +108,10 @@ vision = [
     "bitsandbytes",
     "pillow",
 ]
+superdex = [
+    # Cosserat rod simulation of cables, co-simulated with MuJoCo; ships for CPython 3.12 only
+    "superdex-physics==1.0.*",
+]
 datasets = [
     "py7zr",
     "usd-core>=24.11",

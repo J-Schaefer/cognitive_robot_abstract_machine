@@ -394,3 +394,58 @@ Spawning an object at a pose that immediately results in collisions can destabil
 Always validate the target pose before spawning:
 * Check for collisions in advance, or
 * Pause the simulation before spawning and ensure the new object is placed in a collision-free state.
+
+# Deformable Cables
+
+Cables do not fit MuJoCo's rigid bodies well. A
+{py:class}`~semantic_digital_twin.semantic_annotations.deformable_cable.DeformableCable`
+describes a cable by its centreline, its radius and its
+{py:class}`~semantic_digital_twin.semantic_annotations.deformable_cable.RodMaterial`,
+and creates no bodies. It is simulated as a Cosserat rod by
+[SuperDex](https://github.com/facebookresearch/project_superdex), next to the MuJoCo
+simulation of the world's rigid bodies. SuperDex ships for CPython 3.12 only, so it is an
+optional extra:
+
+```bash
+pip install "semantic_digital_twin[superdex]"
+```
+
+{py:class}`~semantic_digital_twin.adapters.superdex.mujoco_cable_simulation.MujocoSuperdexSim`
+steps MuJoCo and then the cables over the same period. The cables touch the collision
+shapes of the bodies you list, which follow the poses MuJoCo simulates them in. The cables
+push nothing back onto the rigid bodies. A gripper holds a cable by friction alone, and
+{py:meth}`~semantic_digital_twin.adapters.superdex.cable_simulation.SuperdexCableSimulation.pin`
+holds a node to a body where friction is not wanted yet, such as while a gripper closes on
+the cable:
+
+```python
+from datetime import timedelta
+
+from semantic_digital_twin.adapters.superdex.mujoco_cable_simulation import MujocoSuperdexSim
+from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
+from semantic_digital_twin.semantic_annotations.deformable_cable import DeformableCable
+from semantic_digital_twin.spatial_types import Point3
+
+cable = DeformableCable.along_polyline(
+    name=PrefixedName("cable"),
+    polyline=[Point3(0.3, 0.6, 1.0, reference_frame=world.root),
+              Point3(0.3, 0.6, 0.7, reference_frame=world.root)],
+    number_of_segments=15,
+    radius=0.0025,
+)
+with world.modify_world():
+    world.add_semantic_annotation(cable)
+
+simulation = MujocoSuperdexSim(world=world, colliding_bodies=[table, *finger_tips])
+simulation.start_stepped_simulation()
+pin = simulation.cable_simulation.pin(cable, 0, gripper_tool_frame)
+for _ in range(50):
+    simulation.step_simulation(timedelta(milliseconds=20))
+simulation.cable_simulation.release(pin)
+print(cable.point_at_arc_length(0.1))
+```
+
+Only the stepped simulation advances the cables, which is what
+{py:class}`~coraplex.execution_environment.PhysicallySimulatedRobot` uses. The
+`experiments.minimal_cable_demo` demonstration has DAiSy hand a cable from one gripper to
+the other this way.

@@ -769,6 +769,58 @@ def test_builder_writes_a_negative_multiplier_mimic_joints_own_range(tmp_path):
     assert list(mirrored_joint.range) == pytest.approx([-0.8, 0.0])
 
 
+def test_builder_starts_a_mimic_joint_where_its_connection_stands(tmp_path):
+    """
+    The home keyframe puts a mimic joint where its connection stands, its multiplier
+    applied, not at the position of the degree of freedom it shares.
+    """
+    world = World()
+    with world.modify_world():
+        root = Body(name=PrefixedName("root"))
+        world.add_body(root)
+        knuckle = Body(name=PrefixedName("knuckle"))
+        mirrored_knuckle = Body(name=PrefixedName("mirrored_knuckle"))
+        world.add_body(knuckle)
+        world.add_body(mirrored_knuckle)
+        degree_of_freedom = DegreeOfFreedom(
+            name=PrefixedName("knuckle_joint"),
+            limits=DegreeOfFreedomLimits.from_position_range_and_speed(
+                lower_position=0.0, upper_position=0.8
+            ),
+        )
+        world.add_degree_of_freedom(degree_of_freedom)
+        world.add_connection(
+            RevoluteConnection(
+                name=PrefixedName("knuckle_joint"),
+                parent=root,
+                child=knuckle,
+                axis=Vector3.Z(reference_frame=knuckle),
+                raw_dof=degree_of_freedom,
+            )
+        )
+        mirrored_knuckle_joint = RevoluteConnection(
+            name=PrefixedName("mirrored_knuckle_joint"),
+            parent=root,
+            child=mirrored_knuckle,
+            axis=Vector3.Z(reference_frame=mirrored_knuckle),
+            raw_dof=degree_of_freedom,
+            multiplier=-1.0,
+        )
+        world.add_connection(mirrored_knuckle_joint)
+    world.state[degree_of_freedom.id].position = 0.5
+    world.notify_state_change()
+
+    file_path = tmp_path / "scene.xml"
+    MujocoBuilder().build_world(world=world, file_path=str(file_path))
+    model = mujoco.MjModel.from_xml_path(str(file_path))
+    data = mujoco.MjData(model)
+    mujoco.mj_resetDataKeyframe(model, data, 0)
+
+    assert data.joint("mirrored_knuckle_joint").qpos[0] == pytest.approx(
+        mirrored_knuckle_joint.position
+    )
+
+
 def test_mujoco_with_tracy_dae_files():
     try:
         dae_world = URDFParser.from_file(file_path=TEST_URDF_TRACY).parse()

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import os
+from abc import ABC
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
 from typing import Self
+
+from typing_extensions import Generic
 
 from griplink_interfaces.action import Flexgrip, Flexrelease, Grip, Release
 from krrood.ormatic.utils import classproperty
@@ -31,6 +34,7 @@ from semantic_digital_twin.robots.griplink_gripper import (
 from semantic_digital_twin.robots.robot_part_mixins import (
     HasLeftRightArm,
     HasTwoFingers,
+    TGenericEndEffector,
 )
 from semantic_digital_twin.robots.robot_parts import (
     AbstractRobot,
@@ -40,6 +44,12 @@ from semantic_digital_twin.robots.robot_parts import (
     Finger,
 )
 from semantic_digital_twin.spatial_types import Vector3
+from semantic_digital_twin.world_description.connection_properties import (
+    JointDynamics,
+    JointServo,
+    ServoGains,
+)
+from semantic_digital_twin.world_description.connections import ActiveConnection1DOF
 from semantic_digital_twin.world_description.world_entity import (
     KinematicStructureEntity,
 )
@@ -160,9 +170,93 @@ class DAiSyRightGripperRightFinger(Finger):
         )
 
 
+# %% what drives DAiSy's joints in a physical simulation
+
+
+@dataclass(eq=False)
+class DAiSyGripper(GriplinkGripper, ABC):
+    """
+    A WEISS WPG 300-120 gripper of DAiSy, whose fingers are driven by a position servo
+    in a physical simulation.
+
+    No tuned reference model of this gripper exists; the gains are those of the parallel
+    jaw in robosimstudio's DAiSy cable demo.
+    """
+
+    @property
+    def approach_axis(self) -> Vector3:
+        return Vector3.X(reference_frame=self.tool_frame)
+
+    @property
+    def closing_axis(self) -> Vector3:
+        return Vector3.Y(reference_frame=self.tool_frame)
+
+    @classproperty
+    def finger_servo(cls) -> JointServo:
+        """
+        What drives the fingers.
+        """
+        return JointServo(
+            gains=ServoGains(stiffness=2000.0, damping=40.0, torque_limit=100.0),
+            dynamics=JointDynamics(armature=0.01, damping=5.0),
+        )
+
+    def _setup_servos(self) -> None:
+        for connection in self.active_connections:
+            if not isinstance(connection, ActiveConnection1DOF):
+                continue
+            self._declare_servo(connection, self.finger_servo)
+        self._compensate_gravity()
+
+
+@dataclass(eq=False)
+class DAiSyArm(Arm[TGenericEndEffector], Generic[TGenericEndEffector], ABC):
+    """
+    A UR5 arm of DAiSy, servoed in a physical simulation like MuJoCo Menagerie's
+    ``universal_robots_ur5e``, whose link lengths match the UR5's.
+    """
+
+    @classproperty
+    def servo_of_each_joint(cls) -> dict[str, JointServo]:
+        """
+        What drives each joint, keyed by the joint's name without the arm's
+        ``left_``/``right_`` prefix: Menagerie's ``size3`` actuators for the shoulder
+        and elbow joints, its ``size1`` actuators for the wrist joints.
+        """
+        dynamics = JointDynamics(armature=0.1)
+        large = JointServo(
+            gains=ServoGains(stiffness=2000.0, damping=400.0, torque_limit=150.0),
+            dynamics=dynamics,
+        )
+        small = JointServo(
+            gains=ServoGains(stiffness=500.0, damping=100.0, torque_limit=28.0),
+            dynamics=dynamics,
+        )
+        return {
+            "shoulder_pan_joint": large,
+            "shoulder_lift_joint": large,
+            "elbow_joint": large,
+            "wrist_1_joint": small,
+            "wrist_2_joint": small,
+            "wrist_3_joint": small,
+        }
+
+    def _setup_servos(self) -> None:
+        for connection in self.active_connections:
+            if not isinstance(connection, ActiveConnection1DOF):
+                continue
+            joint_name = connection.raw_dof.name.name
+            unprefixed = joint_name.removeprefix("left_").removeprefix("right_")
+            self._declare_servo(connection, self.servo_of_each_joint[unprefixed])
+        self._compensate_gravity()
+
+
+# %% grippers and arms
+
+
 @dataclass(eq=False)
 class DAiSyLeftGripper(
-    GriplinkGripper,
+    DAiSyGripper,
     HasTwoFingers[DAiSyLeftGripperLeftFinger, DAiSyLeftGripperRightFinger],
 ):
     @classproperty
@@ -214,14 +308,6 @@ class DAiSyLeftGripper(
         )
         return [gripper_open, gripper_close]
 
-    @property
-    def approach_axis(self) -> Vector3:
-        return Vector3.X(reference_frame=self.tool_frame)
-
-    @property
-    def closing_axis(self) -> Vector3:
-        return Vector3.Y(reference_frame=self.tool_frame)
-
     @classmethod
     def setup_default_configuration_in_world_below_robot_root(
         cls, robot_root: KinematicStructureEntity
@@ -238,7 +324,7 @@ class DAiSyLeftGripper(
 
 @dataclass(eq=False)
 class DAiSyRightGripper(
-    GriplinkGripper,
+    DAiSyGripper,
     HasTwoFingers[DAiSyRightGripperLeftFinger, DAiSyRightGripperRightFinger],
 ):
     @classproperty
@@ -284,14 +370,6 @@ class DAiSyRightGripper(
 
         return [gripper_open, gripper_close]
 
-    @property
-    def approach_axis(self) -> Vector3:
-        return Vector3.X(reference_frame=self.tool_frame)
-
-    @property
-    def closing_axis(self) -> Vector3:
-        return Vector3.Y(reference_frame=self.tool_frame)
-
     @classmethod
     def setup_default_configuration_in_world_below_robot_root(
         cls, robot_root: KinematicStructureEntity
@@ -307,7 +385,7 @@ class DAiSyRightGripper(
 
 
 @dataclass(eq=False)
-class DAiSyLeftArm(Arm[DAiSyLeftGripper]):
+class DAiSyLeftArm(DAiSyArm[DAiSyLeftGripper]):
     def setup_hardware_interfaces(self):
         self._setup_hardware_interfaces_for_active_connections()
 
@@ -347,7 +425,7 @@ class DAiSyLeftArm(Arm[DAiSyLeftGripper]):
 
 
 @dataclass(eq=False)
-class DAiSyRightArm(Arm[DAiSyRightGripper]):
+class DAiSyRightArm(DAiSyArm[DAiSyRightGripper]):
     def setup_hardware_interfaces(self):
         self._setup_hardware_interfaces_for_active_connections()
 

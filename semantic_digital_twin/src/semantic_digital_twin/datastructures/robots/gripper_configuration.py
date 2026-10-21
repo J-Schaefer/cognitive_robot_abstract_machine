@@ -49,6 +49,14 @@ class GripperConfiguration(SubClassSafeGeneric, ABC, Generic[TGripperConfigurati
     ``None`` leaves the speed unconstrained.
     """
 
+    position_threshold: float | None = None
+    """
+    How close, in metres or radians, every connection has to come to its commanded
+    position for the motion to count as done.
+
+    ``None`` keeps the threshold of the joint goal the motion builds.
+    """
+
     def __post_init__(self):
         """
         Validates that the joint state only commands connections inside the end

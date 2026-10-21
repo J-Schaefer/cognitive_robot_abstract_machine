@@ -52,6 +52,15 @@ jobs:
           source /opt/ros/cram-env/bin/activate
           uv pip install drake
 
+      - name: Install SuperDex for the cable simulation
+        if: ${{ inputs.lib == 'semantic_digital_twin' || inputs.lib == 'experiments' }}
+        env:
+          UV_CACHE_DIR: /opt/ros/.uv_cache
+        run: |
+          cd cognitive_robot_abstract_machine
+          source /opt/ros/cram-env/bin/activate
+          uv pip install -r semantic_digital_twin/pyproject.toml --extra superdex --no-sources
+
       - name: Install robokudo optional requirements
         if: ${{ inputs.lib == 'robokudo' }}
         env:

@@ -1,3 +1,4 @@
+import dataclasses
 from copy import deepcopy
 
 import numpy as np
@@ -511,6 +512,48 @@ def test_move_gripper_motion_finger_velocity_adds_real_limit(pr2_apartment_conte
         if isinstance(node, JointVelocityLimit)
     )
     assert velocity_limit_node.max_velocity == 0.03
+
+
+def test_move_gripper_motion_takes_the_position_threshold_of_its_configuration(
+    pr2_apartment_context,
+):
+    """
+    A configuration's ``position_threshold`` is how close the joint goal has to come for
+    the motion to count as done.
+    """
+    world, view, context = pr2_apartment_context
+    configuration = left_or_only_arm(view).end_effector.default_configuration(
+        GripperState.CLOSE
+    )
+    configuration.position_threshold = 0.0005
+
+    close_motion = MoveGripperMotion(configuration=configuration)
+    execute_single(close_motion, context=context)
+
+    assert close_motion.motion_chart.threshold == configuration.position_threshold
+
+
+def test_move_gripper_motion_keeps_the_joint_goals_own_threshold_by_default(
+    pr2_apartment_context,
+):
+    """
+    Without a ``position_threshold`` the joint goal keeps the threshold it has itself.
+    """
+    world, view, context = pr2_apartment_context
+
+    close_motion = MoveGripperMotion(
+        configuration=left_or_only_arm(view).end_effector.default_configuration(
+            GripperState.CLOSE
+        )
+    )
+    execute_single(close_motion, context=context)
+
+    joint_goal_threshold = next(
+        field_.default
+        for field_ in dataclasses.fields(JointPositionList)
+        if field_.name == "threshold"
+    )
+    assert close_motion.motion_chart.threshold == joint_goal_threshold
 
 
 def test_move_gripper_motion_tolerate_stall_and_finger_velocity_combine(

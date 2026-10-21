@@ -24,3 +24,23 @@ def test_daisy_grippers_build_griplink_configurations(daisy_world):
         assert isinstance(open_configuration, GriplinkPresetConfiguration)
         assert isinstance(close_configuration, GriplinkPresetConfiguration)
         assert isinstance(flex_close_configuration, GriplinkFlexConfiguration)
+
+
+# %% physical simulation
+
+
+def test_daisy_declares_a_servo_for_every_arm_and_gripper_joint(daisy_world):
+    """
+    A physical simulation drives every joint of both arms and the driving finger joint
+    of both grippers with a position servo.
+    """
+    daisy = daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
+    servoed = {
+        degree_of_freedom
+        for actuator in daisy_world.actuators
+        for degree_of_freedom in actuator.dofs
+    }
+
+    for part in (*daisy.all_arms, *daisy.all_end_effectors):
+        for connection in part.active_connections:
+            assert connection.raw_dof in servoed
