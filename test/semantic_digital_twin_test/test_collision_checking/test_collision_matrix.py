@@ -1369,3 +1369,29 @@ class TestRuleListedAgain:
         cylinder_bot_world.rollback_modification_blocks()
 
         assert default_rule_distances(cylinder_bot_world) == distances_before
+
+
+# %% allowing every collision of a body
+
+
+def test_allowed_bodies_stay_allowed_when_the_collision_manager_updates_its_rules(
+    cylinder_bot_world,
+):
+    robot = cylinder_bot_world.get_semantic_annotations_by_type(MinimalRobot)[0]
+    robot_body = cylinder_bot_world.get_body_by_name("bot")
+    collision_manager = cylinder_bot_world.collision_manager
+    with cylinder_bot_world.modify_world():
+        collision_manager.add_default_rule(
+            AvoidExternalCollisions(buffer_zone_distance=0.05, robot=robot)
+        )
+    collision_manager.add_temporary_rule(
+        AllowCollisionForBodies(allowed_collision_bodies={robot_body})
+    )
+
+    collision_manager.update_collision_matrix(buffer=0.0)
+
+    assert not [
+        check
+        for check in collision_manager.collision_matrix.collision_checks
+        if robot_body in (check.body_a, check.body_b)
+    ]
