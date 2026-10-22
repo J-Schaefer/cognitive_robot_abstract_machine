@@ -19,9 +19,11 @@ from experiments.daisy_cable_replanning.collisions import (
     IllegalJointStateDatabase,
 )
 from experiments.daisy_cable_replanning.replanning import (
+    IllegalJointStateReplanning,
     ReplanningLog,
     ReplanningParameters,
     ReplanningTransformation,
+    StagnationReplanning,
 )
 from krrood.adapters.json_serializer import to_json
 from ompl import util as ompl_util
@@ -106,6 +108,8 @@ class TrialOption(StrEnum):
     SEED = "--seed"
     DIRECTORY = "--directory"
     ILLEGAL_JOINT_STATES = "--illegal-joint-states"
+    COLLISION_AVOIDANCE = "--collision-avoidance"
+    ON_STAGNATION = "--on-stagnation"
     VIDEO = "--video"
 
 
@@ -273,6 +277,18 @@ class CableDemoTrial:
     The file a video of the trial is written to, or ``None`` for no video.
     """
 
+    collision_avoidance: bool = False
+    """
+    Whether Giskard avoids collisions in every stage but homing, as the demo does when
+    asked to.
+    """
+
+    replans_on_stagnation: bool = False
+    """
+    Whether a motion that stops approaching its target is replanned; only used when
+    there are no :attr:`illegal_joint_states` to replan around.
+    """
+
     @property
     def command_line(self) -> list[str]:
         """
@@ -297,6 +313,10 @@ class CableDemoTrial:
             ]
         if self.video is not None:
             arguments += [TrialOption.VIDEO, str(self.video)]
+        if self.collision_avoidance:
+            arguments.append(TrialOption.COLLISION_AVOIDANCE)
+        if self.replans_on_stagnation:
+            arguments.append(TrialOption.ON_STAGNATION)
         return arguments
 
     def run_in_own_process(self) -> TrialResult:
@@ -385,31 +405,40 @@ class CableDemoTrial:
                 motion_tracker.begin_stage(stage)
                 stage_plan = plans.for_stage(stage).plan
                 stage_plan.node_callbacks.append(motion_tracker)
-                with kinematically_simulated_robot(collision_avoidance=False):
+                # Homing starts from wherever the arms are, as in the demo.
+                with kinematically_simulated_robot(
+                    collision_avoidance=self.collision_avoidance
+                    and stage is not demo.CableDemoStage.HOME
+                ):
                     stage_plan.perform()
 
     def _plan_transformations(
         self, motion_tracker: ActiveMotionTracker
     ) -> list[ReplanningTransformation]:
         """
-        :return: The transformation replanning around the illegal joint states, if
-            there are any to replan around.
+        :return: The transformation replanning around the illegal joint states, or on
+            stagnation, if the trial replans at all.
         """
-        if not self.illegal_joint_states:
-            return []
-        return [
-            ReplanningTransformation(
-                illegal_joint_states=IllegalJointStateDatabase.load_merged(
-                    self.illegal_joint_states
-                ),
-                parameters=ReplanningParameters(),
-                replanning_log=ReplanningLog(
-                    path=self.files.replanning,
-                    trial=self.number,
-                    motion_tracker=motion_tracker,
-                ),
-            )
-        ]
+        replanning_log = ReplanningLog(
+            path=self.files.replanning, trial=self.number, motion_tracker=motion_tracker
+        )
+        if self.illegal_joint_states:
+            return [
+                IllegalJointStateReplanning(
+                    illegal_joint_states=IllegalJointStateDatabase.load_merged(
+                        self.illegal_joint_states
+                    ),
+                    parameters=ReplanningParameters(),
+                    replanning_log=replanning_log,
+                )
+            ]
+        if self.replans_on_stagnation:
+            return [
+                StagnationReplanning(
+                    parameters=ReplanningParameters(), replanning_log=replanning_log
+                )
+            ]
+        return []
 
     def _start_video(self, world: World) -> MujocoVideoRecorder | None:
         """
@@ -484,6 +513,16 @@ class CableDemoExperiment:
     the demo as it is.
     """
 
+    collision_avoidance: bool = False
+    """
+    Whether Giskard avoids collisions in every stage of every trial but homing.
+    """
+
+    replans_on_stagnation: bool = False
+    """
+    Whether the trials replan a motion that stops approaching its target.
+    """
+
     removes_duplicate_poses: bool = True
     """
     Whether states that repeat an earlier pose are left out of the database written
@@ -525,6 +564,8 @@ class CableDemoExperiment:
                 seed=self.first_seed + number,
                 files=TrialFiles(directory=trial_directory, number=number),
                 illegal_joint_states=self.illegal_joint_states,
+                collision_avoidance=self.collision_avoidance,
+                replans_on_stagnation=self.replans_on_stagnation,
             )
             for number in range(self.trials)
         ]

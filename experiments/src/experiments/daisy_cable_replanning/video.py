@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
@@ -20,6 +20,8 @@ class VideoCaption(StrEnum):
 
     WITHOUT_REPLANNING = "Giskard only"
     WITH_REPLANNING = "Giskard + retract + OMPL replanning"
+    WITH_COLLISION_AVOIDANCE = "Giskard with collision avoidance"
+    WITH_STAGNATION_REPLANNING = "Giskard with collision avoidance + OMPL when stuck"
 
 
 @dataclass
@@ -121,28 +123,31 @@ class ReplanningVideo:
     The seed both trials are run with.
     """
 
-    illegal_joint_states: list[Path]
+    illegal_joint_states: list[Path] = field(default_factory=list)
     """
     The databases the replanning trial replans around.
     """
 
-    @classmethod
-    def of_first_improved_seed(
-        cls,
-        output_directory: Path,
-        baseline: ExperimentOutcome,
-        replanning: ExperimentOutcome,
-        illegal_joint_states: list[Path],
-    ) -> ReplanningVideo:
+    collision_avoidance: bool = False
+    """
+    Whether Giskard avoids collisions in both trials.
+    """
+
+    replans_on_stagnation: bool = False
+    """
+    Whether the replanning trial replans motions that stop approaching their target,
+    instead of around :attr:`illegal_joint_states`.
+    """
+
+    @staticmethod
+    def first_improved_seed(
+        baseline: ExperimentOutcome, replanning: ExperimentOutcome
+    ) -> int:
         """
-        :return: The video of the lowest seed that collided without replanning and
-            completed without any collision with it.
+        :return: The lowest seed that completed without any collision with replanning
+            and did not without it.
         """
-        return cls(
-            output_directory=output_directory,
-            seed=min(baseline.colliding_seeds & replanning.successful_seeds),
-            illegal_joint_states=illegal_joint_states,
-        )
+        return min(replanning.successful_seeds - baseline.successful_seeds)
 
     @property
     def path(self) -> Path:
@@ -157,15 +162,23 @@ class ReplanningVideo:
 
         :return: The side by side video.
         """
-        without = self._trial("without_replanning", [])
-        with_replanning = self._trial("with_replanning", self.illegal_joint_states)
+        without = self._trial("without_replanning", replans=False)
+        with_replanning = self._trial("with_replanning", replans=True)
         for trial in (without, with_replanning):
             trial.run_in_own_process()
         return SideBySideVideo(
             left=self._frames_of(without.video),
             right=self._frames_of(with_replanning.video),
-            left_caption=VideoCaption.WITHOUT_REPLANNING,
-            right_caption=VideoCaption.WITH_REPLANNING,
+            left_caption=(
+                VideoCaption.WITH_COLLISION_AVOIDANCE
+                if self.collision_avoidance
+                else VideoCaption.WITHOUT_REPLANNING
+            ),
+            right_caption=(
+                VideoCaption.WITH_STAGNATION_REPLANNING
+                if self.replans_on_stagnation
+                else VideoCaption.WITH_REPLANNING
+            ),
         ).write(self.path)
 
     @staticmethod
@@ -176,15 +189,19 @@ class ReplanningVideo:
         # Not list(reader): the reader reports an infinite length for MP4 files.
         return [frame for frame in imageio.get_reader(video)]
 
-    def _trial(self, name: str, illegal_joint_states: list[Path]) -> CableDemoTrial:
+    def _trial(self, name: str, replans: bool) -> CableDemoTrial:
         """
-        :return: The trial of the seed writing its files and video under the name.
+        :param name: Name of the directory the trial writes its files and video to.
+        :param replans: Whether the trial replans.
+        :return: The trial of the seed.
         """
         directory = self.output_directory / name
         return CableDemoTrial(
             number=0,
             seed=self.seed,
             files=TrialFiles(directory=directory, number=0),
-            illegal_joint_states=illegal_joint_states,
+            illegal_joint_states=self.illegal_joint_states if replans else [],
+            replans_on_stagnation=replans and self.replans_on_stagnation,
+            collision_avoidance=self.collision_avoidance,
             video=directory / f"{name}.mp4",
         )

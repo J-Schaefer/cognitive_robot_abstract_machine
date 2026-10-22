@@ -41,6 +41,8 @@ def run_from_command_line() -> None:
                 first_seed=arguments.first_seed,
                 workers=arguments.workers,
                 illegal_joint_states=arguments.illegal_joint_states,
+                collision_avoidance=arguments.collision_avoidance,
+                replans_on_stagnation=arguments.replans_on_stagnation,
                 removes_duplicate_poses=arguments.removes_duplicate_poses,
                 duplicate_tolerance=arguments.duplicate_tolerance,
             ).run()
@@ -103,17 +105,19 @@ def _video(arguments: Namespace) -> ReplanningVideo:
     :return: The comparison video the arguments of the :attr:`Command.VIDEO` command
         describe.
     """
-    if arguments.seed is not None:
-        return ReplanningVideo(
-            output_directory=arguments.output,
-            seed=arguments.seed,
-            illegal_joint_states=arguments.illegal_joint_states,
-        )
-    return ReplanningVideo.of_first_improved_seed(
+    return ReplanningVideo(
         output_directory=arguments.output,
-        baseline=ExperimentOutcome.load(arguments.baseline),
-        replanning=ExperimentOutcome.load(arguments.replanning),
+        seed=(
+            arguments.seed
+            if arguments.seed is not None
+            else ReplanningVideo.first_improved_seed(
+                baseline=ExperimentOutcome.load(arguments.baseline),
+                replanning=ExperimentOutcome.load(arguments.replanning),
+            )
+        ),
         illegal_joint_states=arguments.illegal_joint_states,
+        collision_avoidance=arguments.collision_avoidance,
+        replans_on_stagnation=arguments.replans_on_stagnation,
     )
 
 
@@ -127,6 +131,8 @@ def _trial(arguments: Namespace) -> CableDemoTrial:
         files=TrialFiles(directory=arguments.directory, number=arguments.number),
         illegal_joint_states=arguments.illegal_joint_states,
         video=arguments.video,
+        collision_avoidance=arguments.collision_avoidance,
+        replans_on_stagnation=arguments.replans_on_stagnation,
     )
 
 
@@ -150,6 +156,11 @@ def _parser() -> ArgumentParser:
         experiment.add_argument("--first-seed", type=int, default=0)
         experiment.add_argument("--workers", type=int, default=2)
         experiment.add_argument(
+            TrialOption.COLLISION_AVOIDANCE,
+            action="store_true",
+            help="let Giskard avoid collisions in every stage but homing",
+        )
+        experiment.add_argument(
             "--keep-duplicate-poses",
             dest="removes_duplicate_poses",
             action="store_false",
@@ -163,9 +174,21 @@ def _parser() -> ArgumentParser:
             help="largest joint difference in radians at which two states count as "
             f"the same pose (default: {CableDemoExperiment.duplicate_tolerance})",
         )
-    record.set_defaults(illegal_joint_states=[])
-    replan.add_argument(
-        TrialOption.ILLEGAL_JOINT_STATES, type=Path, nargs="+", required=True
+    record.set_defaults(illegal_joint_states=[], replans_on_stagnation=False)
+    trigger = replan.add_mutually_exclusive_group(required=True)
+    trigger.add_argument(
+        TrialOption.ILLEGAL_JOINT_STATES,
+        type=Path,
+        nargs="+",
+        default=[],
+        help="replan motions that come close to these illegal joint states",
+    )
+    trigger.add_argument(
+        TrialOption.ON_STAGNATION,
+        dest="replans_on_stagnation",
+        action="store_true",
+        help="replan motions that stop approaching their target; use with "
+        f"{TrialOption.COLLISION_AVOIDANCE}",
     )
 
     summarize = commands.add_parser(
@@ -203,15 +226,20 @@ def _parser() -> ArgumentParser:
         Command.VIDEO, help="record one seed with and without replanning"
     )
     video.add_argument("--output", type=Path, required=True)
-    video.add_argument(
-        TrialOption.ILLEGAL_JOINT_STATES, type=Path, nargs="+", required=True
+    video_trigger = video.add_mutually_exclusive_group(required=True)
+    video_trigger.add_argument(
+        TrialOption.ILLEGAL_JOINT_STATES, type=Path, nargs="+", default=[]
     )
+    video_trigger.add_argument(
+        TrialOption.ON_STAGNATION, dest="replans_on_stagnation", action="store_true"
+    )
+    video.add_argument(TrialOption.COLLISION_AVOIDANCE, action="store_true")
     video.add_argument(
         TrialOption.SEED,
         type=int,
         default=None,
-        help="seed to record; by default the first seed that collided in --baseline "
-        "and completed without any collision in --replanning",
+        help="seed to record; by default the first seed that completed without any "
+        "collision in --replanning and not in --baseline",
     )
     video.add_argument("--baseline", type=Path, default=None)
     video.add_argument("--replanning", type=Path, default=None)
@@ -237,4 +265,8 @@ def _parser() -> ArgumentParser:
         TrialOption.ILLEGAL_JOINT_STATES, type=Path, nargs="+", default=[]
     )
     trial.add_argument(TrialOption.VIDEO, type=Path, default=None)
+    trial.add_argument(TrialOption.COLLISION_AVOIDANCE, action="store_true")
+    trial.add_argument(
+        TrialOption.ON_STAGNATION, dest="replans_on_stagnation", action="store_true"
+    )
     return parser

@@ -240,6 +240,49 @@ Below the table it reports three more numbers:
   recognize,
 - the time the guard's distance check takes per control cycle.
 
+## Replanning when a motion gets stuck
+
+A second trigger needs no database at all:
+1. Giskard avoids collisions (`--collision-avoidance`, every stage but homing, as in
+   the demo). With avoidance on, Giskard stops in front of a near collision instead of
+   moving through it.
+2. Every Cartesian motion runs with a stagnation monitor (`--on-stagnation`). Once the
+   motion has gone `stagnation_timeout` (1.5 s of simulated time) without approaching
+   its target, short of reaching it, OMPL plans a path to the same target, starting
+   from where the arm got stuck.
+3. Giskard follows that path, and the original plan continues with the next motion.
+
+`StagnationReplanning` gives every `MoveToolCenterPointMotion` this chart:
+
+```
+ReplacedWhenTrue
+├── monitor:     NoLongerProgressing   (StillProgressing negated: True once nothing
+│                                       short of its goal approached it for 1.5 s)
+├── monitored:   the original MoveTCP task
+└── replacement: Sequence
+                 ├── Parallel
+                 │   ├── UpdateTemporaryCollisionRules  (Giskard's avoidance leaves
+                 │   │                                   the arm's bodies alone)
+                 │   └── PlannedJointPathToPose         (IK goals + RRT-Connect)
+                 └── UpdateTemporaryCollisionRules      (the rules from before restored)
+```
+
+While the arm follows the planned path, Giskard's collision avoidance is off for the
+arm's bodies. The planner has already checked the path against the bodies themselves,
+with a 2 mm margin. Giskard's avoidance would keep the arm out of its 3 to 5 cm buffer
+zones, which the path may pass through, and stop it again.
+
+```bash
+E="python -m experiments.daisy_cable_replanning"
+$E record --output $S/baseline --collision-avoidance              # stuck without replanning
+$E replan --output $S/replan_on_stagnation --collision-avoidance --on-stagnation
+$E summarize --output $S/replan_on_stagnation --baseline $S/baseline
+$E video --output $S/video --collision-avoidance --on-stagnation \
+    --baseline $S/baseline --replanning $S/replan_on_stagnation
+```
+
+`series_4_replanning_on_stagnation/run.sh` runs both experiments.
+
 ## Keeping illegal joint states for good
 
 The databases in `experiments/results/` belong to single runs. Illegal joint states
@@ -443,6 +486,40 @@ variation of replanning.
 The video `series_3_duplicate_poses_removed/video/daisy_cable_replanning_seed102.mp4`
 shows held-out seed 102.
 
+### Series 4: replanning when a motion gets stuck
+
+Directory: `series_4_replanning_on_stagnation/`, run by its `run.sh`. It uses seeds 0-99
+and the demo without safe intermediate postures. Giskard avoids collisions in both
+runs, and no database is used.
+
+| seeds 0-99 | Giskard only (series 3 `record`) | collision avoidance | collision avoidance + OMPL when stuck |
+|---|---|---|---|
+| completed | 79 | 0 | 97 |
+| completed without any collision | 0 | 0 | 94 |
+| trials colliding | 94 | 0 | 3 |
+| illegal joint states logged | 8,930 | 0 | 7 |
+| replanned motions | - | - | 660 (6.6 per trial) |
+| failures | 21 stalls | 100 stalls (`MotionMadeNoProgress`) | 3 over the 120 s simulated-time limit |
+
+- **Without replanning,** collision avoidance prevents every collision, but Giskard
+  gets stuck in front of the near collisions: 94 trials in the same Cartesian motion of
+  the grasp, 5 in another. Not one trial completes.
+- **With replanning,** the stuck motions are replaced by planned paths, and 97 trials
+  perform the whole demo. RRT-Connect found every path, in 18 ms median and 0.6 s at
+  most; without an illegal joint state database there is less to check.
+- **The 7 remaining contacts** are grazes of at most 0.4 mm, all while the arm follows
+  a planned path with Giskard's avoidance off for it. Giskard moves each joint towards
+  the next waypoint at its own speed, so the executed path deviates slightly from the
+  straight segment the planner checked; the 2 mm margin covers that almost always.
+- **The 3 failures** are planned paths followed too slowly to finish within coraplex's
+  120 s of simulated time per motion.
+
+`series_4_replanning_on_stagnation/video/daisy_cable_replanning_seed0.mp4`, also in the
+repository's `video/` directory, shows seed 0:
+- Left, Giskard with collision avoidance: stuck in the grasp.
+- Right, with replanning when stuck: 8 motions replanned, no collision, every stage
+  completed.
+
 ## Known limitations
 
 - The guard is joint-space proximity to *recorded* states. It does not foresee
@@ -451,6 +528,11 @@ shows held-out seed 102.
 - `plan_waypoints` (inverse kinematics plus planning) runs inside one control cycle.
   That is fine in simulation, but on the real robot it would stall the controller for
   up to several seconds.
+- `AllowCollisionForBodies` (semantic_digital_twin) used to forget its bodies the
+  first time the collision manager updated it. This made the demo's rule allowing
+  every collision of the cable ineffective, and it was fixed for series 4. Series 1 to
+  3 ran before the fix, so their collision matrices still contained cable pairs; the
+  recorder and the planner never counted the cable, so their numbers are unaffected.
 - The cable is ignored by the planner. It is soft and meant to touch the hanger and
   the grippers.
 - In the videos, the cable stays on the post while the grippers carry it. The MuJoCo

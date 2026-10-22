@@ -412,6 +412,57 @@ class StillProgressing(Goal):
 
 
 @dataclass(eq=False, repr=False)
+class NoLongerProgressing(Goal):
+    """
+    Turns ``True`` once nothing under :attr:`monitored_node` that is short of its goal
+    has approached it for :attr:`timeout`: the monitored node is stuck.
+
+    The negation of :class:`StillProgressing`, as a monitor that stops or replaces a
+    stuck node, for example in a
+    :class:`~giskardpy.motion_statechart.monitors.templates.ReplacedWhenTrue`.
+    """
+
+    monitored_node: MotionStatechartNode = field(kw_only=True)
+    """
+    The task or goal whose progress is watched.
+    """
+
+    timeout: timedelta = field(default=timedelta(seconds=5), kw_only=True)
+    """
+    Simulated time without progress after which this turns ``True``.
+    """
+
+    minimum_convergence_rate: float = field(default=0.05, kw_only=True)
+    """
+    Rate below which a task counts as not approaching its goal, as a fraction of that
+    task's own threshold per second.
+    """
+
+    _still_progressing: StillProgressing = field(init=False, repr=False, default=None)
+    """
+    The monitor this negates.
+    """
+
+    @property
+    def prerequisite_nodes(self) -> List[MotionStatechartNode]:
+        return [self.monitored_node]
+
+    def expand(self, context: MotionStatechartContext) -> None:
+        self._still_progressing = StillProgressing(
+            name=f"{self.name}/still_progressing",
+            monitored_node=self.monitored_node,
+            timeout=self.timeout,
+            minimum_convergence_rate=self.minimum_convergence_rate,
+        )
+        self._add_child_to_motion_statechart(self._still_progressing)
+
+    def build_artifacts(self, context: MotionStatechartContext) -> NodeArtifacts:
+        return NodeArtifacts(
+            observation=trinary_logic_not(self._still_progressing.observation_variable)
+        )
+
+
+@dataclass(eq=False, repr=False)
 class _CancelBecauseNoProgress(CancelMotion):
     """
     Cancels the motion by raising an error naming the tasks that stopped approaching

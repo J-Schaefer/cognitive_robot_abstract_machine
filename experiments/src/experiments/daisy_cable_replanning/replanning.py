@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
+from datetime import timedelta
 from itertools import pairwise
 from math import ceil, pi
 from pathlib import Path
@@ -20,11 +22,15 @@ from experiments.daisy_cable_replanning.collisions import (
 )
 from experiments.daisy_cable_replanning.exceptions import NoJointPathFound
 from giskardpy.motion_statechart.context import MotionStatechartContext
-from giskardpy.motion_statechart.goals.templates import Sequence
+from giskardpy.motion_statechart.goals.collision_avoidance import (
+    UpdateTemporaryCollisionRules,
+)
+from giskardpy.motion_statechart.goals.templates import Parallel, Sequence
 from giskardpy.motion_statechart.monitors.joint_monitors import (
     CloseToJointConfigurations,
     JointConfigurationSet,
 )
+from giskardpy.motion_statechart.monitors.progress_monitors import NoLongerProgressing
 from giskardpy.motion_statechart.monitors.templates import ReplacedWhenTrue
 from giskardpy.motion_statechart.tasks.joint_tasks import (
     JointWaypointPath,
@@ -34,6 +40,9 @@ from krrood.adapters.json_serializer import to_json
 from ompl import base as ompl_base
 from ompl import geometric as ompl_geometric
 from semantic_digital_twin.collision_checking.collision_matrix import CollisionMatrix
+from semantic_digital_twin.collision_checking.collision_rules import (
+    AllowCollisionForBodies,
+)
 from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.robots.robot_parts import Arm
 from semantic_digital_twin.semantic_annotations.cable import Cable
@@ -106,6 +115,12 @@ class ReplanningParameters:
     goal_sampling_seed: int = 0
     """
     Seed of the random offsets of the seeds, so a replanning is reproducible.
+    """
+
+    stagnation_timeout: float = 1.5
+    """
+    Simulated time, in seconds, a motion may go without approaching its target before
+    it gives way to a planned path, when stagnation triggers replanning.
     """
 
     distinct_goal_distance: float = 0.05
@@ -581,26 +596,19 @@ class PlannedJointPathToPose(JointWaypointPath):
         return waypoints
 
 
-# %% replanned motion
+# %% replanned motions
 
 
 @dataclass
-class ReplannedToolCenterPointMotion(MoveToolCenterPointMotion):
+class ToolCenterPointMotionWithReplanning(MoveToolCenterPointMotion):
     """
-    Moves the tool center point like :class:`MoveToolCenterPointMotion`, but leaves the
-    motion as soon as the arms come close to an illegal joint state, retracts to the
-    last safe joint state and reaches the target along a path planned around the
-    illegal joint states instead.
-    """
-
-    illegal_joint_states: IllegalJointStateDatabase = field(kw_only=True)
-    """
-    The joint states to stay away from.
+    Moves the tool center point like :class:`MoveToolCenterPointMotion`, but gives way
+    to a joint path planned to the same target when its subclass's trigger fires.
     """
 
     parameters: ReplanningParameters = field(kw_only=True)
     """
-    When the motion is left and how the replacing path is planned.
+    When the motion gives way and how the replacing path is planned.
     """
 
     replanning_log: ReplanningLog = field(kw_only=True)
@@ -609,26 +617,69 @@ class ReplannedToolCenterPointMotion(MoveToolCenterPointMotion):
     """
 
     @classmethod
-    def replacing(
-        cls,
-        motion: MoveToolCenterPointMotion,
-        illegal_joint_states: IllegalJointStateDatabase,
-        parameters: ReplanningParameters,
-        replanning_log: ReplanningLog,
-    ) -> ReplannedToolCenterPointMotion:
+    def replacing(cls, motion: MoveToolCenterPointMotion, **replanning: object) -> Self:
         """
-        :return: A replanned motion with the parameters of the given motion.
+        :param motion: The motion to replace.
+        :param replanning: The fields this class adds to the motion's own.
+        :return: A motion of this class with the parameters of the given motion.
         """
+        values = vars(motion)
         return cls(
             **{
-                motion_field.name: getattr(motion, motion_field.name)
+                motion_field.name: values[motion_field.name]
                 for motion_field in fields(motion)
                 if motion_field.init
             },
-            illegal_joint_states=illegal_joint_states,
-            parameters=parameters,
-            replanning_log=replanning_log,
+            **replanning,
         )
+
+    def _planned_path(
+        self, illegal_configurations: JointConfigurationSet
+    ) -> PlannedJointPathToPose:
+        """
+        :param illegal_configurations: The joint configurations the path keeps clear
+            of.
+        :return: The path to the target, planned once it starts.
+        """
+        return PlannedJointPathToPose(
+            name="planned joint path",
+            connections=self.arm.active_connections,
+            planner=JointSpacePlanner(
+                world=self.world,
+                robot=self.robot,
+                arm=self.arm,
+                # The cable is soft and meant to be touched; the demo allows its
+                # collisions.
+                ignored_bodies={
+                    cable.root
+                    for cable in self.world.get_semantic_annotations_by_type(Cable)
+                },
+                illegal_configurations=illegal_configurations,
+                parameters=self.parameters,
+            ),
+            goal_sampler=GoalConfigurationSampler(
+                world=self.world,
+                arm=self.arm,
+                root=self.robot.root,
+                parameters=self.parameters,
+            ),
+            goal_pose=self.target,
+            replanning_log=self.replanning_log,
+        )
+
+
+@dataclass
+class ReplannedToolCenterPointMotion(ToolCenterPointMotionWithReplanning):
+    """
+    Leaves the motion as soon as the arms come close to an illegal joint state,
+    retracts to the last safe joint state and reaches the target along a path planned
+    around the illegal joint states.
+    """
+
+    illegal_joint_states: IllegalJointStateDatabase = field(kw_only=True)
+    """
+    The joint states to stay away from.
+    """
 
     @property
     def _motion_chart(self) -> ReplacedWhenTrue:
@@ -641,18 +692,6 @@ class ReplannedToolCenterPointMotion(MoveToolCenterPointMotion):
             threshold=self.parameters.trigger_distance,
             safe_distance=self.parameters.safe_distance,
         )
-        planner = JointSpacePlanner(
-            world=self.world,
-            robot=self.robot,
-            arm=self.arm,
-            # The cable is soft and meant to be touched; the demo allows its collisions.
-            ignored_bodies={
-                cable.root
-                for cable in self.world.get_semantic_annotations_by_type(Cable)
-            },
-            illegal_configurations=illegal_configurations,
-            parameters=self.parameters,
-        )
         return ReplacedWhenTrue(
             name="MoveTCP or replanned path",
             monitor=monitor,
@@ -663,29 +702,115 @@ class ReplannedToolCenterPointMotion(MoveToolCenterPointMotion):
                     RetractToLastSafeJointConfiguration(
                         name="retract to last safe joint state", monitor=monitor
                     ),
-                    PlannedJointPathToPose(
-                        name="planned joint path",
-                        connections=self.arm.active_connections,
-                        planner=planner,
-                        goal_sampler=GoalConfigurationSampler(
-                            world=self.world,
-                            arm=self.arm,
-                            root=self.robot.root,
-                            parameters=self.parameters,
-                        ),
-                        goal_pose=self.target,
-                        replanning_log=self.replanning_log,
-                    ),
+                    self._planned_path(illegal_configurations),
                 ],
             ),
         )
 
 
-# %% plan transformation
+@dataclass
+class StagnationReplannedToolCenterPointMotion(ToolCenterPointMotionWithReplanning):
+    """
+    Leaves the motion once it stops approaching its target short of reaching it, as it
+    does when collision avoidance holds the arm back, and reaches the target from where
+    the arm got stuck along a collision-free planned path.
+    """
+
+    @property
+    def _motion_chart(self) -> ReplacedWhenTrue:
+        motion = super()._motion_chart
+        return ReplacedWhenTrue(
+            name="MoveTCP or replanned path",
+            monitor=NoLongerProgressing(
+                name="no longer progressing",
+                monitored_node=motion,
+                timeout=timedelta(seconds=self.parameters.stagnation_timeout),
+            ),
+            monitored_node=motion,
+            replacement=self._planned_path_without_collision_avoidance(),
+        )
+
+    def _planned_path_without_collision_avoidance(self) -> Sequence:
+        """
+        :return: The planned path, followed while Giskard's collision avoidance leaves
+            the arm's bodies alone, and the collision rules restored after it.
+
+        The planner has checked the path against the bodies themselves; Giskard's
+        avoidance would keep the arm out of its buffer zones around them, which the
+        path may pass through, and hold it back again.
+        """
+        arm_bodies = ArmCollisionPairs(
+            world=self.world, robot=self.robot
+        ).bodies_of_arm[self.arm]
+        return Sequence(
+            name="follow planned path",
+            nodes=[
+                Parallel(
+                    name="planned path without collision avoidance of the arm",
+                    nodes=[
+                        UpdateTemporaryCollisionRules(
+                            name="allow collisions of the arm",
+                            temporary_rules=[
+                                AllowCollisionForBodies(
+                                    allowed_collision_bodies=arm_bodies
+                                )
+                            ],
+                        ),
+                        self._planned_path(
+                            IllegalJointStateDatabase.for_daisy_arms().joint_configurations(
+                                self.world
+                            )
+                        ),
+                    ],
+                ),
+                UpdateTemporaryCollisionRules(
+                    name="restore collision rules",
+                    temporary_rules=list(self.world.collision_manager.temporary_rules),
+                ),
+            ],
+        )
+
+
+# %% plan transformations
 
 
 @dataclass
-class ReplanningTransformation(PlanTransformation[ActionDescription]):
+class ReplanningTransformation(PlanTransformation[ActionDescription], ABC):
+    """
+    Replaces the tool center point motions of the actions it applies to by motions
+    that give way to a planned path.
+    """
+
+    parameters: ReplanningParameters = field(kw_only=True)
+    """
+    When a motion gives way and how the replacing path is planned.
+    """
+
+    replanning_log: ReplanningLog = field(kw_only=True)
+    """
+    Where the replacing paths are recorded.
+    """
+
+    @abstractmethod
+    def replacement_for(
+        self, motion: MoveToolCenterPointMotion
+    ) -> ToolCenterPointMotionWithReplanning:
+        """
+        :return: The motion replacing the given one.
+        """
+
+    def apply(self, plan_node: ActionNode) -> None:
+        for node in plan_node.descendants:
+            if not isinstance(node, MotionNode) or type(node.designator) is not (
+                MoveToolCenterPointMotion
+            ):
+                continue
+            node.designator = self.replacement_for(node.designator)
+            node.designator.plan_node = node
+
+
+@dataclass
+class IllegalJointStateReplanning(ReplanningTransformation):
     """
     Replaces the tool center point motions of the actions illegal joint states were
     recorded in by :class:`ReplannedToolCenterPointMotion`.
@@ -696,32 +821,36 @@ class ReplanningTransformation(PlanTransformation[ActionDescription]):
     The joint states to stay away from.
     """
 
-    parameters: ReplanningParameters = field(kw_only=True)
-    """
-    When a motion is left and how the replacing path is planned.
-    """
-
-    replanning_log: ReplanningLog = field(kw_only=True)
-    """
-    Where the replacing paths are recorded.
-    """
-
     def is_applicable(self, plan_node: ActionNode) -> bool:
         return type(plan_node.action).__name__ in {
             state.motion.action
             for state in self.illegal_joint_states.illegal_joint_states
         }
 
-    def apply(self, plan_node: ActionNode) -> None:
-        for node in plan_node.descendants:
-            if not isinstance(node, MotionNode) or type(node.designator) is not (
-                MoveToolCenterPointMotion
-            ):
-                continue
-            node.designator = ReplannedToolCenterPointMotion.replacing(
-                node.designator,
-                self.illegal_joint_states,
-                self.parameters,
-                self.replanning_log,
-            )
-            node.designator.plan_node = node
+    def replacement_for(
+        self, motion: MoveToolCenterPointMotion
+    ) -> ReplannedToolCenterPointMotion:
+        return ReplannedToolCenterPointMotion.replacing(
+            motion,
+            illegal_joint_states=self.illegal_joint_states,
+            parameters=self.parameters,
+            replanning_log=self.replanning_log,
+        )
+
+
+@dataclass
+class StagnationReplanning(ReplanningTransformation):
+    """
+    Replaces the tool center point motions of every action by
+    :class:`StagnationReplannedToolCenterPointMotion`.
+    """
+
+    def is_applicable(self, plan_node: ActionNode) -> bool:
+        return True
+
+    def replacement_for(
+        self, motion: MoveToolCenterPointMotion
+    ) -> StagnationReplannedToolCenterPointMotion:
+        return StagnationReplannedToolCenterPointMotion.replacing(
+            motion, parameters=self.parameters, replanning_log=self.replanning_log
+        )
