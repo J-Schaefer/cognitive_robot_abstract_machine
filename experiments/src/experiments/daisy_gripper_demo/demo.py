@@ -14,7 +14,7 @@ the griplink servers of the grippers.
 
 Run it as a script, choosing the execution type with ``--execution``::
 
-    python3 -m experiments.daisy_gripper_demo --execution simulated
+    python3 -m experiments.daisy_gripper_demo.demo --execution simulated
 
 Semi-real and real runs need a running DAiSy controller::
 
@@ -29,10 +29,8 @@ from __future__ import annotations
 
 import argparse
 import logging
-import time
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import ClassVar
+from enum import StrEnum
 
 from coraplex.datastructures.dataclasses import Context
 from coraplex.datastructures.enums import ExecutionType
@@ -42,12 +40,11 @@ from coraplex.execution_environment import (
     semi_real_robot,
     kinematically_simulated_robot,
 )
-from coraplex.language import ParallelNode, SequentialNode
-from coraplex.plans.factories import code, make_node
-from coraplex.plans.plan import Plan
+from coraplex.plans.factories import parallel, sequential
 from coraplex.plans.plan_node import PlanNode
-from coraplex.robot_plans import MoveGripperMotion
+from coraplex.robot_plans import MoveGripperMotion, PrintMotion, WaitMotion
 from coraplex.robot_plans.actions.core.robot_body import ParkArmsAction
+from krrood.entity_query_language.verbalization.morphology import present_participle
 from coraplex.visualization import VisualizationSession
 from semantic_digital_twin.adapters.ros.world_synchronizer import WorldSynchronizer
 from semantic_digital_twin.datastructures.definitions import GripperState
@@ -59,84 +56,40 @@ from semantic_digital_twin.world import World
 
 logger = logging.getLogger(__name__)
 
-EXECUTION_CHOICES = {
-    "simulated": ExecutionType.KINEMATICALLY_SIMULATED,
-    "semi-real": ExecutionType.SEMI_REAL,
-    "real": ExecutionType.REAL,
-}
-"""
-Execution types the ``--execution`` switch selects between.
-"""
 
-PAUSE_AFTER_MOTION_SECONDS = 1.0
-"""
-How long a run waits after a gripper motion before the next step announces itself,
-letting the fingers settle into the state they just reached.
-"""
-
-STATE_VERBS = {
-    GripperState.OPEN: "opening",
-    GripperState.CLOSE: "closing",
-    GripperState.FLEXOPEN: "flex-opening",
-    GripperState.FLEXCLOSE: "flex-closing",
-}
-"""
-The human-readable action each gripper state commands, used in the step announcements.
-"""
+# %% command line choices
 
 
-def plan_node(root: PlanNode, action_likes: list, context: Context) -> PlanNode:
+class ExecutionChoice(StrEnum):
     """
-    Build a plan with ``root`` on top and one child per entry of ``action_likes``.
-
-    Mirrors how the plan factories mount children, so this demonstration can build plans
-    with its own root node types.
-
-    :param root: The node the plan is built below.
-    :param action_likes: The actions, motions and plan nodes the root executes.
-    :param context: The plan context shared by every node.
-    :return: The root of the built plan.
-    """
-    plan = Plan(context=context)
-    plan.add_node(root)
-    for action_like in action_likes:
-        child = make_node(action_like)
-        if child.plan:
-            root.mount_subplan(child)
-        else:
-            root.add_child(child)
-    plan.simplify()
-    return root
-
-
-@dataclass(eq=False, repr=False)
-class ExecutesChildrenSeparately(SequentialNode):
-    """
-    A sequential plan whose children are performed one after another, each on its own.
-
-    Performing a child runs only its subtree, so every gripper motion executes in its
-    own motion state chart and the code steps between the motions run when their turn
-    comes, instead of all at once before any motion. Children that hold several motions,
-    such as a parallel step, still share one chart.
+    The values of the ``--execution`` switch, each selecting an execution type.
     """
 
-    def perform(self) -> None:
-        for child in self.children:
-            child.perform()
-
-
-@dataclass(eq=False, repr=False)
-class ExecutesChildrenTogether(ParallelNode):
+    SIMULATED = "simulated"
     """
-    A parallel plan whose motions execute together in one motion state chart.
-
-    The inherited notification performs every motion on its own thread before the chart
-    runs, which would execute each motion twice here; this node leaves the notification
-    to the chart, which drives both grippers at once.
+    Perform the plan in the kinematic simulation of this process.
     """
 
-    def notify(self) -> None:
-        pass
+    SEMI_REAL = "semi-real"
+    """
+    Send the joint goals to a running controller that simulates the joints.
+    """
+
+    REAL = "real"
+    """
+    Send the griplink actions to the griplink servers of the grippers.
+    """
+
+    @property
+    def execution_type(self) -> ExecutionType:
+        """
+        :return: The execution type this choice runs the plan with.
+        """
+        return {
+            ExecutionChoice.SIMULATED: ExecutionType.KINEMATICALLY_SIMULATED,
+            ExecutionChoice.SEMI_REAL: ExecutionType.SEMI_REAL,
+            ExecutionChoice.REAL: ExecutionType.REAL,
+        }[self]
 
 
 @dataclass
@@ -146,7 +99,13 @@ class DAiSyGripperDemonstration(RobotDemonstration):
     individual/parallel matrix.
     """
 
-    ros_node_name: ClassVar[str] = "daisy_gripper_demo_node"
+    ros_node_name: str = "daisy_gripper_demo_node"
+
+    pause_after_motion_seconds: float = 1.0
+    """
+    How long a run waits after a gripper motion before the next motion starts, letting
+    the fingers settle into the state they just reached.
+    """
 
     def build_simulated_world(self) -> World:
         """
@@ -247,42 +206,43 @@ class DAiSyGripperDemonstration(RobotDemonstration):
         Open and close both grippers: each one alone, then both together, with preset
         states first and flex states afterwards.
 
-        Every step announces itself before its motions and pauses after them.
+        Every step prints what it commands before its motions and waits after them.
         """
         daisy = context.robot
         left_gripper = daisy.left_arm.end_effector
         right_gripper = daisy.right_arm.end_effector
 
-        def gripper_motion(gripper, state_type: GripperState) -> MoveGripperMotion:
-            return MoveGripperMotion(
-                configuration=gripper.default_configuration(state_type)
-            )
-
         def gripper_step(
             side: str, gripper, state_type: GripperState
         ) -> list[PlanNode]:
             return [
-                code(announce(f"the {side} gripper", state_type), context=context),
-                gripper_motion(gripper, state_type),
-                code(pause_after_motion, context=context),
+                self.announcement(f"the {side} gripper", state_type),
+                MoveGripperMotion(
+                    configuration=gripper.default_configuration(state_type)
+                ),
+                WaitMotion(seconds=self.pause_after_motion_seconds),
             ]
 
         def both_grippers_step(state_type: GripperState) -> list[PlanNode]:
             return [
-                code(announce("both grippers", state_type), context=context),
-                plan_node(
-                    ExecutesChildrenTogether(),
+                self.announcement("both grippers", state_type),
+                parallel(
                     [
-                        gripper_motion(left_gripper, state_type),
-                        gripper_motion(right_gripper, state_type),
+                        MoveGripperMotion(
+                            configuration=left_gripper.default_configuration(state_type)
+                        ),
+                        MoveGripperMotion(
+                            configuration=right_gripper.default_configuration(
+                                state_type
+                            )
+                        ),
                     ],
                     context,
                 ),
-                code(pause_after_motion, context=context),
+                WaitMotion(seconds=self.pause_after_motion_seconds),
             ]
 
-        return plan_node(
-            ExecutesChildrenSeparately(),
+        return sequential(
             [
                 # %% home arms first
                 ParkArmsAction(arms=daisy.all_arms),
@@ -306,64 +266,37 @@ class DAiSyGripperDemonstration(RobotDemonstration):
             context,
         )
 
+    def announcement(self, subject: str, state_type: GripperState) -> PrintMotion:
+        """
+        Build the motion that prints what the following gripper motion commands.
 
-def announce(subject: str, state_type: GripperState) -> Callable[[], None]:
-    """
-    Build the code step that logs what the following gripper motion commands.
-
-    :param subject: Which gripper or grippers the following motion drives, e.g. ``the
-        left gripper`` or ``both grippers``.
-    :param state_type: The state the following motion drives the gripper to.
-    :return: The announcement to run as a plan's code step.
-    """
-
-    def announce_step() -> None:
-        logger.info(f"{STATE_VERBS[state_type].capitalize()} {subject}.")
-
-    return announce_step
-
-
-def pause_after_motion() -> None:
-    """
-    Let the grippers settle after the motion that just finished.
-    """
-    time.sleep(PAUSE_AFTER_MOTION_SECONDS)
+        :param subject: Which gripper or grippers the following motion drives, e.g.
+            ``the left gripper`` or ``both grippers``.
+        :param state_type: The state the following motion drives the gripper to.
+        :return: The motion printing the announcement.
+        """
+        name = state_type.name.lower()
+        action = name.replace("flex", "flex-") if name.startswith("flex") else name
+        return PrintMotion(
+            message=f"{present_participle(action).capitalize()} {subject}."
+        )
 
 
 def run_from_command_line() -> None:
     """
-    Parse the ``--execution`` switch, make the demonstration's announcements visible in
-    the terminal, and run the demonstration.
+    Parse the ``--execution`` switch and run the demonstration.
     """
-    show_announcements_in_terminal()
     parser = argparse.ArgumentParser(description="DAiSy gripper open/close demo.")
     parser.add_argument(
         "--execution",
-        choices=sorted(EXECUTION_CHOICES),
-        default="simulated",
+        type=ExecutionChoice,
+        choices=list(ExecutionChoice),
+        default=ExecutionChoice.SIMULATED,
         help="Where the plan executes: in the simulation, on the semi-real joints, or "
         "on the real griplink servers.",
     )
     arguments = parser.parse_args()
-    main(execution_type=EXECUTION_CHOICES[arguments.execution])
-
-
-def show_announcements_in_terminal() -> None:
-    """
-    Announce the steps at info level on a handler of this module's logger.
-
-    Other libraries, ROS among them, configure the root logger before the demonstration
-    starts, so its announcements would be filtered out by the root's level if they only
-    propagated there.
-    """
-    logger.setLevel(logging.INFO)
-    if logger.handlers:
-        return
-    handler = logging.StreamHandler()
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
-    )
-    logger.addHandler(handler)
+    main(execution_type=arguments.execution.execution_type)
 
 
 def main(execution_type: ExecutionType = ExecutionType.KINEMATICALLY_SIMULATED) -> None:
