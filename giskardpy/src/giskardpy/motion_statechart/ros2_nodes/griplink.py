@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from abc import ABC
 from dataclasses import dataclass
 from enum import IntEnum
 
@@ -158,8 +157,7 @@ class GriplinkActionServerTask(
         GriplinkGoal,
         GriplinkResultResponse,
         GriplinkFeedback,
-    ],
-    ABC,
+    ]
 ):
     """
     Base class for tasks calling a griplink action server.
