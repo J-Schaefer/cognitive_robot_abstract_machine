@@ -401,11 +401,19 @@ class ArmCollisionPairs:
 
     def _checked_pairs(self) -> set[CollisionCheck]:
         """
-        :return: The pairs the collision rules of the world check now.
+        :return: The pairs the standing collision rules of the world check: its default
+            and ignore rules, without the temporary rules a motion may set, such as one
+            allowing an arm to collide while it follows a planned path.
         """
         collision_manager = self.world.collision_manager
-        collision_manager.update_collision_matrix(buffer=0.0)
-        return collision_manager.collision_matrix.collision_checks
+        collision_matrix = CollisionMatrix()
+        for rule in [
+            *collision_manager.default_rules,
+            *collision_manager.ignore_collision_rules,
+        ]:
+            rule.update(self.world)
+            rule.apply_to_collision_matrix(collision_matrix)
+        return collision_matrix.collision_checks
 
     def _bodies_moved_by(self, arm: Arm) -> set[Body]:
         """
