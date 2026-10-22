@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
@@ -376,14 +377,16 @@ class CableDemoTrial:
         )
         plans = demo.CableDemoPlans(context=context, workcell=workcell)
         recorder = self._start_video(world)
-        for stage in demo.CableDemoStage:
-            motion_tracker.begin_stage(stage)
-            stage_plan = plans.for_stage(stage).plan
-            stage_plan.node_callbacks.append(motion_tracker)
-            with kinematically_simulated_robot(collision_avoidance=False):
-                stage_plan.perform()
-        if recorder is not None:
-            recorder.stop().write(self.video)
+        with ExitStack() as video:
+            if recorder is not None:
+                # Also written when a stage fails, which is often what the video shows.
+                video.callback(lambda: recorder.stop().write(self.video))
+            for stage in demo.CableDemoStage:
+                motion_tracker.begin_stage(stage)
+                stage_plan = plans.for_stage(stage).plan
+                stage_plan.node_callbacks.append(motion_tracker)
+                with kinematically_simulated_robot(collision_avoidance=False):
+                    stage_plan.perform()
 
     def _plan_transformations(
         self, motion_tracker: ActiveMotionTracker
