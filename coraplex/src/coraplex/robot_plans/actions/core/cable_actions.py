@@ -1055,6 +1055,7 @@ class CableRegraspAction(ActionDescription):
                     ),
                     arm=free_arm,
                     movement_type=MovementType.CARTESIAN,
+                    allow_replanning=False,
                 ),
                 MoveToolCenterPointMotion(
                     target=translate_pose_along_local_axis(
@@ -1062,24 +1063,30 @@ class CableRegraspAction(ActionDescription):
                     ),
                     arm=free_arm,
                     movement_type=MovementType.CARTESIAN,
+                    allow_replanning=False,
                 ),
                 MoveToolCenterPointMotion(
                     inter_holding_arm_pose,
                     holding_arm,
                     movement_type=MovementType.CARTESIAN,
+                    allow_replanning=False,
                 ),
                 MoveToolCenterPointMotion(
-                    inter_free_arm_pose, free_arm, movement_type=MovementType.CARTESIAN
+                    inter_free_arm_pose,
+                    free_arm,
+                    movement_type=MovementType.CARTESIAN,
                 ),
                 MoveToolCenterPointMotion(
                     free_spread_pose,
                     free_arm,
                     movement_type=MovementType.CARTESIAN,
+                    allow_replanning=False,
                 ),
                 MoveToolCenterPointMotion(
                     hold_spread_pose,
                     holding_arm,
                     movement_type=MovementType.CARTESIAN,
+                    allow_replanning=False,
                 ),
                 _open_gripper_motion(holding_arm_end_effector),
             ],
