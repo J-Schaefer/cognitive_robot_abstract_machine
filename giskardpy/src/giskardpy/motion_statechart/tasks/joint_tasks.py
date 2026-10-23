@@ -276,6 +276,22 @@ class JointWaypointPath(JointPositionList, ABC):
 
 
 @dataclass(eq=False, repr=False)
+class FixedJointWaypointPath(JointWaypointPath):
+    """
+    Moves the connections through waypoints that are known when the task is built, such
+    as a path planned outside of the controller.
+    """
+
+    waypoints: list[list[float]] = field(kw_only=True)
+    """
+    The positions of :attr:`connections` at every waypoint; the last one is the goal.
+    """
+
+    def plan_waypoints(self, context: MotionStatechartContext) -> list[np.ndarray]:
+        return [np.array(waypoint) for waypoint in self.waypoints]
+
+
+@dataclass(eq=False, repr=False)
 class RetractToLastSafeJointConfiguration(JointWaypointPath):
     """
     Moves the connections a :class:`CloseToJointConfigurations` monitor watches back to

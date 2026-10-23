@@ -29,7 +29,10 @@ from giskardpy.motion_statechart.motion_statechart import (
     ObservationState,
 )
 from giskardpy.motion_statechart.tasks.cartesian_tasks import CartesianPose
-from giskardpy.motion_statechart.tasks.joint_tasks import JointPositionList
+from giskardpy.motion_statechart.tasks.joint_tasks import (
+    FixedJointWaypointPath,
+    JointPositionList,
+)
 from giskardpy.motion_statechart.nodes_for_testing.nodes_for_testing import (
     ConstTrueNode,
     TestNestedGoal,
@@ -128,6 +131,18 @@ def test_to_json_joint_position_list(mini_world):
     assert node_copy.name == node.name
     assert node_copy.threshold == node.threshold
     assert node_copy.goal_state == node.goal_state
+
+
+def test_fixed_joint_waypoint_path_survives_json_round_trip(mini_world):
+    connection = mini_world.connections[0]
+    node = FixedJointWaypointPath(connections=[connection], waypoints=[[0.2], [0.5]])
+
+    json_data = json.loads(json.dumps(to_json(node)))
+    tracker = WorldEntityWithIDKwargsTracker.from_world(mini_world)
+    node_copy = from_json(json_data, **tracker.create_kwargs())
+
+    assert node_copy.connections == [connection]
+    assert node_copy.waypoints == node.waypoints
 
 
 def test_a_motion_statechart_refers_to_world_entities_by_reference(mini_world):
