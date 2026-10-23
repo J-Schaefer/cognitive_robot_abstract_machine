@@ -43,14 +43,22 @@ def _transformation(tmp_path: Path) -> StuckMotionReplanning:
     )
 
 
-def _transformed_motion_nodes(world: World, target: Pose, tmp_path: Path) -> list:
+def _transformed_motion_nodes(
+    world: World, target: Pose, tmp_path: Path, allow_replanning: bool = True
+) -> list:
     """
     :return: The children of a plan of one tool center point motion of the right arm to
         the target, after the transformation rewrote it.
     """
     robot = world.get_semantic_annotations_by_type(DAiSy)[0]
     plan_root = sequential(
-        [MoveToolCenterPointMotion(target=target, arm=robot.right_arm)],
+        [
+            MoveToolCenterPointMotion(
+                target=target,
+                arm=robot.right_arm,
+                allow_replanning=allow_replanning,
+            )
+        ],
         Context(world, robot),
     )
     _transformation(tmp_path).apply(plan_root)
@@ -84,6 +92,21 @@ def test_tool_center_point_motion_is_followed_by_a_planned_path_to_its_target(
         target,
         robot.right_arm,
     )
+
+
+def test_motion_not_allowing_replanning_is_left_unchanged(
+    parked_daisy_world: World, tmp_path: Path
+):
+    robot = parked_daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
+    target = Pose.from_xyz_rpy(
+        x=0.1, reference_frame=robot.right_arm.end_effector.tool_frame
+    )
+
+    (motion_node,) = _transformed_motion_nodes(
+        parked_daisy_world, target, tmp_path, allow_replanning=False
+    )
+
+    assert type(motion_node.designator) is MoveToolCenterPointMotion
 
 
 # %% reaching the target

@@ -801,7 +801,7 @@ class StagnationReplannedToolCenterPointMotion(ToolCenterPointMotionWithReplanni
 class ReplanningTransformation(PlanTransformation[ActionDescription], ABC):
     """
     Replaces the tool center point motions of the actions it applies to by motions
-    that give way to a planned path.
+    that give way to a planned path, except those that do not allow replanning.
     """
 
     parameters: ReplanningParameters = field(kw_only=True)
@@ -824,8 +824,10 @@ class ReplanningTransformation(PlanTransformation[ActionDescription], ABC):
 
     def apply(self, plan_node: ActionNode) -> None:
         for node in plan_node.descendants:
-            if not isinstance(node, MotionNode) or type(node.designator) is not (
-                MoveToolCenterPointMotion
+            if (
+                not isinstance(node, MotionNode)
+                or type(node.designator) is not MoveToolCenterPointMotion
+                or not node.designator.allow_replanning
             ):
                 continue
             self.rewrite_motion_node(node)

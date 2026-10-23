@@ -237,6 +237,13 @@ class MoveToolCenterPointMotion(
     The type of movement that should be performed.
     """
 
+    allow_replanning: bool = True
+    """
+    If the motion may be replaced by a joint path planned to its target. Replanning
+    using a motion planner might be undesired in some situations, i.e. when both
+    hands are holding one object.
+    """
+
     def perform(self):
         return
 
