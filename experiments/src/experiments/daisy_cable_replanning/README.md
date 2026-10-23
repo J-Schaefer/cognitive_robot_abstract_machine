@@ -28,6 +28,7 @@ runs into are added to the database for the next round.
 | `joint_state_metrics.py` | `SeriesJointStateMetrics`, the joint state counts of a series (`joint-states` command) |
 | `curation.py` | `IllegalJointStateCuration`, choosing recorded states to keep; `KeptDatabase`, the permanent files |
 | `joint_state_browser.py`, `robot_snapshot.py` | the window for choosing states to keep, and the rendering of the robot in it |
+| `stuck_motion_replanning.py`, `stuck_motion_demo.py` | replanning stuck motions in this process, so the charts can run on the real robot; the demo running the cable demo once that way |
 | `command_line.py`, `__main__.py` | the command line: `record`, `replan`, `summarize`, `joint-states`, `video`, `browse`, `trial` |
 | `run_series.sh` | one complete series, as run for the results below |
 
@@ -282,6 +283,36 @@ $E video --output $S/video --collision-avoidance --on-stagnation \
 ```
 
 `series_4_replanning_on_stagnation/run.sh` runs both experiments.
+
+### Running it once, also on the real robot (`stuck_motion_demo.py`)
+
+`StagnationReplanning` plans inside the motion chart, so the chart holds the planner
+and the world and can't be sent to a Giskard running elsewhere. `StuckMotionReplanning`
+(`stuck_motion_replanning.py`) plans in this process instead:
+
+1. Every `MoveToolCenterPointMotion` becomes a `ToolCenterPointMotionEndingWhenStuck`.
+   Its chart is the same `ReplacedWhenTrue`, with `NoLongerProgressing` as the monitor,
+   but the replacement is a `Print`, so the chart ends without failing when the motion
+   gets stuck.
+2. A `PlannedPathAfterStuckMotion` node follows it. It is an execution boundary, so it
+   runs after the motion's chart. If the tool frame ended short of the target, it plans
+   with `GoalConfigurationSampler` and `JointSpacePlanner` in this process. Then it
+   sends a `FixedJointWaypointPath` (giskardpy) with the planned waypoints, with the
+   arm's collision avoidance off as above.
+
+The demo runs the four stages once on the nominal workcell, without trial noise.
+Collision avoidance is on in every stage but homing:
+
+```bash
+python -m experiments.daisy_cable_replanning.stuck_motion_demo --execution simulated
+# semi-real or real: start the controller first
+ros2 launch giskardpy_ros giskardpy_daisy_standalone.launch.py
+python -m experiments.daisy_cable_replanning.stuck_motion_demo --execution semi-real
+```
+
+`--replanning-log` sets the file the planned paths are appended to (default
+`stuck_motion_replanning.jsonl`). The motion labels in it are empty for semi-real and
+real runs, because their motion nodes report no start.
 
 ## Keeping illegal joint states for good
 

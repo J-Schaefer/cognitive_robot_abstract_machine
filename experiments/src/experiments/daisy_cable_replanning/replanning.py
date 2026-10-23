@@ -26,6 +26,7 @@ from giskardpy.motion_statechart.goals.collision_avoidance import (
     UpdateTemporaryCollisionRules,
 )
 from giskardpy.motion_statechart.goals.templates import Parallel, Sequence
+from giskardpy.motion_statechart.graph_node import MotionStatechartNode
 from giskardpy.motion_statechart.monitors.joint_monitors import (
     CloseToJointConfigurations,
     JointConfigurationSet,
@@ -633,6 +634,40 @@ class ToolCenterPointMotionWithReplanning(MoveToolCenterPointMotion):
             **replanning,
         )
 
+    def _planner(
+        self, illegal_configurations: JointConfigurationSet
+    ) -> JointSpacePlanner:
+        """
+        :param illegal_configurations: The joint configurations the path keeps clear
+            of.
+        :return: The planner of the arm's path, ignoring the soft cable.
+        """
+        return JointSpacePlanner(
+            world=self.world,
+            robot=self.robot,
+            arm=self.arm,
+            # The cable is soft and meant to be touched; the demo allows its
+            # collisions.
+            ignored_bodies={
+                cable.root
+                for cable in self.world.get_semantic_annotations_by_type(Cable)
+            },
+            illegal_configurations=illegal_configurations,
+            parameters=self.parameters,
+        )
+
+    @property
+    def _goal_sampler(self) -> GoalConfigurationSampler:
+        """
+        :return: The sampler of the arm's joint configurations reaching the target.
+        """
+        return GoalConfigurationSampler(
+            world=self.world,
+            arm=self.arm,
+            root=self.robot.root,
+            parameters=self.parameters,
+        )
+
     def _planned_path(
         self, illegal_configurations: JointConfigurationSet
     ) -> PlannedJointPathToPose:
@@ -644,27 +679,49 @@ class ToolCenterPointMotionWithReplanning(MoveToolCenterPointMotion):
         return PlannedJointPathToPose(
             name="planned joint path",
             connections=self.arm.active_connections,
-            planner=JointSpacePlanner(
-                world=self.world,
-                robot=self.robot,
-                arm=self.arm,
-                # The cable is soft and meant to be touched; the demo allows its
-                # collisions.
-                ignored_bodies={
-                    cable.root
-                    for cable in self.world.get_semantic_annotations_by_type(Cable)
-                },
-                illegal_configurations=illegal_configurations,
-                parameters=self.parameters,
-            ),
-            goal_sampler=GoalConfigurationSampler(
-                world=self.world,
-                arm=self.arm,
-                root=self.robot.root,
-                parameters=self.parameters,
-            ),
+            planner=self._planner(illegal_configurations),
+            goal_sampler=self._goal_sampler,
             goal_pose=self.target,
             replanning_log=self.replanning_log,
+        )
+
+    def _without_collision_avoidance_of_arm(
+        self, path: MotionStatechartNode
+    ) -> Sequence:
+        """
+        :param path: The node moving the arm along a planned path.
+        :return: The path, followed while Giskard's collision avoidance leaves the
+            arm's bodies alone, and the collision rules restored after it.
+
+        The planner has checked the path against the bodies themselves; Giskard's
+        avoidance would keep the arm out of its buffer zones around them, which the
+        path may pass through, and hold it back again.
+        """
+        arm_bodies = ArmCollisionPairs(
+            world=self.world, robot=self.robot
+        ).bodies_of_arm[self.arm]
+        return Sequence(
+            name="follow planned path",
+            nodes=[
+                Parallel(
+                    name="planned path without collision avoidance of the arm",
+                    nodes=[
+                        UpdateTemporaryCollisionRules(
+                            name="allow collisions of the arm",
+                            temporary_rules=[
+                                AllowCollisionForBodies(
+                                    allowed_collision_bodies=arm_bodies
+                                )
+                            ],
+                        ),
+                        path,
+                    ],
+                ),
+                UpdateTemporaryCollisionRules(
+                    name="restore collision rules",
+                    temporary_rules=list(self.world.collision_manager.temporary_rules),
+                ),
+            ],
         )
 
 
@@ -727,47 +784,13 @@ class StagnationReplannedToolCenterPointMotion(ToolCenterPointMotionWithReplanni
                 timeout=timedelta(seconds=self.parameters.stagnation_timeout),
             ),
             monitored_node=motion,
-            replacement=self._planned_path_without_collision_avoidance(),
-        )
-
-    def _planned_path_without_collision_avoidance(self) -> Sequence:
-        """
-        :return: The planned path, followed while Giskard's collision avoidance leaves
-            the arm's bodies alone, and the collision rules restored after it.
-
-        The planner has checked the path against the bodies themselves; Giskard's
-        avoidance would keep the arm out of its buffer zones around them, which the
-        path may pass through, and hold it back again.
-        """
-        arm_bodies = ArmCollisionPairs(
-            world=self.world, robot=self.robot
-        ).bodies_of_arm[self.arm]
-        return Sequence(
-            name="follow planned path",
-            nodes=[
-                Parallel(
-                    name="planned path without collision avoidance of the arm",
-                    nodes=[
-                        UpdateTemporaryCollisionRules(
-                            name="allow collisions of the arm",
-                            temporary_rules=[
-                                AllowCollisionForBodies(
-                                    allowed_collision_bodies=arm_bodies
-                                )
-                            ],
-                        ),
-                        self._planned_path(
-                            IllegalJointStateDatabase.for_daisy_arms().joint_configurations(
-                                self.world
-                            )
-                        ),
-                    ],
-                ),
-                UpdateTemporaryCollisionRules(
-                    name="restore collision rules",
-                    temporary_rules=list(self.world.collision_manager.temporary_rules),
-                ),
-            ],
+            replacement=self._without_collision_avoidance_of_arm(
+                self._planned_path(
+                    IllegalJointStateDatabase.for_daisy_arms().joint_configurations(
+                        self.world
+                    )
+                )
+            ),
         )
 
 
@@ -805,8 +828,16 @@ class ReplanningTransformation(PlanTransformation[ActionDescription], ABC):
                 MoveToolCenterPointMotion
             ):
                 continue
-            node.designator = self.replacement_for(node.designator)
-            node.designator.plan_node = node
+            self.rewrite_motion_node(node)
+
+    def rewrite_motion_node(self, node: MotionNode) -> None:
+        """
+        Replace the tool center point motion of the node by :meth:`replacement_for`.
+
+        :param node: A node of a :class:`MoveToolCenterPointMotion`.
+        """
+        node.designator = self.replacement_for(node.designator)
+        node.designator.plan_node = node
 
 
 @dataclass
