@@ -112,7 +112,7 @@ def run_from_command_line() -> None:
         "--execution",
         type=ExecutionChoice,
         choices=list(ExecutionChoice),
-        default=ExecutionChoice.SIMULATED,
+        default=ExecutionChoice.SEMI_REAL,
         help="where the plans are performed",
     )
     parser.add_argument(
