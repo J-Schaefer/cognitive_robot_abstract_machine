@@ -266,6 +266,8 @@ def load_convex_mesh_shape(
         obj_pkg_filename = convert_to_decomposed_obj_and_save_in_tmp(
             mesh=mesh, mesh_decomposer=mesh_decomposer
         )
+        # The decomposition is made from the already scaled mesh.
+        scale = Scale()
     else:
         obj_pkg_filename = str(mesh.local_file)
     return bullet.load_convex_shape(
