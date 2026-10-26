@@ -551,6 +551,81 @@ repository's `video/` directory, shows seed 0:
 - Right, with replanning when stuck: 8 motions replanned, no collision, every stage
   completed.
 
+### Series 5: series 3 repeated with full-size gripper collision shapes
+
+Directory: `series_5_fixed_collision_shapes/`.
+
+Until commit `4739a9995`, Bullet scaled the convex decomposition of a mesh twice.
+DAiSy's gripper meshes (scale 0.001) became about 4 mm large, so neither the recorder,
+the planner nor Giskard saw the gripper base, mounting plate and fingers. Series 1 to 4
+ran with these shapes. Series 5 is `run_series.sh` with 3 rounds, as series 3, but
+without series 1's database, so every state comes from the full-size shapes.
+
+The runs without replanning collide in the same trials as series 3 (94 and 87), but in
+more states, and at the gripper bodies the bug had shrunk:
+
+| colliding pair, states logged | series 3 `record` | series 5 `record` | series 3 `heldout_record` | series 5 `heldout_record` |
+|---|---|---|---|---|
+| right forearm / right gripper base | 2,206 | 5,441 | 2,283 | 5,676 |
+| right forearm / right gripper side cylinder | 5,180 | 4,011 | 4,353 | 3,093 |
+| right forearm / right finger tips | 1,208 | 401 | 1,177 | 416 |
+| right forearm / *left* gripper base | 0 | 176 | 0 | 208 |
+| other pairs | 336 | 219 | 447 | 304 |
+| all | 8,930 | 10,248 | 8,260 | 9,697 |
+
+The recorder logs one pair per state, so a state now counted at the gripper base was
+often counted at the side cylinder or a finger tip before.
+
+Joint state metrics (`joint_state_metrics.md`):
+
+| run | states replanned around | logged | duplicate share | distinct poses | written | logged within guard reach |
+|---|---|---|---|---|---|---|
+| record | 0 | 10,248 | 56% | 4,507 | 4,507 | 0 |
+| heldout_record | 0 | 9,697 | 57% | 4,189 | 4,189 | 0 |
+| replan_round_1 | 4,507 | 966 | 57% | 418 | 418 | 28 |
+| replan_round_2 | 4,925 | 20,837 | 71% | 5,958 | 5,958 | 0 |
+| replan_round_3 | 10,883 | 13,267 | 59% | 5,499 | 5,499 | 1 |
+| heldout_replan | 16,382 | 17 | 0% | 17 | 17 | 0 |
+
+The training databases hold 16,382 states (series 3: 9,222) and cover 100 % of the
+held-out baseline's collisions. The guard's check takes 0.52 ms per control cycle.
+
+Outcomes (`summary.txt`), series 3 / series 5:
+
+| run | completed | trials colliding | completed without any collision | replanned motions |
+|---|---|---|---|---|
+| `record` | 79 / 79 | 94 / 94 | 0 / 0 | - |
+| `heldout_record` | 76 / 76 | 87 / 87 | 0 / 0 | - |
+| `replan_round_1` | 72 / 70 | 82 / 83 | 0 / 0 | 287 / 314 |
+| `replan_round_2` | 60 / 94 | 15 / 94 | 47 / 0 | 489 / 159 |
+| `replan_round_3` | 68 / 91 | 30 / 76 | 38 / 15 | 533 / 388 |
+| `heldout_replan` | 28 / 73 | 37 / 8 | 26 / 67 | 509 / 466 |
+
+- **Held-out seeds.** With series 5's databases, 67 of 100 held-out trials complete
+  without any collision (series 3: 26). 73 complete at all (28), only 8 collide (37),
+  and they log 17 illegal joint states (2,261). Series 3's stall in
+  `MoveTCP/position#18`, which ended 31 of its held-out runs, does not occur. Of the
+  27 failures, 14 are stalls
+  (`MotionMadeNoProgress`, 12 of them in `MoveTCP/position#15`), 11 find no path
+  (`NoJointPathFound`), and 2 exceed the simulated-time limit.
+- **Training rounds.** Round 2 collides in 94 trials and logs 20,837 states; 928 of
+  the 5,958 it writes are the right upper arm against the table. Round 3 still collides in 76. The rounds again do not converge
+  steadily, but together their states make the held-out run nearly collision-free.
+- **Remaining held-out contacts**, in logged states: the left wrist against a right
+  finger tip (6), the right forearm against its gripper's wrist cylinder (6), the right
+  forearm against its gripper base (2), and single contacts between the wrists.
+- **What else changed since series 3.** Besides the collision shapes and the missing
+  series 1 database, the code gained `300fd746f` (`AllowCollisionForBodies` keeps its
+  bodies) and `68398828a` (the planner takes the arm's pairs from the standing rules
+  only). The runs without replanning are unaffected by those, the replanning runs may
+  not be. Replanning also reproduces only statistically, and this is one run.
+
+`series_5_fixed_collision_shapes/video/daisy_cable_replanning_seed100.mp4` shows
+held-out seed 100:
+- Left, Giskard alone: 68 illegal joint states.
+- Right, with replanning around series 5's databases: 7 motions replanned, no
+  collision, every stage completed.
+
 ## Known limitations
 
 - The guard is joint-space proximity to *recorded* states. It does not foresee
