@@ -364,14 +364,14 @@ class CableDemoPlans:
                     GriplinkFlexConfiguration.from_state_type(
                         left_gripper,
                         GripperState.FLEXCLOSE,
-                        grip_position=70,
-                        grip_velocity=300,
+                        grip_position=0.07,
+                        grip_velocity=0.3,
                     ),
                     GriplinkFlexConfiguration.from_state_type(
                         right_gripper,
                         GripperState.FLEXCLOSE,
-                        grip_position=70,
-                        grip_velocity=300,
+                        grip_position=0.07,
+                        grip_velocity=0.3,
                     ),
                 ),
             ],
