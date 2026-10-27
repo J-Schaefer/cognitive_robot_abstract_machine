@@ -215,10 +215,10 @@ def _open_gripper_motion(end_effector: EndEffector) -> MoveGripperMotion:
 def _flex_gripper_motion(
     end_effector: EndEffector,
     state_type: GripperState,
-    grip_position: int | None = None,
-    grip_force: int | None = None,
-    grip_speed: int | None = None,
-    grip_acceleration: int | None = None,
+    grip_position: float | None = None,
+    grip_force: float | None = None,
+    grip_speed: float | None = None,
+    grip_acceleration: float | None = None,
 ) -> MoveGripperMotion:
     """
     Build the motion that commands a WPG/Griplink gripper into a flex state.
