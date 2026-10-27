@@ -26,6 +26,7 @@ from semantic_digital_twin.world_description.geometry import (
     Color,
     Mesh,
 )
+from semantic_digital_twin.world_description.mesh_file_storage import MeshFileStorage
 
 
 @dataclass
@@ -211,6 +212,11 @@ class SphereToRos2Converter(ShapeToRos2Converter[Sphere]):
 
 @dataclass
 class FileMeshToRos2Converter(ShapeToRos2Converter[Mesh]):
+    """
+    Draws a mesh from its file, or from its geometry when the file exists only in the
+    :class:`~semantic_digital_twin.world_description.mesh_file_storage.MeshFileStorage`
+    of this process and so cannot be opened by a visualizer on another machine.
+    """
 
     @classmethod
     def mesh_resource_of(cls, mesh: Mesh) -> str:
@@ -229,12 +235,27 @@ class FileMeshToRos2Converter(ShapeToRos2Converter[Mesh]):
 
     @classmethod
     def convert(cls, data: Mesh) -> Marker:
+        """
+        :return: A triangle list marker for an untextured mesh whose file this process
+            exported to its temporary storage, otherwise a mesh resource marker.
+        """
         marker = super().convert(data)
-        marker.type = visualization_msgs.Marker.MESH_RESOURCE
-        marker.mesh_resource = cls.mesh_resource_of(data)
         marker.scale.x = data.scale.x
         marker.scale.y = data.scale.y
         marker.scale.z = data.scale.z
+        if (
+            data.local_file.is_relative_to(MeshFileStorage().root)
+            and not data.is_textured
+        ):
+            unscaled_mesh = data.unscaled_mesh
+            marker.type = visualization_msgs.Marker.TRIANGLE_LIST
+            marker.points = [
+                geometry_msgs.Point(x=x, y=y, z=z)
+                for x, y, z in unscaled_mesh.vertices[unscaled_mesh.faces.reshape(-1)]
+            ]
+            return marker
+        marker.type = visualization_msgs.Marker.MESH_RESOURCE
+        marker.mesh_resource = cls.mesh_resource_of(data)
         if data.is_textured:
             marker.mesh_use_embedded_materials = True
             marker.color = ColorRGBA(r=0.0, g=0.0, b=0.0, a=0.0)

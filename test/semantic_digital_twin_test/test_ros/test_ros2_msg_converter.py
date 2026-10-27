@@ -4,7 +4,9 @@ import subprocess
 import sys
 
 import geometry_msgs.msg as geometry_msgs
+import numpy as np
 import pytest
+from visualization_msgs.msg import Marker
 from importlib.resources import files
 from pathlib import Path
 
@@ -394,6 +396,40 @@ def test_a_package_uri_mesh_is_found_in_the_local_install(
     mesh = Ros2ToSemDTConverter.convert(marker, cylinder_bot_world)
 
     assert mesh.filename == str(installed_mesh_file)
+
+
+def test_a_mesh_received_from_another_process_is_drawn_from_its_geometry(
+    cylinder_bot_world,
+):
+    """
+    A mesh received as json is written to a file only this process holds, so a
+    visualizer on another machine can draw it only from the geometry in the marker.
+    """
+    sent = Mesh(
+        filename=str(
+            Path(files("semantic_digital_twin")).parent.parent
+            / "resources"
+            / "stl"
+            / "jeroen_cup.stl"
+        ),
+        scale=Scale(2.0, 2.0, 2.0),
+    )
+    received = Mesh.from_json(sent.to_json())
+    received.origin.reference_frame = cylinder_bot_world.get_body_by_name("map")
+
+    marker = SemDTToRos2Converter.convert(received)
+
+    unscaled = received.unscaled_mesh
+    assert marker.type == Marker.TRIANGLE_LIST
+    assert np.allclose(
+        [(point.x, point.y, point.z) for point in marker.points],
+        unscaled.vertices[unscaled.faces.reshape(-1)],
+    )
+    assert (marker.scale.x, marker.scale.y, marker.scale.z) == (
+        received.scale.x,
+        received.scale.y,
+        received.scale.z,
+    )
 
 
 # %% nothing converts the given object
