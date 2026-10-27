@@ -18,6 +18,7 @@ from experiments.daisy_cable_replanning.collisions import (
     CollisionKind,
     IllegalJointStateDatabase,
 )
+from experiments.daisy_cable_replanning.exceptions import NoValidGoalConfiguration
 from experiments.daisy_cable_replanning.replanning import (
     GoalConfigurationSampler,
     JointSpacePlanner,
@@ -344,3 +345,41 @@ def test_planner_reaches_the_valid_one_of_several_goals(
     waypoints = planner.plan([illegal_goal, goal])
 
     assert waypoints[-1] == pytest.approx(goal)
+
+
+def test_planner_reports_a_goal_too_close_to_an_illegal_configuration(
+    parked_daisy_world: World, safe_right_posture: tuple[float, ...]
+):
+    illegal_goal = np.array(safe_right_posture)
+    planner = _planner_around(
+        parked_daisy_world, np.concatenate([np.zeros(6), illegal_goal])
+    )
+
+    with pytest.raises(NoValidGoalConfiguration) as error:
+        planner.plan([illegal_goal])
+
+    (rejected,) = error.value.rejected_goals
+    assert rejected.positions == pytest.approx(illegal_goal.tolist())
+    assert rejected.distance_to_illegal_configurations == pytest.approx(0.0)
+    assert rejected.contacts == []
+
+
+def test_planner_reports_the_contacts_of_a_colliding_goal(
+    parked_daisy_world: World, right_forearm_touching_gripper: np.ndarray
+):
+    colliding_goal = right_forearm_touching_gripper[6:]
+    planner = _planner_around(parked_daisy_world, np.full(12, 10.0))
+    connections = _robot(parked_daisy_world).right_arm.active_connections
+    with ProbedJointState(world=parked_daisy_world, connections=connections) as probe:
+        expected_contacts = probe.contacts_closer_than_allowed(
+            colliding_goal, planner.collision_matrix()
+        )
+
+    with pytest.raises(NoValidGoalConfiguration) as error:
+        planner.plan([colliding_goal])
+
+    (rejected,) = error.value.rejected_goals
+    assert expected_contacts != []
+    assert [
+        frozenset((contact.body_a, contact.body_b)) for contact in rejected.contacts
+    ] == [frozenset((contact.body_a, contact.body_b)) for contact in expected_contacts]

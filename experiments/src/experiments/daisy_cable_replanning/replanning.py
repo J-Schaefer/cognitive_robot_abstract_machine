@@ -20,7 +20,11 @@ from experiments.daisy_cable_replanning.collisions import (
     IllegalJointStateDatabase,
     MotionLabel,
 )
-from experiments.daisy_cable_replanning.exceptions import NoJointPathFound
+from experiments.daisy_cable_replanning.exceptions import (
+    NoJointPathFound,
+    NoValidGoalConfiguration,
+    RejectedGoalConfiguration,
+)
 from giskardpy.motion_statechart.context import MotionStatechartContext
 from giskardpy.motion_statechart.goals.collision_avoidance import (
     UpdateTemporaryCollisionRules,
@@ -40,6 +44,7 @@ from giskardpy.motion_statechart.tasks.joint_tasks import (
 from krrood.adapters.json_serializer import to_json
 from ompl import base as ompl_base
 from ompl import geometric as ompl_geometric
+from semantic_digital_twin.collision_checking.collision_detector import ClosestPoints
 from semantic_digital_twin.collision_checking.collision_matrix import CollisionMatrix
 from semantic_digital_twin.collision_checking.collision_rules import (
     AllowCollisionForBodies,
@@ -182,6 +187,17 @@ class ProbedJointState:
             below which it counts as colliding.
         :return: Whether no pair is closer than its distance at the positions.
         """
+        return not self.contacts_closer_than_allowed(positions, collision_matrix)
+
+    def contacts_closer_than_allowed(
+        self, positions: np.ndarray, collision_matrix: CollisionMatrix
+    ) -> list[ClosestPoints]:
+        """
+        :param positions: Positions of :attr:`connections` to probe.
+        :param collision_matrix: The pairs that may not collide, each with the distance
+            below which it counts as colliding.
+        :return: The pairs closer than their distance at the positions.
+        """
         self.write(positions)
         # The detector may also report pairs that are a little further apart than
         # their check's distance, so the distance is compared here.
@@ -190,13 +206,14 @@ class ProbedJointState:
             for check in collision_matrix.collision_checks
         }
         collision_detector = self.world.collision_manager.collision_detector
-        return not any(
-            contact.distance
-            < allowed_distances[frozenset((contact.body_a, contact.body_b))]
+        return [
+            contact
             for contact in collision_detector.check_collisions(
                 collision_matrix
             ).contacts
-        )
+            if contact.distance
+            < allowed_distances[frozenset((contact.body_a, contact.body_b))]
+        ]
 
     def write(self, positions: np.ndarray) -> None:
         """
@@ -374,7 +391,9 @@ class JointSpacePlanner:
         :return: Waypoints from their current positions to the nearest goal a path is
             found to, no further apart than
             :attr:`ReplanningParameters.waypoint_spacing`.
-        :raises NoJointPathFound: If no path to any goal is found.
+        :raises NoValidGoalConfiguration: If every goal is in collision or too close to
+            an illegal configuration.
+        :raises NoJointPathFound: If no path to any valid goal is found.
         """
         connections = self.arm.active_connections
         collision_matrix = self.collision_matrix()
@@ -387,11 +406,14 @@ class JointSpacePlanner:
         space = self._state_space(connections)
         with ProbedJointState(world=self.world, connections=connections) as probe:
 
-            def is_valid(positions: np.ndarray) -> bool:
+            def distance_to_illegal_configurations(positions: np.ndarray) -> float:
                 configuration = held_configuration.copy()
                 configuration[planned_columns] = positions
-                return self.illegal_configurations.distance_to(
-                    configuration
+                return self.illegal_configurations.distance_to(configuration)
+
+            def is_valid(positions: np.ndarray) -> bool:
+                return distance_to_illegal_configurations(
+                    positions
                 ) >= self.parameters.clearance and probe.is_collision_free(
                     positions, collision_matrix
                 )
@@ -401,13 +423,30 @@ class JointSpacePlanner:
                 (goal for goal in goals if is_valid(goal)),
                 key=lambda goal: np.max(np.abs(goal - start)),
             )
+            if not reachable_goals:
+                raise NoValidGoalConfiguration(
+                    start=start.tolist(),
+                    rejected_goals=[
+                        RejectedGoalConfiguration(
+                            positions=goal.tolist(),
+                            distance_to_illegal_configurations=distance_to_illegal_configurations(
+                                goal
+                            ),
+                            contacts=probe.contacts_closer_than_allowed(
+                                goal, collision_matrix
+                            ),
+                        )
+                        for goal in goals
+                    ],
+                    clearance=self.parameters.clearance,
+                )
             for goal in reachable_goals:
                 waypoints = self._solve(space, is_valid, start, goal)
                 if waypoints is not None:
                     return waypoints
         raise NoJointPathFound(
             start=start.tolist(),
-            goals=[goal.tolist() for goal in goals],
+            goals=[goal.tolist() for goal in reachable_goals],
             planning_time=self.parameters.planning_time,
         )
 

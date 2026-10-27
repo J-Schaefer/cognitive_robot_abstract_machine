@@ -13,7 +13,13 @@ from semantic_digital_twin.collision_checking.trimesh_collision_detector import 
     FCLCollisionDetector,
 )
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
+from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.testing import world_setup_simple
+from semantic_digital_twin.world import World
+from semantic_digital_twin.world_description.connections import FixedConnection
+from semantic_digital_twin.world_description.geometry import Box, Mesh, Scale
+from semantic_digital_twin.world_description.shape_collection import ShapeCollection
+from semantic_digital_twin.world_description.world_entity import Body
 import numpy as np
 
 collision_detectors = [BulletCollisionDetector, FCLCollisionDetector]
@@ -142,3 +148,41 @@ def test_all_collisions(world_setup_simple, collision_detector):
     ).contacts
     assert len(collisions) == 1
     assert {collisions[0].body_a, collisions[0].body_b} == {body1, body2}
+
+
+def test_bullet_measures_a_mesh_as_far_away_as_fcl():
+    world = World()
+    root = Body(name=PrefixedName("root", prefix="world"))
+    box = Body(
+        name=PrefixedName("box", prefix="test"),
+        collision=ShapeCollection([Box(scale=Scale(0.2, 0.2, 0.2))]),
+    )
+    mesh = Body(
+        name=PrefixedName("mesh", prefix="test"),
+        collision=ShapeCollection([Mesh.box(extents=(0.2, 0.2, 0.2))]),
+    )
+    with world.modify_world():
+        world.add_kinematic_structure_entity(root)
+        world.add_connection(FixedConnection(root, box))
+        world.add_connection(
+            FixedConnection(
+                root,
+                mesh,
+                parent_T_connection_expression=HomogeneousTransformationMatrix.from_xyz_rpy(
+                    x=1, reference_frame=root
+                ),
+            )
+        )
+
+    bullet_distance = (
+        BulletCollisionDetector(_world=world)
+        .check_collision_between_bodies(box, mesh, distance=10)
+        .distance
+    )
+    fcl_distance = (
+        FCLCollisionDetector(_world=world)
+        .check_collision_between_bodies(box, mesh, distance=10)
+        .distance
+    )
+
+    assert bullet_distance == pytest.approx(fcl_distance, abs=1e-4)

@@ -38,6 +38,14 @@ logger = logging.getLogger(__name__)
 CACHE_DIR = create_cache_dir("convex_decompositions")
 LOG_DIR = create_cache_dir("log")
 
+CONVEX_HULL_MARGIN = 0.0
+"""
+Collision margin of the convex hulls meshes and cylinders are loaded as, in metres.
+
+.. note:: Bullet inflates a convex hull by its margin, unlike a box or a sphere, whose
+    margin lies within the shape, so any other value shifts every distance to a hull.
+"""
+
 _shape_cache: Dict[Any, bullet.CollisionShape] = {}
 """
 Process-wide cache of built Bullet collision shapes, keyed by geometry content (see
@@ -134,8 +142,6 @@ def create_cylinder_shape(diameter: float, height: float) -> bullet.CylinderShap
     Creates a bullet cylinder shape.
 
     .. note:: we are using an obj, because the cylinder primitive of bullet produces wrong contact points sometimes.
-              The obj is scaled by 0.996 because it is slightly too large. The number was determined by comparing results
-              to fcl.
     :param diameter: the diameter of the cylinder.
     :param height: the height of the cylinder.
     :return: the bullet cylinder shape.
@@ -149,7 +155,8 @@ def create_cylinder_shape(diameter: float, height: float) -> bullet.CylinderShap
     return bullet.load_convex_shape(
         cylinder_mesh,
         single_shape=True,
-        scaling=bullet.Vector3(diameter, diameter, height) * 0.996,
+        shape_margin=CONVEX_HULL_MARGIN,
+        scaling=bullet.Vector3(diameter, diameter, height),
     )
 
 
@@ -273,6 +280,7 @@ def load_convex_mesh_shape(
     return bullet.load_convex_shape(
         obj_pkg_filename,
         single_shape=single_shape,
+        shape_margin=CONVEX_HULL_MARGIN,
         scaling=bullet.Vector3(scale.x, scale.y, scale.z),
     )
 
