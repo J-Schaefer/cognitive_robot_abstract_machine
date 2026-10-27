@@ -262,14 +262,18 @@ plan_home = sequential(
                     specification=GriplinkFlexSpecification.from_state_type(
                         left_gripper,
                         GripperState.FLEXCLOSE,
-                        GriplinkGripperConfiguration(grip_position=70, grip_speed=300),
+                        GriplinkGripperConfiguration(
+                            grip_position=0.07, grip_speed=0.3
+                        ),
                     )
                 ),
                 MoveGripperMotion(
                     specification=GriplinkFlexSpecification.from_state_type(
                         right_gripper,
                         GripperState.FLEXCLOSE,
-                        GriplinkGripperConfiguration(grip_position=70, grip_speed=300),
+                        GriplinkGripperConfiguration(
+                            grip_position=0.07, grip_speed=0.3
+                        ),
                     )
                 ),
             ]

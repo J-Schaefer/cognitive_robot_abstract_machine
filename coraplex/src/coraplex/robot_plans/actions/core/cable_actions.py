@@ -221,21 +221,21 @@ def _open_gripper_motion(end_effector: EndEffector) -> MoveGripperMotion:
 def _flex_gripper_motion(
     end_effector: EndEffector,
     state_type: GripperState,
-    grip_position: int | None = None,
-    grip_force: int | None = None,
-    grip_speed: int | None = None,
-    grip_acceleration: int | None = None,
+    grip_position: float | None = None,
+    grip_force: float | None = None,
+    grip_speed: float | None = None,
+    grip_acceleration: float | None = None,
 ) -> MoveGripperMotion:
     """
     Build the motion that commands a WPG/Griplink gripper into a flex state.
 
     :param state_type: The flex state to command, either :attr:`GripperState.FLEXCLOSE`
         or :attr:`GripperState.FLEXOPEN`.
-    :param grip_position: Opening width of the gripper in millimetres [-5..120].
+    :param grip_position: Opening width of the gripper in metres [-0.005..0.12].
     :param grip_force: Force the gripper applies in newtons [30..300].
-    :param grip_speed: Motion speed of the gripper in millimetres per second [5..350].
-    :param grip_acceleration: Motion acceleration of the gripper in millimetres per
-        second squared [100..4000].
+    :param grip_speed: Motion speed of the gripper in metres per second [0.005..0.35].
+    :param grip_acceleration: Motion acceleration of the gripper in metres per second
+        squared [0.1..4].
     """
     return MoveGripperMotion(
         specification=GriplinkFlexSpecification.from_state_type(
@@ -476,7 +476,7 @@ class CableGraspAction(ActionDescription):
                     scoop_end_effector,
                     GripperState.FLEXCLOSE,
                     grip_position=0,
-                    grip_speed=150,
+                    grip_speed=0.15,
                 ),
                 ReAttachNode(
                     body=self.cable_annotation.root,
@@ -504,16 +504,16 @@ class CableGraspAction(ActionDescription):
                 _flex_gripper_motion(
                     grasp_end_effector,
                     GripperState.FLEXCLOSE,
-                    grip_position=70,
-                    grip_speed=300,
-                    grip_acceleration=2000,
+                    grip_position=0.07,
+                    grip_speed=0.3,
+                    grip_acceleration=2,
                 ),
                 _flex_gripper_motion(
                     grasp_end_effector,
                     GripperState.FLEXOPEN,
-                    grip_position=75,
-                    grip_speed=300,
-                    grip_acceleration=2000,
+                    grip_position=0.075,
+                    grip_speed=0.3,
+                    grip_acceleration=2,
                 ),
                 MoveToolCenterPointMotion(
                     grasp_pose,
@@ -587,7 +587,7 @@ class CableGraspAction(ActionDescription):
                     GripperState.FLEXCLOSE,
                     grip_position=0,
                     grip_force=30,
-                    grip_speed=120,
+                    grip_speed=0.12,
                 ),
                 MoveToolCenterPointMotion(
                     pre_free_cable_pose, scoop_arm, movement_type=MovementType.CARTESIAN
@@ -1051,7 +1051,7 @@ class CableRegraspAction(ActionDescription):
                     free_arm_end_effector,
                     GripperState.FLEXCLOSE,
                     grip_position=0,
-                    grip_force=20,
+                    grip_force=30,
                 ),
                 ReAttachNode(
                     body=self.cable_annotation.root,
