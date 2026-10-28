@@ -92,7 +92,7 @@ def test_rehang_hanging_point_applies_offsets_along_hanger_axes(
         action.approach_direction,
         action.approach_sign,
     )
-    hanger_position = hanger_body.global_transform.to_position().to_np()[:3]
+    hanger_position = hanger_body.global_transform.position.to_np()[:3]
     expected = (
         hanger_position
         + front_world * action.front_offset

@@ -14,7 +14,7 @@ from semantic_digital_twin.spatial_types.spatial_types import Quaternion
 def _apply_rotation(quat: Quaternion, vector: np.ndarray) -> np.ndarray:
     vector4 = np.zeros(4)
     vector4[:3] = vector[:3]
-    rotation_matrix = quat.to_rotation_matrix().to_np()
+    rotation_matrix = quat.rotation_matrix.to_np()
     return (rotation_matrix @ vector4)[:3]
 
 

@@ -5,14 +5,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from coraplex.datastructures.dataclasses import Context
-from coraplex.datastructures.enums import Arms
 from coraplex.querying.gripper_verification import (
     IsGripperHoldingPart,
     IsGripperNotFullyClosed,
     WPGGripperDeviceState,
 )
 from coraplex.robot_plans.actions.core.cable_actions import CableGraspAction
-from coraplex.view_manager import ViewManager
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.daisy import (
     DAiSy,
@@ -39,7 +37,6 @@ class TestWPGGripperDeviceState:
 
 
 class TestIsGripperHoldingPart:
-
     @pytest.fixture
     def daisy_gripper(self, daisy_world) -> DAiSyLeftGripper:
         daisy = daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
@@ -167,7 +164,6 @@ class TestIsGripperHoldingPart:
 
 
 class TestIsGripperNotFullyClosed:
-
     @pytest.fixture
     def daisy_left_gripper(self, daisy_world) -> DAiSyLeftGripper:
         daisy = daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
@@ -219,7 +215,6 @@ class TestIsGripperNotFullyClosed:
 
 
 class TestCableGraspPostCondition:
-
     @pytest.fixture
     def daisy_robot_and_context(self, daisy_world):
         daisy = daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
@@ -228,10 +223,8 @@ class TestCableGraspPostCondition:
 
     def test_post_condition_includes_hardware_checks(self, daisy_robot_and_context):
         daisy, context = daisy_robot_and_context
-        left_end_effector = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
-        right_end_effector = ViewManager.get_end_effector_view(
-            Arms.RIGHT, context.robot
-        )
+        left_end_effector = context.robot.left_arm.end_effector
+        right_end_effector = context.robot.right_arm.end_effector
 
         assert isinstance(left_end_effector, DAiSyLeftGripper)
         assert isinstance(right_end_effector, DAiSyRightGripper)
