@@ -11,7 +11,11 @@ from time import sleep
 from coraplex.datastructures.enums import (
     ExecutionType,
 )
-from coraplex.execution_environment import real_robot, semi_real_robot
+from coraplex.execution_environment import (
+    kinematically_simulated_robot,
+    real_robot,
+    semi_real_robot,
+)
 from coraplex.language import ParallelNode
 from coraplex.plans.factories import parallel, sequential
 from coraplex.robot_plans import MoveGripperMotion, MoveJointsMotion
@@ -271,7 +275,7 @@ elif execution_mode == ExecutionType.SEMI_REAL:
     with semi_real_robot(collision_avoidance=False):
         plan_home.perform()
 else:
-    with simulated_robot:
+    with kinematically_simulated_robot:
         plan_home.perform()
 
 sleep(3)
@@ -300,7 +304,7 @@ elif execution_mode == ExecutionType.SEMI_REAL:
     with semi_real_robot(collision_avoidance=collision_avoidance):
         plan.perform()
 else:
-    with simulated_robot:
+    with kinematically_simulated_robot:
         plan.perform()
 
 plan_regrasp = sequential(
@@ -330,7 +334,7 @@ elif execution_mode == ExecutionType.SEMI_REAL:
     with semi_real_robot(collision_avoidance=collision_avoidance):
         plan_regrasp.perform()
 else:
-    with simulated_robot:
+    with kinematically_simulated_robot:
         plan_regrasp.perform()
 
 # %% Rehang Cable
@@ -362,7 +366,7 @@ elif execution_mode == ExecutionType.SEMI_REAL:
     with semi_real_robot(collision_avoidance=collision_avoidance):
         plan_rehang.perform()
 else:
-    with simulated_robot:
+    with kinematically_simulated_robot:
         plan_rehang.perform()
 
 print("Plan finished.")
