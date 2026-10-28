@@ -17,9 +17,6 @@ from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.robots.gripper_configurations import (
     GriplinkGripperConfiguration,
 )
-from semantic_digital_twin.datastructures.robots.gripper_specification import (
-    GriplinkFlexSpecification,
-)
 from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
 from semantic_digital_twin.robots.robot_parts import EndEffector
 from semantic_digital_twin.semantic_annotations.cable import Cable
@@ -481,9 +478,6 @@ class CableGraspAction(ActionDescription):
                 ReAttachNode(
                     body=self.cable_annotation.root,
                     new_parent=scoop_end_effector.tool_frame,
-                    parent_T_connection_expression=_attachment_transform(
-                        scoop_end_effector
-                    ),
                 ),
                 MoveToolCenterPointMotion(
                     post_scoop_pose,
@@ -530,9 +524,6 @@ class CableGraspAction(ActionDescription):
                 ReAttachNode(
                     body=self.cable_annotation.root,
                     new_parent=grasp_end_effector.tool_frame,
-                    parent_T_connection_expression=_attachment_transform(
-                        grasp_end_effector
-                    ),
                 ),
                 MoveToolCenterPointMotion(
                     clear_scoop_pose, scoop_arm, movement_type=MovementType.CARTESIAN
