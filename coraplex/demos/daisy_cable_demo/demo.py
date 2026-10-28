@@ -9,10 +9,10 @@ from time import sleep
 
 # Monorepo imports
 from coraplex.datastructures.enums import (
-    Arms,
     ExecutionType,
 )
-from coraplex.execution_environment import real_robot, semi_real_robot, simulated_robot
+from coraplex.execution_environment import real_robot, semi_real_robot
+from coraplex.language import ParallelNode
 from coraplex.plans.factories import parallel, sequential
 from coraplex.robot_plans import MoveGripperMotion, MoveJointsMotion
 from coraplex.robot_plans.actions.core.cable_actions import (
@@ -23,7 +23,6 @@ from coraplex.robot_plans.actions.core.cable_actions import (
 from coraplex.robot_plans.actions.core.robot_body import (
     ParkArmsAction,
 )
-from coraplex.view_manager import ViewManager
 
 # Custom imports
 from define_real_daisy import setup_real_daisy
@@ -34,16 +33,13 @@ from semantic_digital_twin.collision_checking.collision_rules import (
 )
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
-from semantic_digital_twin.datastructures.robots.gripper_configurations import (
-    GriplinkGripperConfiguration,
-    GriplinkGripPreset,
-)
-from semantic_digital_twin.datastructures.robots.gripper_specification import (
-    GriplinkFlexSpecification,
-    GriplinkPresetSpecification,
+from semantic_digital_twin.datastructures.robots.gripper_configuration import (
+    GripperConfiguration,
 )
 from semantic_digital_twin.exceptions import WorldEntityNotFoundError
 from semantic_digital_twin.robots.daisy import DAiSy
+from semantic_digital_twin.robots.griplink_gripper import GriplinkFlexConfiguration
+from semantic_digital_twin.robots.robot_part_mixins import HasLeftRightArm
 from semantic_digital_twin.semantic_annotations.cable import Cable
 from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import FixedConnection
@@ -206,8 +202,8 @@ daisy_safe_right_arm_positions = [
 ]
 
 
-left_gripper = ViewManager.get_end_effector_view(Arms.LEFT, context.robot)
-right_gripper = ViewManager.get_end_effector_view(Arms.RIGHT, context.robot)
+left_gripper = robot_view.left_arm.end_effector
+right_gripper = robot_view.right_arm.end_effector
 
 
 def _both_grippers(state_type: GripperState) -> MoveGripperMotion:
@@ -217,10 +213,10 @@ def _both_grippers(state_type: GripperState) -> MoveGripperMotion:
     return parallel(
         [
             MoveGripperMotion(
-                specification=left_gripper.default_specification(state_type)
+                configuration=left_gripper.default_configuration(state_type)
             ),
             MoveGripperMotion(
-                specification=right_gripper.default_specification(state_type)
+                configuration=right_gripper.default_configuration(state_type)
             ),
         ]
     )
@@ -233,47 +229,33 @@ plan_home = sequential(
         parallel(
             [
                 MoveGripperMotion(
-                    specification=GriplinkPresetSpecification.from_state_type(
-                        left_gripper,
-                        GripperState.OPEN,
-                        GriplinkGripperConfiguration(
-                            grip_preset=GriplinkGripPreset.PRESET_0
-                        ),
-                    )
+                    configuration=left_gripper.default_configuration(GripperState.OPEN)
                 ),
                 MoveGripperMotion(
-                    specification=GriplinkPresetSpecification.from_state_type(
-                        right_gripper,
-                        GripperState.OPEN,
-                        GriplinkGripperConfiguration(
-                            grip_preset=GriplinkGripPreset.PRESET_0
-                        ),
-                    )
+                    configuration=right_gripper.default_configuration(GripperState.OPEN)
                 ),
             ]
         ),
-        ParkArmsAction(arm=Arms.RIGHT),
+        ParkArmsAction(arms=robot_view.all_arms),
         MoveJointsMotion(  # TODO Move this motion to the CableGraspAction and add generic version depending on the arm
             names=daisy_left_arm_names, positions=daisy_safe_left_arm_positions
         ),
         parallel(
             [
                 MoveGripperMotion(
-                    specification=GriplinkFlexSpecification.from_state_type(
+                    configuration=GriplinkFlexConfiguration.from_state_type(
                         left_gripper,
                         GripperState.FLEXCLOSE,
-                        GriplinkGripperConfiguration(
-                            grip_position=0.07, grip_speed=0.3
-                        ),
+                        grip_position=0.07,
+                        grip_velocity=0.3,
                     )
                 ),
                 MoveGripperMotion(
-                    specification=GriplinkFlexSpecification.from_state_type(
+                    configuration=GriplinkFlexConfiguration.from_state_type(
                         right_gripper,
                         GripperState.FLEXCLOSE,
-                        GriplinkGripperConfiguration(
-                            grip_position=0.07, grip_speed=0.3
-                        ),
+                        grip_position=0.07,
+                        grip_velocity=0.3,
                     )
                 ),
             ]
@@ -324,7 +306,7 @@ else:
 plan_regrasp = sequential(
     [
         ParkArmsAction(
-            arm=Arms.RIGHT
+            arms=[robot_view.right_arm]
         ),  # TODO: this should be in the action description
         MoveJointsMotion(  # TODO Move this motion to the CableGraspAction and add generic version depending on the arm
             names=daisy_right_arm_names, positions=daisy_safe_right_arm_positions
@@ -355,7 +337,7 @@ else:
 plan_rehang = sequential(
     [
         ParkArmsAction(
-            arm=Arms.RIGHT
+            arms=[robot_view.right_arm]
         ),  # TODO: this should be in the action description
         MoveJointsMotion(  # TODO Move this motion to the CableGraspAction and add generic version depending on the arm
             names=daisy_right_arm_names, positions=daisy_safe_right_arm_positions
