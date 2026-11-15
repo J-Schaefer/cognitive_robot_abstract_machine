@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
 from typing import Self
@@ -70,6 +71,48 @@ class DAiSyJoint(JointName):
     RIGHT_WRIST_3 = "right_wrist_3_joint"
     RIGHT_GRIPPER_FINGER = "right_gripper_finger_joint"
     RIGHT_GRIPPER_RIGHT_FINGER = "right_gripper_right_finger_joint"
+
+
+class DAiSyLink(StrEnum):
+    """
+    Names of the DAiSy's links its collision rules refer to, as spelled in its URDF.
+    """
+
+    LEFT_FOREARM = "left_forearm_link"
+    LEFT_GRIPPER_MOUNTING_PLATE = "left_gripper_mounting_plate"
+    LEFT_GRIPPER_BASE = "left_gripper_base_link"
+    LEFT_GRIPPER_SIDE_CYLINDER = "left_gripper_side_cylinder_link"
+    LEFT_GRIPPER_WRIST_CYLINDER = "left_gripper_wrist_collision_cylinder_link"
+    LEFT_GRIPPER_LEFT_FINGER = "left_gripper_left_finger_link"
+    LEFT_GRIPPER_RIGHT_FINGER = "left_gripper_right_finger_link"
+    LEFT_GRIPPER_LEFT_FINGER_TIP = "left_gripper_left_finger_tip_link"
+    LEFT_GRIPPER_RIGHT_FINGER_TIP = "left_gripper_right_finger_tip_link"
+
+    RIGHT_FOREARM = "right_forearm_link"
+    RIGHT_GRIPPER_MOUNTING_PLATE = "right_gripper_mounting_plate"
+    RIGHT_GRIPPER_BASE = "right_gripper_base_link"
+    RIGHT_GRIPPER_SIDE_CYLINDER = "right_gripper_side_cylinder_link"
+    RIGHT_GRIPPER_WRIST_CYLINDER = "right_gripper_wrist_collision_cylinder_link"
+    RIGHT_GRIPPER_LEFT_FINGER = "right_gripper_left_finger_link"
+    RIGHT_GRIPPER_RIGHT_FINGER = "right_gripper_right_finger_link"
+    RIGHT_GRIPPER_LEFT_FINGER_TIP = "right_gripper_left_finger_tip_link"
+    RIGHT_GRIPPER_RIGHT_FINGER_TIP = "right_gripper_right_finger_tip_link"
+
+    @classmethod
+    def left_gripper_links(cls) -> list[DAiSyLink]:
+        """
+        :return: The links of the left gripper with collision geometry, including the
+            cylinders around its wrist and side.
+        """
+        return [link for link in cls if link.startswith("left_gripper")]
+
+    @classmethod
+    def right_gripper_links(cls) -> list[DAiSyLink]:
+        """
+        :return: The links of the right gripper with collision geometry, including the
+            cylinders around its wrist and side.
+        """
+        return [link for link in cls if link.startswith("right_gripper")]
 
 
 @dataclass(eq=False)
@@ -434,6 +477,36 @@ class DAiSy(AbstractRobot, HasLeftRightArm[DAiSyLeftArm, DAiSyRightArm]):
     def _get_root_body_name(cls) -> str:
         return "table"
 
+    @classproperty
+    def external_buffer_zone_distance(cls) -> float:
+        """
+        Distance in metres collision avoidance keeps the robot from its surroundings.
+        """
+        return 0.05
+
+    @classproperty
+    def self_buffer_zone_distance(cls) -> float:
+        """
+        Distance in metres collision avoidance keeps the robot's bodies from each other.
+        """
+        return 0.03
+
+    @classproperty
+    def forearm_to_other_gripper_buffer_zone_distance(cls) -> float:
+        """
+        Distance in metres collision avoidance keeps the right forearm from the side
+        cylinder of the left gripper.
+        """
+        return 0.015
+
+    @classproperty
+    def forearm_to_own_gripper_buffer_zone_distance(cls) -> float:
+        """
+        Distance in metres collision avoidance keeps a forearm from the gripper on the
+        same arm, which the cable demo's grasps bend the wrist close to.
+        """
+        return 0.005
+
     def _setup_collision_rules(self):
         srdf_path = os.path.join(
             Path(files("semantic_digital_twin")).parent.parent,
@@ -445,30 +518,36 @@ class DAiSy(AbstractRobot, HasLeftRightArm[DAiSyLeftArm, DAiSyRightArm]):
             SelfCollisionMatrixRule.from_collision_srdf(srdf_path, self._world)
         )
 
-        forearm_gripper_collision_body_pairs = [
-            ("left_forearm_link", "left_gripper_wrist_collision_cylinder_link"),
-            ("right_forearm_link", "right_gripper_wrist_collision_cylinder_link"),
-            ("right_forearm_link", "right_gripper_side_cylinder_link"),
-            ("right_forearm_link", "left_gripper_side_cylinder_link"),
-        ]
+        get_body = self._world.get_body_by_name
         self._world.collision_manager.extend_default_rules(
             [
                 AvoidExternalCollisions(
-                    buffer_zone_distance=0.05, violated_distance=0.0, robot=self
-                ),
-                AvoidSelfCollisions(
-                    buffer_zone_distance=0.03,
+                    buffer_zone_distance=self.external_buffer_zone_distance,
                     violated_distance=0.0,
                     robot=self,
                 ),
+                AvoidSelfCollisions(
+                    buffer_zone_distance=self.self_buffer_zone_distance,
+                    violated_distance=0.0,
+                    robot=self,
+                ),
+                AvoidCollisionBetweenGroups(
+                    buffer_zone_distance=self.forearm_to_other_gripper_buffer_zone_distance,
+                    violated_distance=0.0,
+                    body_group_a=[get_body(DAiSyLink.RIGHT_FOREARM)],
+                    body_group_b=[get_body(DAiSyLink.LEFT_GRIPPER_SIDE_CYLINDER)],
+                ),
                 *(
                     AvoidCollisionBetweenGroups(
-                        buffer_zone_distance=0.015,
+                        buffer_zone_distance=self.forearm_to_own_gripper_buffer_zone_distance,
                         violated_distance=0.0,
-                        body_group_a=[self._world.get_body_by_name(forearm_name)],
-                        body_group_b=[self._world.get_body_by_name(gripper_name)],
+                        body_group_a=[get_body(forearm)],
+                        body_group_b=[get_body(link) for link in gripper_links],
                     )
-                    for forearm_name, gripper_name in forearm_gripper_collision_body_pairs
+                    for forearm, gripper_links in (
+                        (DAiSyLink.LEFT_FOREARM, DAiSyLink.left_gripper_links()),
+                        (DAiSyLink.RIGHT_FOREARM, DAiSyLink.right_gripper_links()),
+                    )
                 ),
             ]
         )
