@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
+import pytest
 from coraplex.execution_environment import kinematically_simulated_robot
 from coraplex.plans.factories import sequential
 from coraplex.robot_plans.actions.core.cable_actions import CableGraspAction
@@ -56,6 +59,53 @@ def test_cable_grasp_attaches_cable_to_end_effector(
     assert (
         attached_to_left or attached_to_right
     ), "Cable must be attached to one of the end effectors after grasp"
+
+
+@pytest.mark.parametrize(
+    "target, approach_start, setback_of",
+    [
+        ("scoop_pose", "pre_scoop_pose", lambda action: action.scoop_setback),
+        (
+            "free_cable_pose",
+            "pre_free_cable_pose",
+            lambda action: action.free_cable_setback,
+        ),
+    ],
+)
+def test_scoop_arm_target_is_moved_back_against_its_approach_by_its_setback(
+    immutable_cable_hanger_world,
+    target: str,
+    approach_start: str,
+    setback_of: Callable[[CableGraspAction], float],
+):
+    world, _, context = immutable_cable_hanger_world
+    (cable_annotation,) = world.get_semantic_annotations_by_type(Cable)
+    hanger_body = world.get_body_by_name(PrefixedName("hanger"))
+    set_back = CableGraspAction(
+        cable_annotation=cable_annotation, hanger_body=hanger_body
+    )
+    not_set_back = CableGraspAction(
+        cable_annotation=cable_annotation,
+        hanger_body=hanger_body,
+        scoop_setback=0.0,
+        free_cable_setback=0.0,
+    )
+    sequential([set_back, not_set_back], context=context)
+    scoop_arm = set_back._choose_scoop_arm()
+    moved, original = (
+        action._calculate_scoop_poses(scoop_arm, scoop_arm.end_effector)
+        for action in (set_back, not_set_back)
+    )
+    displacement = (
+        moved[target].position.to_np()[:3] - original[target].position.to_np()[:3]
+    )
+    approach = (
+        original[target].position.to_np()[:3]
+        - original[approach_start].position.to_np()[:3]
+    )
+
+    assert np.linalg.norm(displacement) == pytest.approx(setback_of(set_back))
+    assert np.dot(displacement, approach) < 0
 
 
 def test_cable_grasp_chooses_closer_arm_for_scooping(
