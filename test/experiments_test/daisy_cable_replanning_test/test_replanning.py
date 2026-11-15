@@ -10,6 +10,12 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from coraplex.datastructures.dataclasses import Context
+from coraplex.plans.plan_node import MotionNode, PlanNode
+from coraplex.robot_plans.motions.gripper import (
+    MoveGripperMotion,
+    MoveToolCenterPointMotion,
+)
 from experiments.daisy_cable_replanning.cable_demo import DemoScript
 from experiments.daisy_cable_replanning.collisions import (
     ActiveMotionTracker,
@@ -32,6 +38,8 @@ from experiments.daisy_cable_replanning.trials import (
 )
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.daisy import DAiSy
+from semantic_digital_twin.robots.griplink_gripper import GriplinkFlexConfiguration
+from semantic_digital_twin.robots.robot_parts import EndEffector
 from semantic_digital_twin.semantic_annotations.cable import Cable
 from semantic_digital_twin.spatial_types.spatial_types import Pose
 from semantic_digital_twin.utils import daisy_installed
@@ -193,6 +201,138 @@ def test_planning_leaves_the_world_state_unchanged(
     planner.plan([goal])
 
     assert parked_daisy_world.state.positions == pytest.approx(state_before)
+
+
+# %% target poses of the demo
+
+
+def _cable_demo_plans(world: World) -> tuple[object, object]:
+    """
+    :return: The plans of the cable demo in the nominal workcell, and the workcell.
+    """
+    robot = _robot(world)
+    demo = DemoScript.daisy_cable_demo().load()
+    workcell = demo.CableWorkcell.find_or_add_to(
+        world, robot, demo.CableWorkcellLayout()
+    )
+    return (
+        demo.CableDemoPlans(context=Context(world, robot), workcell=workcell),
+        workcell,
+    )
+
+
+@pytest.mark.parametrize("target", ["scoop_pose", "free_cable_pose"])
+def test_scoop_arm_target_has_a_goal_configuration_the_planner_accepts(
+    parked_daisy_world: World, target: str
+):
+    """
+    The scoop arm's targets next to the post and the hanger keep the finger tips the
+    planner's collision margin away from them, so a stuck motion towards them can be
+    replanned.
+    """
+    robot = _robot(parked_daisy_world)
+    plans, workcell = _cable_demo_plans(parked_daisy_world)
+    (grasp,) = plans.grasp().children
+    scoop_arm = grasp.designator._choose_scoop_arm()
+    pose = grasp.designator._calculate_scoop_poses(scoop_arm, scoop_arm.end_effector)[
+        target
+    ]
+    parameters = ReplanningParameters()
+    goals = GoalConfigurationSampler(
+        world=parked_daisy_world,
+        arm=scoop_arm,
+        root=robot.root,
+        parameters=parameters,
+    ).configurations_reaching(pose)
+    planner = JointSpacePlanner(
+        world=parked_daisy_world,
+        robot=robot,
+        arm=scoop_arm,
+        ignored_bodies={workcell.cable.root},
+        illegal_configurations=IllegalJointStateDatabase.for_daisy_arms().joint_configurations(
+            parked_daisy_world
+        ),
+        parameters=parameters,
+    )
+
+    with ProbedJointState(
+        world=parked_daisy_world, connections=scoop_arm.active_connections
+    ) as probe:
+        accepted = [
+            goal
+            for goal in goals
+            if probe.is_collision_free(goal, planner.collision_matrix())
+        ]
+
+    assert goals != []
+    assert accepted != []
+
+
+# %% motions while both grippers hold the cable
+
+
+def _tool_center_point_motions_by_grip(
+    plan: PlanNode, holding_end_effectors: set[EndEffector]
+) -> list[tuple[MoveToolCenterPointMotion, bool]]:
+    """
+    :param holding_end_effectors: The end effectors closed on the cable before the plan.
+    :return: Every tool center point motion among the plan's children, in order, with
+        whether both grippers are closed on the cable when it starts.
+    """
+    closed_end_effectors = set(holding_end_effectors)
+    motions = []
+    for child in plan.children:
+        if not isinstance(child, MotionNode):
+            continue
+        motion = child.designator
+        if isinstance(motion, MoveGripperMotion):
+            configuration = motion.configuration
+            if (
+                isinstance(configuration, GriplinkFlexConfiguration)
+                and configuration.grip_position
+                == GriplinkFlexConfiguration.fully_closed_opening_width
+            ):
+                closed_end_effectors.add(configuration.end_effector)
+            else:
+                closed_end_effectors.discard(configuration.end_effector)
+        elif isinstance(motion, MoveToolCenterPointMotion):
+            motions.append((motion, len(closed_end_effectors) == 2))
+    return motions
+
+
+def test_grasp_replans_exactly_the_motions_with_one_gripper_on_the_cable(
+    parked_daisy_world: World,
+):
+    plans, _ = _cable_demo_plans(parked_daisy_world)
+    (grasp,) = plans.grasp().children
+
+    motions = _tool_center_point_motions_by_grip(
+        grasp.designator._action_plan, holding_end_effectors=set()
+    )
+
+    assert any(held_by_both for _, held_by_both in motions)
+    assert [motion.allow_replanning for motion, _ in motions] == [
+        not held_by_both for _, held_by_both in motions
+    ]
+
+
+def test_regrasp_replans_exactly_the_motions_with_one_gripper_on_the_cable(
+    parked_daisy_world: World,
+):
+    plans, workcell = _cable_demo_plans(parked_daisy_world)
+    holding_gripper = _robot(parked_daisy_world).left_arm.end_effector
+    with parked_daisy_world.modify_world():
+        parked_daisy_world.move_branch(workcell.cable.root, holding_gripper.tool_frame)
+    (regrasp,) = plans.regrasp().children
+
+    motions = _tool_center_point_motions_by_grip(
+        regrasp.designator._action_plan, holding_end_effectors={holding_gripper}
+    )
+
+    assert any(held_by_both for _, held_by_both in motions)
+    assert [motion.allow_replanning for motion, _ in motions] == [
+        not held_by_both for _, held_by_both in motions
+    ]
 
 
 # %% whole demo

@@ -139,6 +139,12 @@ class ReplanningVideo:
     instead of around :attr:`illegal_joint_states`.
     """
 
+    retracts_when_stuck: bool = False
+    """
+    Whether the replanning trial retracts a stuck arm to its last clear joint state
+    before replanning.
+    """
+
     @staticmethod
     def first_improved_seed(
         baseline: ExperimentOutcome, replanning: ExperimentOutcome
@@ -202,6 +208,7 @@ class ReplanningVideo:
             files=TrialFiles(directory=directory, number=0),
             illegal_joint_states=self.illegal_joint_states if replans else [],
             replans_on_stagnation=replans and self.replans_on_stagnation,
+            retracts_when_stuck=replans and self.retracts_when_stuck,
             collision_avoidance=self.collision_avoidance,
             video=directory / f"{name}.mp4",
         )

@@ -110,6 +110,7 @@ class TrialOption(StrEnum):
     ILLEGAL_JOINT_STATES = "--illegal-joint-states"
     COLLISION_AVOIDANCE = "--collision-avoidance"
     ON_STAGNATION = "--on-stagnation"
+    RETRACT_WHEN_STUCK = "--retract-when-stuck"
     VIDEO = "--video"
 
 
@@ -242,8 +243,7 @@ class TrialResult:
 class CableDemoTrial:
     """
     One run of the cable demo in a newly built, kinematically simulated world whose
-    workcell and arm postures are perturbed by seeded noise, logging every self-
-    collision of the arms.
+    cable post is perturbed by seeded noise, logging every self-collision of the arms.
     """
 
     number: int
@@ -289,6 +289,12 @@ class CableDemoTrial:
     there are no :attr:`illegal_joint_states` to replan around.
     """
 
+    retracts_when_stuck: bool = False
+    """
+    Whether an arm whose motion is replanned on stagnation first retracts to its last
+    clear joint state.
+    """
+
     @property
     def command_line(self) -> list[str]:
         """
@@ -317,6 +323,8 @@ class CableDemoTrial:
             arguments.append(TrialOption.COLLISION_AVOIDANCE)
         if self.replans_on_stagnation:
             arguments.append(TrialOption.ON_STAGNATION)
+        if self.retracts_when_stuck:
+            arguments.append(TrialOption.RETRACT_WHEN_STUCK)
         return arguments
 
     def run_in_own_process(self) -> TrialResult:
@@ -435,7 +443,9 @@ class CableDemoTrial:
         if self.replans_on_stagnation:
             return [
                 StagnationReplanning(
-                    parameters=ReplanningParameters(), replanning_log=replanning_log
+                    parameters=ReplanningParameters(),
+                    replanning_log=replanning_log,
+                    retracts_when_stuck=self.retracts_when_stuck,
                 )
             ]
         return []
@@ -523,6 +533,12 @@ class CableDemoExperiment:
     Whether the trials replan a motion that stops approaching its target.
     """
 
+    retracts_when_stuck: bool = False
+    """
+    Whether an arm whose motion is replanned on stagnation first retracts to its last
+    clear joint state.
+    """
+
     removes_duplicate_poses: bool = True
     """
     Whether states that repeat an earlier pose are left out of the database written
@@ -566,6 +582,7 @@ class CableDemoExperiment:
                 illegal_joint_states=self.illegal_joint_states,
                 collision_avoidance=self.collision_avoidance,
                 replans_on_stagnation=self.replans_on_stagnation,
+                retracts_when_stuck=self.retracts_when_stuck,
             )
             for number in range(self.trials)
         ]
