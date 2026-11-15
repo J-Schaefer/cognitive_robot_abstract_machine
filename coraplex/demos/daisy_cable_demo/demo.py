@@ -214,7 +214,7 @@ def _both_grippers(state_type: GripperState) -> MoveGripperMotion:
     """
     Open or close both WPG/Griplink grippers simultaneously.
     """
-    return parallel(
+    return sequential(
         [
             MoveGripperMotion(
                 configuration=left_gripper.default_configuration(state_type)
@@ -230,7 +230,7 @@ plan_home = sequential(
     [
         _both_grippers(GripperState.OPEN),
         _both_grippers(GripperState.CLOSE),
-        parallel(
+        sequential(
             [
                 MoveGripperMotion(
                     configuration=left_gripper.default_configuration(GripperState.OPEN)
@@ -244,7 +244,7 @@ plan_home = sequential(
         MoveJointsMotion(  # TODO Move this motion to the CableGraspAction and add generic version depending on the arm
             names=daisy_left_arm_names, positions=daisy_safe_left_arm_positions
         ),
-        parallel(
+        sequential(
             [
                 MoveGripperMotion(
                     configuration=GriplinkFlexConfiguration.from_state_type(

@@ -43,7 +43,7 @@ from coraplex.robot_plans.actions.core.robot_body import (
     ParkArmsAction,
     SetGripperAction,
 )
-from cramph.composites import Parallel, Sequence
+from cramph.composites import Sequence
 from cramph.context import ContextExtension, StatechartContext
 from cramph.monitors import CountSimulationTimeSeconds, Print
 from cramph.node import StatechartNode
@@ -175,7 +175,7 @@ class DAiSyGripperDemonstration(RobotDemonstration):
     ) -> list[StatechartNode]:
         """
         :param subject: How the announcement names `grippers`.
-        :param grippers: The grippers to move together.
+        :param grippers: The grippers to move, one after the other.
         :param state: The state to bring each of them into.
         :return: New steps announcing the motion, moving `grippers` into the default
             configuration of `state`, and waiting :attr:`pause_after_motion` after it.
@@ -186,7 +186,7 @@ class DAiSyGripperDemonstration(RobotDemonstration):
         ]
         return [
             Print(message=self.announcement(subject, state)),
-            moves[0] if len(moves) == 1 else Parallel(nodes=moves),
+            moves[0] if len(moves) == 1 else Sequence(nodes=moves),
             CountSimulationTimeSeconds(seconds=self.pause_after_motion.total_seconds()),
         ]
 
@@ -225,7 +225,7 @@ def run_from_command_line() -> None:
         "--execution",
         type=ExecutionChoice,
         choices=list(ExecutionChoice),
-        default=ExecutionChoice.SIMULATED,
+        default=ExecutionChoice.REAL,
         help="Where the plan runs: in the simulation, on a standalone controller, or "
         "on the real robot.",
     )

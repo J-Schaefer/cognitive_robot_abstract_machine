@@ -212,6 +212,15 @@ def _open_gripper_motion(end_effector: EndEffector) -> MoveGripperMotion:
     )
 
 
+def _close_gripper_motion(end_effector: EndEffector) -> MoveGripperMotion:
+    """
+    Build the motion that closes the given end effector.
+    """
+    return MoveGripperMotion(
+        configuration=end_effector.default_configuration(GripperState.CLOSE)
+    )
+
+
 def _flex_gripper_motion(
     end_effector: EndEffector,
     state_type: GripperState,
@@ -468,11 +477,8 @@ class CableGraspAction(ActionDescription):
                     movement_type=MovementType.STRAIGHT_TRANSLATION,
                     position_threshold=0.001,
                 ),
-                _flex_gripper_motion(
+                _close_gripper_motion(
                     scoop_end_effector,
-                    GripperState.FLEXCLOSE,
-                    grip_position=0,
-                    grip_speed=0.15,
                 ),
                 ReAttachNode(
                     body=self.cable_annotation.root,
