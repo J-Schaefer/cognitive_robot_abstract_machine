@@ -891,15 +891,15 @@ three things changed:
 2. **No replanning while both grippers hold the cable.** A planned joint path changes
    the distance between the grippers along the way, which can damage the cable. The
    five motions of `CableRegraspAction` marked `allow_replanning=False` all run with
-   both grippers closed on the cable, so each flag is needed. Four such motions were
-   missing it, and now have it:
-   - in `CableGraspAction`, the scoop arm's moves to `clear_scoop_pose`, its quarter
-     turn there, and its move back to `pre_free_cable_pose` after closing on the cable
-     at the hanger;
+   both grippers closed on the cable, so each flag is needed. Two more such motions
+   now have it:
+   - in `CableGraspAction`, the scoop arm's move back to `pre_free_cable_pose` after
+     closing on the cable at the hanger;
    - in `CableRegraspAction`, the free arm's move to `inter_free_arm_pose`.
 
-   Tests in `test_replanning.py` check that exactly the motions with both grippers
-   closed are not replanned.
+   The scoop arm's move to `clear_scoop_pose` and its quarter turn there also run with
+   both grippers closed, but may be replanned. Series 9 ran with them flagged too.
+   Tests in `test_replanning.py` check which motions are not replanned.
 3. **5 mm buffer between a forearm and its own gripper.** In `DAiSy`, all bodies of a
    gripper (`DAiSyLink`) get `forearm_to_own_gripper_buffer_zone_distance` (5 mm) to
    the forearm of the same arm. Before, it was 15 mm for the cylinders and 30 mm for
@@ -953,6 +953,36 @@ The trials without replanning (collision avoidance on) all stall in the grasp:
   singularity, and the Cartesian motion stops making progress there. This happens only
   for post positions whose approach path crosses it.
 - 4 in a `SequentialNode`.
+
+### Series 10: a 2 mm buffer between the arms and the post and hanger
+
+Directory: `series_10_post_buffer_2mm/`, run by its `run.sh`. The demo with collision
+avoidance and without replanning, seeds 0-999.
+
+`CableWorkcell.find_or_add_to` (the demo script) adds a collision rule: every body an
+arm moves keeps `arm_buffer_zone_distance` (2 mm) from the post and the hanger.
+Before, the robot's 3 cm self-collision buffer applied, because the post is mounted
+under the robot's root. All other buffer zones stay as they are.
+
+The distance was chosen on the nominal workcell with a robot-wide self buffer:
+- 3 cm, 2 cm, 1 cm, 5 mm, 4 mm and 3 mm all stall in the scoop.
+- 2 mm completes the demo.
+
+The scoop target is 1.15 mm from the post, and the motion counts as done within 1 mm
+of it. A rule for the grippers alone was not enough: the rehang then stalls with the
+forearm 30 mm in front of the hanger.
+
+| seeds 0-999 | 3 cm (series 9) | 2 mm (series 10) |
+|---|---|---|
+| completed | 0 | 622 |
+| trials colliding | 0 | 0 |
+
+The 378 remaining failures are all stalls (`MotionMadeNoProgress`):
+- 80 in the approach of the grasp (`MoveTCP/position#14`), at the wrist singularity
+  (`right_wrist_2_joint` near 0);
+- the rest in the regrasp. In seeds 2 and 3, the right forearm stops 3 to 4 mm from
+  its own gripper, inside the 5 mm buffer between a forearm and its own gripper.
+  Without avoidance, these motions drive the forearm into the gripper.
 
 ## Known limitations
 

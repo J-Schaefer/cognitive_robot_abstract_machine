@@ -300,19 +300,34 @@ def _tool_center_point_motions_by_grip(
     return motions
 
 
-def test_grasp_replans_exactly_the_motions_with_one_gripper_on_the_cable(
+def test_grasp_replans_the_motions_with_one_gripper_on_the_cable_and_at_clear_scoop_pose(
     parked_daisy_world: World,
 ):
+    """
+    The scoop arm's motions at the clear scoop pose may be replanned although both
+    grippers hold the cable; every other motion with both grippers on the cable may
+    not.
+    """
     plans, _ = _cable_demo_plans(parked_daisy_world)
     (grasp,) = plans.grasp().children
+    scoop_arm = grasp.designator._choose_scoop_arm()
+    clear_scoop_position = grasp.designator._calculate_scoop_poses(
+        scoop_arm, scoop_arm.end_effector
+    )["clear_scoop_pose"].position.to_np()
 
     motions = _tool_center_point_motions_by_grip(
         grasp.designator._action_plan, holding_end_effectors=set()
     )
+    at_clear_scoop_pose = [
+        motion.arm == scoop_arm
+        and motion.target.position.to_np() == pytest.approx(clear_scoop_position)
+        for motion, _ in motions
+    ]
 
-    assert any(held_by_both for _, held_by_both in motions)
+    assert sum(at_clear_scoop_pose) == 2
     assert [motion.allow_replanning for motion, _ in motions] == [
-        not held_by_both for _, held_by_both in motions
+        not held_by_both or at_pose
+        for (_, held_by_both), at_pose in zip(motions, at_clear_scoop_pose)
     ]
 
 
