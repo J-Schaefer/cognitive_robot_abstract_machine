@@ -42,6 +42,7 @@ from define_sim_daisy import setup_sim_daisy
 from semantic_digital_twin.adapters.mesh import STLParser
 from semantic_digital_twin.collision_checking.collision_rules import (
     AllowCollisionForBodies,
+    AvoidCollisionBetweenGroups,
 )
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
@@ -167,7 +168,11 @@ class CableWorkcell:
 
     @classmethod
     def find_or_add_to(
-        cls, world: World, robot: DAiSy, layout: CableWorkcellLayout
+        cls,
+        world: World,
+        robot: DAiSy,
+        layout: CableWorkcellLayout,
+        arm_buffer_zone_distance: float = 0.002,
     ) -> Self:
         """
         Add the cable to the post and hanger of the world, adding those too where the
@@ -176,6 +181,9 @@ class CableWorkcell:
         :param world: The world DAiSy stands in.
         :param robot: The robot the post is placed relative to.
         :param layout: Where post, hanger and cable are placed.
+        :param arm_buffer_zone_distance: Distance in metres collision avoidance keeps
+            the moving bodies of the arms from the post and the hanger, small enough for
+            the scoop to put the fingers around the cable next to the post.
         :return: The workcell in the world.
         """
         posts = world.get_bodies_by_name(CableWorkcellMesh.CABLE_POST.body_name)
@@ -194,6 +202,23 @@ class CableWorkcell:
             )
             world.collision_manager.add_ignore_collision_rule(
                 AllowCollisionForBodies(allowed_collision_bodies={cable.root})
+            )
+            world.collision_manager.extend_default_rules(
+                [
+                    AvoidCollisionBetweenGroups(
+                        buffer_zone_distance=arm_buffer_zone_distance,
+                        violated_distance=0.0,
+                        body_group_a=[
+                            body
+                            for arm in robot.all_arms
+                            for body in world.get_kinematic_structure_entities_of_branch(
+                                arm.active_connections[0].child
+                            )
+                            if isinstance(body, Body) and body.has_collision()
+                        ],
+                        body_group_b=[post, hanger],
+                    )
+                ]
             )
         return cls(cable=cable, hanger=hanger)
 
