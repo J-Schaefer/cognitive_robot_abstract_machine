@@ -10,7 +10,10 @@ from experiments.daisy_cable_replanning.joint_state_browser import JointStateBro
 from experiments.daisy_cable_replanning.joint_state_metrics import (
     SeriesJointStateMetrics,
 )
-from experiments.daisy_cable_replanning.replanning import ReplanningParameters
+from experiments.daisy_cable_replanning.replanning import (
+    ReplanningParameters,
+    RetractTarget,
+)
 from experiments.daisy_cable_replanning.summary import (
     ExperimentOutcome,
     ReplanningComparison,
@@ -43,7 +46,7 @@ def run_from_command_line() -> None:
                 illegal_joint_states=arguments.illegal_joint_states,
                 collision_avoidance=arguments.collision_avoidance,
                 replans_on_stagnation=arguments.replans_on_stagnation,
-                retracts_when_stuck=arguments.retracts_when_stuck,
+                retract_target=arguments.retract_target,
                 removes_duplicate_poses=arguments.removes_duplicate_poses,
                 duplicate_tolerance=arguments.duplicate_tolerance,
             ).run()
@@ -119,7 +122,7 @@ def _video(arguments: Namespace) -> ReplanningVideo:
         illegal_joint_states=arguments.illegal_joint_states,
         collision_avoidance=arguments.collision_avoidance,
         replans_on_stagnation=arguments.replans_on_stagnation,
-        retracts_when_stuck=arguments.retracts_when_stuck,
+        retract_target=arguments.retract_target,
     )
 
 
@@ -135,7 +138,7 @@ def _trial(arguments: Namespace) -> CableDemoTrial:
         video=arguments.video,
         collision_avoidance=arguments.collision_avoidance,
         replans_on_stagnation=arguments.replans_on_stagnation,
-        retracts_when_stuck=arguments.retracts_when_stuck,
+        retract_target=arguments.retract_target,
     )
 
 
@@ -178,7 +181,7 @@ def _parser() -> ArgumentParser:
             f"the same pose (default: {CableDemoExperiment.duplicate_tolerance})",
         )
     record.set_defaults(
-        illegal_joint_states=[], replans_on_stagnation=False, retracts_when_stuck=False
+        illegal_joint_states=[], replans_on_stagnation=False, retract_target=None
     )
     trigger = replan.add_mutually_exclusive_group(required=True)
     trigger.add_argument(
@@ -194,13 +197,6 @@ def _parser() -> ArgumentParser:
         action="store_true",
         help="replan motions that stop approaching their target; use with "
         f"{TrialOption.COLLISION_AVOIDANCE}",
-    )
-    replan.add_argument(
-        TrialOption.RETRACT_WHEN_STUCK,
-        dest="retracts_when_stuck",
-        action="store_true",
-        help="retract a stuck arm to its last clear joint state before replanning; "
-        f"use with {TrialOption.ON_STAGNATION}",
     )
 
     summarize = commands.add_parser(
@@ -247,9 +243,6 @@ def _parser() -> ArgumentParser:
     )
     video.add_argument(TrialOption.COLLISION_AVOIDANCE, action="store_true")
     video.add_argument(
-        TrialOption.RETRACT_WHEN_STUCK, dest="retracts_when_stuck", action="store_true"
-    )
-    video.add_argument(
         TrialOption.SEED,
         type=int,
         default=None,
@@ -284,7 +277,14 @@ def _parser() -> ArgumentParser:
     trial.add_argument(
         TrialOption.ON_STAGNATION, dest="replans_on_stagnation", action="store_true"
     )
-    trial.add_argument(
-        TrialOption.RETRACT_WHEN_STUCK, dest="retracts_when_stuck", action="store_true"
-    )
+    for command in (replan, video, trial):
+        command.add_argument(
+            TrialOption.RETRACT_TO,
+            dest="retract_target",
+            type=RetractTarget,
+            choices=list(RetractTarget),
+            default=None,
+            help="retract a stuck arm along its path to this joint state before "
+            f"replanning; use with {TrialOption.ON_STAGNATION}",
+        )
     return parser

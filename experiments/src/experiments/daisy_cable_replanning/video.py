@@ -6,6 +6,7 @@ from pathlib import Path
 
 import imageio.v2 as imageio
 import numpy as np
+from experiments.daisy_cable_replanning.replanning import RetractTarget
 from experiments.daisy_cable_replanning.summary import ExperimentOutcome
 from experiments.daisy_cable_replanning.trials import CableDemoTrial, TrialFiles
 from PIL import Image, ImageDraw, ImageFont
@@ -139,10 +140,10 @@ class ReplanningVideo:
     instead of around :attr:`illegal_joint_states`.
     """
 
-    retracts_when_stuck: bool = False
+    retract_target: RetractTarget | None = None
     """
-    Whether the replanning trial retracts a stuck arm to its last clear joint state
-    before replanning.
+    Where the replanning trial retracts a stuck arm to before replanning, or ``None`` to
+    plan from where it got stuck.
     """
 
     @staticmethod
@@ -208,7 +209,7 @@ class ReplanningVideo:
             files=TrialFiles(directory=directory, number=0),
             illegal_joint_states=self.illegal_joint_states if replans else [],
             replans_on_stagnation=replans and self.replans_on_stagnation,
-            retracts_when_stuck=replans and self.retracts_when_stuck,
+            retract_target=self.retract_target if replans else None,
             collision_avoidance=self.collision_avoidance,
             video=directory / f"{name}.mp4",
         )

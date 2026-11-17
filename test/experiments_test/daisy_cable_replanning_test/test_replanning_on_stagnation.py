@@ -16,11 +16,13 @@ from experiments.daisy_cable_replanning.collisions import (
 )
 from experiments.daisy_cable_replanning.replanning import (
     PathSinceLastClearJointState,
+    PathSinceMotionStart,
     ProbedJointState,
     ReplanningLog,
     ReplanningParameters,
+    RetractAlongRememberedPath,
     RetractedStagnationReplannedToolCenterPointMotion,
-    RetractToLastClearJointState,
+    RetractTarget,
     StagnationReplannedToolCenterPointMotion,
     StagnationReplanning,
     ToolCenterPointMotionWithReplanning,
@@ -88,7 +90,7 @@ def _clearance_tracker(world: World, clearance: float) -> PathSinceLastClearJoin
 
 
 def _move_right_arm(
-    world: World, tracker: PathSinceLastClearJointState, step: float
+    world: World, tracker: PathSinceMotionStart, step: float
 ) -> np.ndarray:
     """
     :return: The positions the right arm was moved to, every joint the step further.
@@ -141,7 +143,7 @@ def test_retract_follows_the_path_back_to_the_last_clear_joint_state(
     for _ in range(3):
         _move_right_arm(parked_daisy_world, tracker, step=tracker.waypoint_spacing)
         tracker.on_tick(context)
-    retract = RetractToLastClearJointState(name="retract", monitor=tracker)
+    retract = RetractAlongRememberedPath(name="retract", monitor=tracker)
 
     waypoints = retract.plan_waypoints(context)
 
@@ -150,20 +152,49 @@ def test_retract_follows_the_path_back_to_the_last_clear_joint_state(
     assert waypoints == list(reversed(tracker.path))
 
 
+def test_path_since_motion_start_keeps_the_whole_path_while_the_arm_is_clear(
+    parked_daisy_world: World,
+):
+    robot = parked_daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
+    tracker = PathSinceMotionStart(
+        name="path since motion start",
+        connections=robot.right_arm.active_connections,
+        waypoint_spacing=ReplanningParameters().waypoint_spacing,
+    )
+    context = MotionStatechartContext(world=parked_daisy_world)
+    start = np.array([connection.position for connection in tracker.connections])
+    tracker.on_start(context)
+
+    first = _move_right_arm(parked_daisy_world, tracker, step=tracker.waypoint_spacing)
+    tracker.on_tick(context)
+    second = _move_right_arm(parked_daisy_world, tracker, step=tracker.waypoint_spacing)
+    tracker.on_tick(context)
+
+    assert tracker.path == [
+        pytest.approx(start),
+        pytest.approx(first),
+        pytest.approx(second),
+    ]
+
+
 # %% plan transformation
 
 
 @pytest.mark.parametrize(
-    "retracts_when_stuck, replacement_type",
+    "retract_target, replacement_type",
     [
-        (False, StagnationReplannedToolCenterPointMotion),
-        (True, RetractedStagnationReplannedToolCenterPointMotion),
+        (None, StagnationReplannedToolCenterPointMotion),
+        (
+            RetractTarget.LAST_CLEAR_STATE,
+            RetractedStagnationReplannedToolCenterPointMotion,
+        ),
+        (RetractTarget.MOTION_START, RetractedStagnationReplannedToolCenterPointMotion),
     ],
 )
 def test_stagnation_replanning_keeps_the_parameters_of_the_motion(
     parked_daisy_world: World,
     tmp_path: Path,
-    retracts_when_stuck: bool,
+    retract_target: RetractTarget | None,
     replacement_type: type[ToolCenterPointMotionWithReplanning],
 ):
     robot = parked_daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
@@ -175,7 +206,7 @@ def test_stagnation_replanning_keeps_the_parameters_of_the_motion(
         replanning_log=ReplanningLog(
             path=tmp_path / "log.jsonl", trial=0, motion_tracker=ActiveMotionTracker()
         ),
-        retracts_when_stuck=retracts_when_stuck,
+        retract_target=retract_target,
     )
 
     replacement = transformation.replacement_for(motion)
@@ -192,7 +223,7 @@ def _trial(
     tmp_path: Path,
     name: str,
     replans_on_stagnation: bool,
-    retracts_when_stuck: bool = False,
+    retract_target: RetractTarget | None = None,
 ) -> CableDemoTrial:
     return CableDemoTrial(
         number=0,
@@ -200,7 +231,7 @@ def _trial(
         files=TrialFiles(directory=tmp_path / name, number=0),
         collision_avoidance=True,
         replans_on_stagnation=replans_on_stagnation,
-        retracts_when_stuck=retracts_when_stuck,
+        retract_target=retract_target,
     )
 
 
@@ -224,7 +255,10 @@ def test_retracting_before_replanning_completes_the_demo_without_collision(
     tmp_path: Path,
 ):
     trial = _trial(
-        tmp_path, "retracting", replans_on_stagnation=True, retracts_when_stuck=True
+        tmp_path,
+        "retracting",
+        replans_on_stagnation=True,
+        retract_target=RetractTarget.LAST_CLEAR_STATE,
     )
 
     trial.run()

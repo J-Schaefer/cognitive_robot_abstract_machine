@@ -23,6 +23,7 @@ from experiments.daisy_cable_replanning.replanning import (
     ReplanningLog,
     ReplanningParameters,
     ReplanningTransformation,
+    RetractTarget,
     StagnationReplanning,
 )
 from krrood.adapters.json_serializer import to_json
@@ -110,7 +111,7 @@ class TrialOption(StrEnum):
     ILLEGAL_JOINT_STATES = "--illegal-joint-states"
     COLLISION_AVOIDANCE = "--collision-avoidance"
     ON_STAGNATION = "--on-stagnation"
-    RETRACT_WHEN_STUCK = "--retract-when-stuck"
+    RETRACT_TO = "--retract-to"
     VIDEO = "--video"
 
 
@@ -289,10 +290,10 @@ class CableDemoTrial:
     there are no :attr:`illegal_joint_states` to replan around.
     """
 
-    retracts_when_stuck: bool = False
+    retract_target: RetractTarget | None = None
     """
-    Whether an arm whose motion is replanned on stagnation first retracts to its last
-    clear joint state.
+    Where an arm whose motion is replanned on stagnation retracts to first, or ``None``
+    to plan from where it got stuck.
     """
 
     @property
@@ -323,8 +324,8 @@ class CableDemoTrial:
             arguments.append(TrialOption.COLLISION_AVOIDANCE)
         if self.replans_on_stagnation:
             arguments.append(TrialOption.ON_STAGNATION)
-        if self.retracts_when_stuck:
-            arguments.append(TrialOption.RETRACT_WHEN_STUCK)
+        if self.retract_target is not None:
+            arguments += [TrialOption.RETRACT_TO, self.retract_target]
         return arguments
 
     def run_in_own_process(self) -> TrialResult:
@@ -445,7 +446,7 @@ class CableDemoTrial:
                 StagnationReplanning(
                     parameters=ReplanningParameters(),
                     replanning_log=replanning_log,
-                    retracts_when_stuck=self.retracts_when_stuck,
+                    retract_target=self.retract_target,
                 )
             ]
         return []
@@ -533,10 +534,10 @@ class CableDemoExperiment:
     Whether the trials replan a motion that stops approaching its target.
     """
 
-    retracts_when_stuck: bool = False
+    retract_target: RetractTarget | None = None
     """
-    Whether an arm whose motion is replanned on stagnation first retracts to its last
-    clear joint state.
+    Where an arm whose motion is replanned on stagnation retracts to first, or ``None``
+    to plan from where it got stuck.
     """
 
     removes_duplicate_poses: bool = True
@@ -582,7 +583,7 @@ class CableDemoExperiment:
                 illegal_joint_states=self.illegal_joint_states,
                 collision_avoidance=self.collision_avoidance,
                 replans_on_stagnation=self.replans_on_stagnation,
-                retracts_when_stuck=self.retracts_when_stuck,
+                retract_target=self.retract_target,
             )
             for number in range(self.trials)
         ]

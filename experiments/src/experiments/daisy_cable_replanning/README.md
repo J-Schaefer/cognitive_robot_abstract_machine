@@ -23,7 +23,7 @@ runs into are added to the database for the next round.
 | `cable_demo.py` | `DemoScript`, which imports `demo.py` as a module, so its workcell and plans are used as they are |
 | `trials.py` | `CableDemoTrial`, one run of the demo in its own process; `CableDemoExperiment`, many runs; `TrialNoise` |
 | `collisions.py` | recording: `ArmCollisionRecorder`, `IllegalJointState`, `IllegalJointStateDatabase`, `MotionLabel` |
-| `replanning.py` | replanning: `ReplanningTransformation`, `ReplannedToolCenterPointMotion`, `StagnationReplannedToolCenterPointMotion`, `RetractedStagnationReplannedToolCenterPointMotion`, `PathSinceLastClearJointState`, `JointSpacePlanner`, `GoalConfigurationSampler`, `ReplanningParameters` |
+| `replanning.py` | replanning: `ReplanningTransformation`, `ReplannedToolCenterPointMotion`, `StagnationReplannedToolCenterPointMotion`, `RetractedStagnationReplannedToolCenterPointMotion`, `PathSinceMotionStart`, `PathSinceLastClearJointState`, `RetractAlongRememberedPath`, `JointSpacePlanner`, `GoalConfigurationSampler`, `ReplanningParameters` |
 | `summary.py` | `ExperimentOutcome` and `ReplanningComparison`, the numbers reported below |
 | `joint_state_metrics.py` | `SeriesJointStateMetrics`, the joint state counts of a series (`joint-states` command) |
 | `curation.py` | `IllegalJointStateCuration`, choosing recorded states to keep; `KeptDatabase`, the permanent files |
@@ -127,7 +127,7 @@ $E trial --number 0 --seed 117 --directory $D/stuck \
     --collision-avoidance --on-stagnation
 # the same, but a stuck arm retracts to its last clear joint state first
 $E trial --number 0 --seed 117 --directory $D/retract \
-    --collision-avoidance --on-stagnation --retract-when-stuck
+    --collision-avoidance --on-stagnation --retract-to last-clear-state
 ```
 
 - `--video <file>.mp4` records the trial with MuJoCo. The file is written even when
@@ -271,7 +271,7 @@ Every trial starts with both arms parked.
 | `waypoint_spacing` | 0.1 rad | largest joint step between waypoints handed to Giskard |
 | `goal_seeds` | 64 | random inverse-kinematics seeds besides the current joint state |
 | `goal_seed_spread` | π | largest joint offset of a seed |
-| `retract_clearance` | 0 m | with `--retract-when-stuck`: distance on top of each pair's buffer zone that the retracted-to state keeps |
+| `retract_clearance` | 0 m | with `--retract-to last-clear-state`: distance on top of each pair's buffer zone that the retracted-to state keeps |
 | `goal_sampling_seed` | 0 | seed of the seeds |
 | `distinct_goal_distance` | 0.05 rad | goal configurations closer than this count as one |
 
@@ -379,18 +379,19 @@ $E video --output $S/video --collision-avoidance --on-stagnation \
 
 `series_4_replanning_on_stagnation/run.sh` runs both experiments.
 
-### Retracting before replanning (`--retract-when-stuck`)
+### Retracting before replanning (`--retract-to`)
 
-With `--retract-when-stuck`, a stuck arm first moves back to its *last clear joint
-state*, and OMPL plans from there. A joint state is clear when every pair of the
-arm's bodies keeps at least its Giskard buffer zone plus `retract_clearance`. The
-buffer zones are 3 cm to the robot and the workcell, and 1.5 cm between forearm and
-gripper.
+With `--retract-to <target>`, a stuck arm first moves back along the path it came, and
+OMPL plans from where the retract ends. `RetractTarget` names the two targets:
 
-`PathSinceLastClearJointState` remembers the joint states the arm passed since its last
-clear one, at most `waypoint_spacing` apart. If no state was clear, it remembers them
-since the motion started. The retract follows that path backwards, so the arm leaves
-the way it came, not on a straight line in joint space (series 8 did that). The chart
+| `--retract-to` | the arm retracts to | remembered by |
+|---|---|---|
+| `last-clear-state` | the last joint state of the motion in which every pair of the arm's bodies kept its Giskard buffer zone plus `retract_clearance`, or the motion's start if there was none | `PathSinceLastClearJointState` |
+| `motion-start` | the joint state the motion started at, where the previous motion reached its goal | `PathSinceMotionStart` |
+
+Both remember the joint states the arm passed, at most `waypoint_spacing` apart, and
+`RetractAlongRememberedPath` follows them backwards. The arm leaves the way it came,
+not on a straight line in joint space (series 8 did that). The chart
 (`RetractedStagnationReplannedToolCenterPointMotion`):
 
 ```
@@ -398,11 +399,14 @@ ReplacedWhenTrue
 ├── monitor:     NoLongerProgressing
 ├── monitored:   Parallel (the motion counts as done once MoveTCP is)
 │                ├── the original MoveTCP task
-│                └── PathSinceLastClearJointState
+│                └── PathSinceMotionStart or PathSinceLastClearJointState
 └── replacement: Sequence
-                 ├── RetractToLastClearJointState   (back along the path, avoidance on)
+                 ├── RetractAlongRememberedPath   (avoidance on)
                  └── the planned path, as above
 ```
+
+Series 8 and 9 ran with `--retract-when-stuck`, which is `--retract-to
+last-clear-state` today.
 
 ### Running it once, also on the real robot (`stuck_motion_demo.py`)
 
@@ -865,7 +869,7 @@ The McNemar test compares the two runs seed by seed.
 - **Success rises slightly,** from 47.1 % to 50.0 %. With p = 0.06, that difference
   could still be chance.
 - **Completion falls,** from 54.0 % to 50.2 %, because the retract itself can get
-  stuck. In 98 trials, a `RetractToLastClearJointState` stops approaching its target
+  stuck. In 98 trials, a retract to the last clear state stops approaching its target
   (`MotionMadeNoProgress`). The retract runs with Giskard's collision avoidance on and
   moves straight in joint space, not back along the path the arm came.
 - **Remaining failures:**
@@ -956,8 +960,9 @@ The trials without replanning (collision avoidance on) all stall in the grasp:
 
 ### Series 10: a 2 mm buffer between the arms and the post and hanger
 
-Directory: `series_10_post_buffer_2mm/`, run by its `run.sh`. The demo with collision
-avoidance and without replanning, seeds 0-999.
+Directory: `series_10_post_buffer_2mm/`, run by its `run.sh` at commit `bb04e1d76`.
+The demo with collision avoidance, seeds 0-999, without replanning and with replanning
+when stuck (retracting along the path first).
 
 `CableWorkcell.find_or_add_to` (the demo script) adds a collision rule: every body an
 arm moves keeps `arm_buffer_zone_distance` (2 mm) from the post and the hanger.
@@ -972,10 +977,11 @@ The scoop target is 1.15 mm from the post, and the motion counts as done within 
 of it. A rule for the grippers alone was not enough: the rehang then stalls with the
 forearm 30 mm in front of the hanger.
 
-| seeds 0-999 | 3 cm (series 9) | 2 mm (series 10) |
-|---|---|---|
-| completed | 0 | 622 |
-| trials colliding | 0 | 0 |
+| seeds 0-999 | 3 cm, no replanning (series 9) | 2 mm, no replanning | 2 mm, retract and replan |
+|---|---|---|---|
+| completed | 0 | 622 | **0** |
+| trials colliding | 0 | 0 | 33 |
+| replanned motions | - | - | 2,031 |
 
 The 378 remaining failures are all stalls (`MotionMadeNoProgress`):
 - 80 in the approach of the grasp (`MoveTCP/position#14`), at the wrist singularity
@@ -983,6 +989,62 @@ The 378 remaining failures are all stalls (`MotionMadeNoProgress`):
 - the rest in the regrasp. In seeds 2 and 3, the right forearm stops 3 to 4 mm from
   its own gripper, inside the 5 mm buffer between a forearm and its own gripper.
   Without avoidance, these motions drive the forearm into the gripper.
+
+**Replanning makes it worse.** With replanning, 958 trials stall in `regrasp#9`, the
+free arm's move to `inter_free_arm_pose`, which holds the cable with both grippers
+and is not replanned. The cause is the earlier replan of `regrasp#3`, the free arm's
+move in front of the cable (893 trials):
+- The stagnation monitor hands a motion to the planner after 1.5 s without progress.
+  Without replanning, Giskard is still allowed 5 s and then finishes these motions.
+- The planned path ends in a different inverse-kinematics solution for the same
+  pose. In seed 0, the right shoulder pan is at 2.9 rad after the replanned
+  `regrasp#3`, against 0.54 rad without replanning.
+- From that configuration, Giskard can't reach the target of `regrasp#9`.
+
+`grasp#3`, the approach of the scoop arm, is replanned in 999 trials as well. It ends
+in practically the same configuration (within 0.08 rad in seed 0) and does no harm.
+The 33 colliding trials touch the right gripper base with the forearm (at most
+0.01 mm) in `regrasp#9` and abort with `MotionViolatedCollisionAvoidance`.
+
+`series_10_post_buffer_2mm/video/daisy_cable_replanning_seed0.mp4` shows seed 0:
+- Left, Giskard with collision avoidance: every stage completed.
+- Right, retracting to the last clear state and replanning: after the replanned
+  `regrasp#3`, the right arm is turned elbow-up and stalls in `regrasp#9`.
+
+### Series 11: series 10 retracting to the motion's start
+
+Directory: `series_11_retract_to_motion_start/`, run by its `run.sh`. Series 10's
+replanning run with `--retract-to motion-start`: a stuck arm retraces its path to
+where the motion started, the goal the previous motion reached, and OMPL plans from
+there. The baseline is series 10's.
+
+| seeds 0-999 | no replanning | retract to last clear state (series 10) | retract to motion start |
+|---|---|---|---|
+| completed | 622 | 0 | 340 |
+| completed without any collision | 622 | 0 | 286 |
+| trials colliding | 0 | 33 | 90 |
+| replanned motions | - | 2,031 | 1,978 |
+
+Retracting to the motion's start keeps the arm in the configuration Giskard reached,
+so 340 trials get through `regrasp#9`. Without replanning, 622 do. 48 seeds complete
+only with replanning, 340 only without it (McNemar p < 1e-48).
+
+Failures with replanning (660):
+- 247 stall in `regrasp#9` (`MoveTCP/position#19`), the cable-holding motion that is
+  not replanned.
+- 204 end with `NoValidGoalConfiguration`, all still in the grasp, mostly in `grasp#4`
+  (replanned 362 times). From the motion's start, every goal configuration found puts
+  the right forearm into its gripper's side cylinder or the upper arm into the table.
+- 156 end with `MotionViolatedCollisionAvoidance` while following a planned path, with
+  the forearm in its own gripper's side or wrist cylinder: 276 logged states, median
+  0.3 mm, up to 18 mm deep. Their recorded failure is empty.
+- 38 stall in the retract or the planned path, 9 in `MoveTCP/position#13`, 6 exceed
+  the simulated-time limit.
+
+`series_11_retract_to_motion_start/video/daisy_cable_replanning_seed0.mp4` shows seed 0:
+- Left, Giskard with collision avoidance: every stage completed.
+- Right, retracting to the motion's start and replanning: 3 motions replanned, no
+  collision, every stage completed.
 
 ## Known limitations
 

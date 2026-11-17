@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from datetime import timedelta
+from enum import StrEnum
 from itertools import pairwise
 from math import ceil, pi
 from pathlib import Path
@@ -649,23 +650,35 @@ class PlannedJointPathToPose(JointWaypointPath):
 # %% retracting
 
 
-@dataclass(eq=False, repr=False)
-class PathSinceLastClearJointState(MotionStatechartNode):
+class RetractTarget(StrEnum):
     """
-    Remembers the joint states an arm passed since its last clear joint state, the one
-    at which every pair of its bodies kept at least the pair's clearance, or since it
-    started if there was none; observes False throughout.
+    Where a stuck arm retracts to, along the path it came, before the path to the
+    motion's target is planned.
+    """
+
+    LAST_CLEAR_STATE = "last-clear-state"
+    """
+    The last joint state of the motion in which every pair of the arm's bodies kept its
+    Giskard buffer zone plus :attr:`ReplanningParameters.retract_clearance`, or the
+    motion's start if there was none.
+    """
+
+    MOTION_START = "motion-start"
+    """
+    The joint state the motion started at, where the previous motion reached its goal.
+    """
+
+
+@dataclass(eq=False, repr=False)
+class PathSinceMotionStart(MotionStatechartNode):
+    """
+    Remembers the joint states an arm passed since it started; observes False
+    throughout.
     """
 
     connections: list[ActiveConnection1DOF] = field(kw_only=True)
     """
     The joints of the arm.
-    """
-
-    clearances: CollisionMatrix = field(kw_only=True)
-    """
-    The pairs of bodies, each with the distance it has to keep for a joint state to
-    count as clear.
     """
 
     waypoint_spacing: float = field(kw_only=True)
@@ -675,7 +688,7 @@ class PathSinceLastClearJointState(MotionStatechartNode):
 
     path: list[np.ndarray] = field(init=False, default_factory=list)
     """
-    The remembered positions of :attr:`connections`, the last clear ones first.
+    The remembered positions of :attr:`connections`, the earliest first.
     """
 
     def on_start(self, context: MotionStatechartContext) -> None:
@@ -683,11 +696,7 @@ class PathSinceLastClearJointState(MotionStatechartNode):
 
     def on_tick(self, context: MotionStatechartContext) -> ObservationStateValues:
         positions = self._current_positions()
-        if ProbedJointState(
-            world=context.world, connections=self.connections
-        ).is_collision_free(positions, self.clearances):
-            self.path = [positions]
-        elif np.max(np.abs(positions - self.path[-1])) >= self.waypoint_spacing:
+        if np.max(np.abs(positions - self.path[-1])) >= self.waypoint_spacing:
             self.path.append(positions)
         return ObservationStateValues.FALSE
 
@@ -699,13 +708,37 @@ class PathSinceLastClearJointState(MotionStatechartNode):
 
 
 @dataclass(eq=False, repr=False)
-class RetractToLastClearJointState(JointWaypointPath):
+class PathSinceLastClearJointState(PathSinceMotionStart):
     """
-    Moves the joints a :class:`PathSinceLastClearJointState` watches back along the
-    remembered path to the last clear joint state.
+    Remembers the joint states an arm passed since its last clear joint state, the one
+    at which every pair of its bodies kept at least the pair's clearance, or since it
+    started if there was none.
     """
 
-    monitor: PathSinceLastClearJointState = field(kw_only=True)
+    clearances: CollisionMatrix = field(kw_only=True)
+    """
+    The pairs of bodies, each with the distance it has to keep for a joint state to
+    count as clear.
+    """
+
+    def on_tick(self, context: MotionStatechartContext) -> ObservationStateValues:
+        positions = self._current_positions()
+        if not ProbedJointState(
+            world=context.world, connections=self.connections
+        ).is_collision_free(positions, self.clearances):
+            return super().on_tick(context)
+        self.path = [positions]
+        return ObservationStateValues.FALSE
+
+
+@dataclass(eq=False, repr=False)
+class RetractAlongRememberedPath(JointWaypointPath):
+    """
+    Moves the joints a :class:`PathSinceMotionStart` watches back along the remembered
+    path to where it begins.
+    """
+
+    monitor: PathSinceMotionStart = field(kw_only=True)
     """
     The node that remembers the path.
     """
@@ -926,9 +959,13 @@ class RetractedStagnationReplannedToolCenterPointMotion(
 ):
     """
     Like :class:`StagnationReplannedToolCenterPointMotion`, but once the motion is stuck
-    the arm first retracts to the last joint state in which its bodies kept
-    :attr:`ReplanningParameters.retract_clearance` beyond Giskard's buffer zones, and
-    the path is planned from there.
+    the arm first retracts along its path to :attr:`retract_target`, and the path to
+    the target is planned from there.
+    """
+
+    retract_target: RetractTarget = field(kw_only=True)
+    """
+    Where the arm retracts to.
     """
 
     @property
@@ -937,47 +974,67 @@ class RetractedStagnationReplannedToolCenterPointMotion(
         planned_path = self._planned_path(
             IllegalJointStateDatabase.for_daisy_arms().joint_configurations(self.world)
         )
-        manager = self.world.collision_manager
-        clear_joint_state = PathSinceLastClearJointState(
-            name="path since last clear joint state",
-            connections=self.arm.active_connections,
-            waypoint_spacing=self.parameters.waypoint_spacing,
-            clearances=CollisionMatrix(
-                {
-                    CollisionCheck(
-                        check.body_a,
-                        check.body_b,
-                        manager.get_buffer_zone_distance(check.body_a, check.body_b)
-                        + self.parameters.retract_clearance,
-                    )
-                    for check in planned_path.planner.collision_matrix().collision_checks
-                }
-            ),
-        )
-        motion_remembering_clear_joint_state = Parallel(
-            name="MoveTCP remembering the last clear joint state",
-            nodes=[motion, clear_joint_state],
+        remembered_path = self._remembered_path(planned_path)
+        motion_remembering_its_path = Parallel(
+            name="MoveTCP remembering its path",
+            nodes=[motion, remembered_path],
             minimum_success=1,
         )
         return ReplacedWhenTrue(
             name="MoveTCP or retract and replanned path",
             monitor=NoLongerProgressing(
                 name="no longer progressing",
-                monitored_node=motion_remembering_clear_joint_state,
+                monitored_node=motion_remembering_its_path,
                 timeout=timedelta(seconds=self.parameters.stagnation_timeout),
             ),
-            monitored_node=motion_remembering_clear_joint_state,
+            monitored_node=motion_remembering_its_path,
             replacement=Sequence(
                 name="retract and follow planned path",
                 nodes=[
-                    RetractToLastClearJointState(
-                        name="retract to last clear joint state",
-                        monitor=clear_joint_state,
+                    RetractAlongRememberedPath(
+                        name=f"retract to {self.retract_target}",
+                        monitor=remembered_path,
                     ),
                     self._without_collision_avoidance_of_arm(planned_path),
                 ],
             ),
         )
+
+    def _remembered_path(
+        self, planned_path: PlannedJointPathToPose
+    ) -> PathSinceMotionStart:
+        """
+        :param planned_path: The path planned after retracting, whose planner's body
+            pairs decide whether a joint state is clear.
+        :return: The node remembering the arm's path back to :attr:`retract_target`.
+        """
+        match self.retract_target:
+            case RetractTarget.MOTION_START:
+                return PathSinceMotionStart(
+                    name="path since motion start",
+                    connections=self.arm.active_connections,
+                    waypoint_spacing=self.parameters.waypoint_spacing,
+                )
+            case RetractTarget.LAST_CLEAR_STATE:
+                manager = self.world.collision_manager
+                return PathSinceLastClearJointState(
+                    name="path since last clear joint state",
+                    connections=self.arm.active_connections,
+                    waypoint_spacing=self.parameters.waypoint_spacing,
+                    clearances=CollisionMatrix(
+                        {
+                            CollisionCheck(
+                                check.body_a,
+                                check.body_b,
+                                manager.get_buffer_zone_distance(
+                                    check.body_a, check.body_b
+                                )
+                                + self.parameters.retract_clearance,
+                            )
+                            for check in planned_path.planner.collision_matrix().collision_checks
+                        }
+                    ),
+                )
 
 
 # %% plan transformations
@@ -1066,10 +1123,10 @@ class StagnationReplanning(ReplanningTransformation):
     first.
     """
 
-    retracts_when_stuck: bool = field(default=False, kw_only=True)
+    retract_target: RetractTarget | None = field(default=None, kw_only=True)
     """
-    Whether a stuck arm retracts to its last clear joint state before the path is
-    planned.
+    Where a stuck arm retracts to before the path is planned, or ``None`` to plan from
+    where it got stuck.
     """
 
     def is_applicable(self, plan_node: ActionNode) -> bool:
@@ -1078,11 +1135,13 @@ class StagnationReplanning(ReplanningTransformation):
     def replacement_for(
         self, motion: MoveToolCenterPointMotion
     ) -> ToolCenterPointMotionWithReplanning:
-        replacement_type = (
-            RetractedStagnationReplannedToolCenterPointMotion
-            if self.retracts_when_stuck
-            else StagnationReplannedToolCenterPointMotion
-        )
-        return replacement_type.replacing(
-            motion, parameters=self.parameters, replanning_log=self.replanning_log
+        if self.retract_target is None:
+            return StagnationReplannedToolCenterPointMotion.replacing(
+                motion, parameters=self.parameters, replanning_log=self.replanning_log
+            )
+        return RetractedStagnationReplannedToolCenterPointMotion.replacing(
+            motion,
+            parameters=self.parameters,
+            replanning_log=self.replanning_log,
+            retract_target=self.retract_target,
         )
