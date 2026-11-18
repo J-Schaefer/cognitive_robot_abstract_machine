@@ -473,6 +473,106 @@ because only EGL renders offscreen next to the Qt window.
 
 ## Results
 
+### Summary of all series
+
+Every run of every series, counted from its `trial_results.json`. Each row counts
+trials, not single collisions or motions.
+
+- **Avoidance:** whether Giskard's collision avoidance was on. It is always off in the
+  homing stage.
+- **Failure detection:** how a motion that goes wrong is detected and handed to OMPL:
+  - *none*: no replanning, the demo as it is;
+  - *guard*: the arms come within `trigger_distance` of a recorded self-collision state;
+  - *stuck*: the motion has not approached its target for `stagnation_timeout` (1.5 s of
+    simulated time);
+  - *stuck + retract*: as *stuck*, but the arm first retraces its path, to its last
+    joint state outside Giskard's buffer zones or to where the motion started
+    (`--retract-to`).
+- **Completed:** the trial performed all four stages and its process exited without an
+  error.
+- **Succeeded:** completed *and* never touched itself. This is the success rate.
+- **Colliding:** at least one self-collision was recorded, whether the trial completed or
+  not. So *completed* minus *succeeded* trials completed despite a collision, and
+  *colliding* minus that many collided and then failed.
+
+| series (what changed) | run | trials (seeds) | avoidance | failure detection | completed | succeeded | colliding |
+|---|---|---|---|---|---|---|---|
+| **1** safe postures | `record` | 100 (0-99) | off | none | 94 | 31 | 63 |
+| | `replan` | 100 (0-99) | off | guard | 94 | 94 | 0 |
+| | `heldout_record` | 50 (100-149) | off | none | 44 | 14 | 30 |
+| | `heldout_replan` | 50 (100-149) | off | guard | 44 | **44** | 0 |
+| **2** no safe postures | `record` | 100 (0-99) | off | none | 79 | 0 | 94 |
+| | `replan_round_1` | 100 (0-99) | off | guard | 70 | 0 | 83 |
+| | `replan_round_2` | 100 (0-99) | off | guard | 58 | 40 | 21 |
+| | `replan_round_3` | 100 (0-99) | off | guard | 20 | 17 | 12 |
+| | `heldout_record` | 100 (100-199) | off | none | 76 | 0 | 87 |
+| | `heldout_replan` | 100 (100-199) | off | guard | 61 | **3** | 60 |
+| | `heldout_replan_any_goal` | 100 (100-199) | off | guard | 54 | 17 | 58 |
+| | `heldout_replan_unseeded` | 100 (100-199) | off | guard | 60 | 3 | 61 |
+| **3** duplicate poses removed | `record` | 100 (0-99) | off | none | 79 | 0 | 94 |
+| | `replan_round_1` | 100 (0-99) | off | guard | 72 | 0 | 82 |
+| | `replan_round_2` | 100 (0-99) | off | guard | 60 | 47 | 15 |
+| | `replan_round_3` | 100 (0-99) | off | guard | 68 | 38 | 30 |
+| | `heldout_record` | 100 (100-199) | off | none | 76 | 0 | 87 |
+| | `heldout_replan` | 100 (100-199) | off | guard | 28 | **26** | 37 |
+| | `heldout_replan_all_states` | 100 (100-199) | off | guard | 29 | 24 | 40 |
+| **4** stuck trigger (4 mm gripper shapes) | `baseline` | 100 (0-99) | on | none | 0 | 0 | 0 |
+| | `replan_on_stagnation` | 100 (0-99) | on | stuck | 97 | **94** | 3 |
+| **5** full-size gripper shapes | `record` | 100 (0-99) | off | none | 79 | 0 | 94 |
+| | `replan_round_1` | 100 (0-99) | off | guard | 70 | 0 | 83 |
+| | `replan_round_2` | 100 (0-99) | off | guard | 94 | 0 | 94 |
+| | `replan_round_3` | 100 (0-99) | off | guard | 91 | 15 | 76 |
+| | `heldout_record` | 100 (100-199) | off | none | 76 | 0 | 87 |
+| | `heldout_replan` | 100 (100-199) | off | guard | 73 | **67** | 8 |
+| **6** as 4, full-size shapes | `baseline` | 1000 (0-999) | on | none | 0 | 0 | 0 |
+| | `replan_on_stagnation` | 1000 (0-999) | on | stuck | 0 | **0** | 0 |
+| **7** 1 mm margin, targets set back | `baseline` | 1000 (0-999) | on | none | 0 | 0 | 0 |
+| | `replan_on_stagnation` | 1000 (0-999) | on | stuck | 540 | **471** | 72 |
+| **8** retract first, straight line | `replan_retract_first` | 1000 (0-999) | on | stuck + retract to last clear state | 502 | **500** | 5 |
+| **9** retract along the path, cable-safe flags, 5 mm forearm buffer | `baseline` | 1000 (0-999) | on | none | 0 | 0 | 0 |
+| | `replan_retract_first` | 1000 (0-999) | on | stuck + retract to last clear state | 0 | **0** | 39 |
+| **10** 2 mm buffer to post and hanger | `baseline` | 1000 (0-999) | on | none | 622 | **622** | 0 |
+| | `replan_retract_first` | 1000 (0-999) | on | stuck + retract to last clear state | 0 | 0 | 33 |
+| **11** retract to the motion's start | `replan_retract_to_motion_start` | 1000 (0-999) | on | stuck + retract to motion start | 340 | **286** | 90 |
+
+Series 8 and 11 have no baseline row: they reuse the baseline of series 7 and 10.
+Trials without replanning reproduce exactly from their seed, so the baseline is valid
+for both.
+
+How to read it:
+
+- **Guard trigger, avoidance off (series 1-3, 5).** The baselines complete often but
+  nearly always collide: 0 of 100 succeed in series 2, 3 and 5. The best held-out result
+  is series 5, with 67 of 100.
+- **Stuck trigger, avoidance on (series 4-11).**
+  - Series 4's 94 of 100 relied on gripper collision shapes that were only about 4 mm
+    large, because of a mesh-scaling bug.
+  - With full-size shapes, targets set back and a 1 mm planner margin, series 7 reaches
+    471 and series 8 reaches 500. Both replan motions while both grippers hold the cable,
+    which can damage it.
+  - With that ruled out (series 9), no trial succeeds.
+  - The 2 mm buffer to the post and hanger (series 10) lets 622 of 1000 succeed *without*
+    replanning.
+  - The best replanning variant on that setup is series 11, with 286 of 1000, still well
+    below series 10's baseline.
+- **Run sizes differ.** Series 1-5 ran 100 trials per run (50 for the held-out runs of
+  series 1), series 6-11 ran 1000.
+- **Rows are only comparable within a series.** The code, the collision shapes and the
+  buffer zones changed between series.
+
+How failures and collisions are detected:
+
+- **A trial fails** when its process raises an error:
+  - Giskard makes no progress for 5 s (`MotionMadeNoProgress`);
+  - the planner finds no valid goal (`NoValidGoalConfiguration`) or no path
+    (`NoJointPathFound`);
+  - collision avoidance is violated (`MotionViolatedCollisionAvoidance`);
+  - a motion exceeds 120 s of simulated time.
+- **A collision** is measured separately by the recorder in every trial, with or without
+  avoidance, whenever a body of an arm touches another body of the robot. That includes
+  the other arm, the arm's own parts and the table. It does not include the cable, the
+  post, the hanger, or near misses inside a buffer zone.
+
 ### Series 1: demo with safe intermediate postures
 
 Directory: `series_1_with_safe_poses/`.
