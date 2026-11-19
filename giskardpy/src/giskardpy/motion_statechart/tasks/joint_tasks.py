@@ -14,6 +14,7 @@ from giskardpy.motion_statechart.graph_node import NodeArtifacts, Task
 from giskardpy.motion_statechart.graph_node import ConvergingTask
 from giskardpy.motion_statechart.monitors.joint_monitors import (
     CloseToJointConfigurations,
+    RecentJointStates,
 )
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
@@ -314,3 +315,31 @@ class RetractToLastSafeJointConfiguration(JointWaypointPath):
 
     def plan_waypoints(self, context: MotionStatechartContext) -> list[np.ndarray]:
         return [self.monitor.last_safe_positions]
+
+
+@dataclass(eq=False, repr=False)
+class RetraceRecentJointStates(JointWaypointPath):
+    """
+    Moves the connections a :class:`RecentJointStates` monitor watches back through the
+    positions it remembered, the latest first, to the earliest one.
+
+    The waypoints are one control cycle apart, so the connections follow the path they
+    came within :attr:`waypoint_threshold`.
+    """
+
+    monitor: RecentJointStates = field(kw_only=True)
+    """
+    The monitor that remembers the positions.
+    """
+
+    connections: list[ActiveConnection1DOF] = field(init=False)
+    """
+    The connections the monitor watches.
+    """
+
+    def __post_init__(self):
+        self.connections = self.monitor.connections
+        super().__post_init__()
+
+    def plan_waypoints(self, context: MotionStatechartContext) -> list[np.ndarray]:
+        return list(reversed(self.monitor.states))

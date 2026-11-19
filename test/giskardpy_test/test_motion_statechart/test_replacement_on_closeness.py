@@ -11,11 +11,12 @@ import pytest
 from giskardpy.executor import Executor
 from giskardpy.motion_statechart.context import MotionStatechartContext
 from giskardpy.motion_statechart.data_types import LifeCycleValues
-from giskardpy.motion_statechart.goals.templates import Sequence
+from giskardpy.motion_statechart.goals.templates import Parallel, Sequence
 from giskardpy.motion_statechart.graph_node import EndMotion
 from giskardpy.motion_statechart.monitors.joint_monitors import (
     CloseToJointConfigurations,
     JointConfigurationSet,
+    RecentJointStates,
 )
 from giskardpy.motion_statechart.monitors.payload_monitors import CountControlCycles
 from giskardpy.motion_statechart.monitors.templates import ReplacedWhenTrue
@@ -26,6 +27,7 @@ from giskardpy.motion_statechart.nodes_for_testing.nodes_for_testing import (
 from giskardpy.motion_statechart.tasks.joint_tasks import (
     JointPositionList,
     JointState,
+    RetraceRecentJointStates,
     RetractToLastSafeJointConfiguration,
 )
 from krrood.symbolic_math.symbolic_math import trinary_logic_not
@@ -147,6 +149,76 @@ def test_retract_returns_to_the_last_safe_position(prismatic_bot: World):
     assert connection.position == pytest.approx(
         monitor.last_safe_positions[0], abs=retract.threshold
     )
+
+
+# %% retracing the recent joint states
+
+
+def _corner_path(world: World) -> FixedWaypointPath:
+    """
+    :return: A path of both connections of the world around a corner.
+    """
+    return FixedWaypointPath(
+        connections=list(world.connections),
+        waypoints=[np.array([0.4, 0.0]), np.array([0.4, 0.4])],
+    )
+
+
+def _positions_per_control_cycle(executor: Executor, path) -> list[np.ndarray]:
+    """
+    :return: The positions of the path's connections before the first and after every
+        control cycle until the motion ends.
+    """
+    visited = [np.array([connection.position for connection in path.connections])]
+    while not executor.motion_statechart.is_end_motion():
+        executor.tick()
+        visited.append(
+            np.array([connection.position for connection in path.connections])
+        )
+    return visited
+
+
+def test_recent_joint_states_keep_the_positions_of_the_last_control_cycles(
+    prismatic_bot2: World,
+):
+    path = _corner_path(prismatic_bot2)
+    recorder = RecentJointStates(connections=path.connections, control_cycles=10)
+    motion = Parallel(nodes=[path, recorder], minimum_success=1)
+    motion.end_condition = motion.observation_variable
+    visited = _positions_per_control_cycle(_compile(prismatic_bot2, motion), path)
+
+    assert len(recorder.states) == recorder.control_cycles
+    assert any(
+        np.array_equal(np.array(recorder.states), np.array(visited[end - 10 : end]))
+        for end in range(10, len(visited) + 1)
+    )
+
+
+def test_retrace_follows_the_recent_joint_states_back(prismatic_bot2: World):
+    path = _corner_path(prismatic_bot2)
+    recorder = RecentJointStates(connections=path.connections, control_cycles=1000)
+    retrace = RetraceRecentJointStates(monitor=recorder)
+    goal = ReplacedWhenTrue(
+        monitor=CountControlCycles(control_cycles=25, name="trip"),
+        monitored_node=Parallel(nodes=[path, recorder], minimum_success=1),
+        replacement=retrace,
+    )
+    _goal_ended_on_its_observation(goal)
+    executor = _compile(prismatic_bot2, goal)
+    for _ in range(goal.monitor.control_cycles + 2):
+        if retrace.life_cycle_state != LifeCycleValues.NOT_STARTED:
+            break
+        executor.tick()
+    assert retrace.life_cycle_state == LifeCycleValues.RUNNING
+    recorded = np.array(retrace.plan_waypoints(executor.context))
+    retraced = np.array(_positions_per_control_cycle(executor, path))
+
+    distance_to_recorded_path = [
+        np.min(np.max(np.abs(recorded - positions), axis=1)) for positions in retraced
+    ]
+    assert recorded[0][1] > 0.0
+    assert max(distance_to_recorded_path) <= retrace.waypoint_threshold
+    assert retraced[-1] == pytest.approx(recorder.states[0], abs=retrace.threshold)
 
 
 # %% replacement goal

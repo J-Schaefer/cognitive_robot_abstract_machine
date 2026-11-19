@@ -36,11 +36,13 @@ from giskardpy.motion_statechart.graph_node import MotionStatechartNode
 from giskardpy.motion_statechart.monitors.joint_monitors import (
     CloseToJointConfigurations,
     JointConfigurationSet,
+    RecentJointStates,
 )
 from giskardpy.motion_statechart.monitors.progress_monitors import NoLongerProgressing
 from giskardpy.motion_statechart.monitors.templates import ReplacedWhenTrue
 from giskardpy.motion_statechart.tasks.joint_tasks import (
     JointWaypointPath,
+    RetraceRecentJointStates,
     RetractToLastSafeJointConfiguration,
 )
 from krrood.adapters.json_serializer import to_json
@@ -138,6 +140,12 @@ class ReplanningParameters:
     """
     Distance in metres, on top of the buffer zone of each pair of bodies, that the arm's
     bodies keep in the joint state a stuck motion retracts to, when it retracts first.
+    """
+
+    retraced_control_cycles: int = 200
+    """
+    How many of its latest control cycles a stuck arm retraces, when it retracts to
+    :attr:`RetractTarget.RECENT_STEPS`.
     """
 
     distinct_goal_distance: float = 0.05
@@ -668,6 +676,13 @@ class RetractTarget(StrEnum):
     The joint state the motion started at, where the previous motion reached its goal.
     """
 
+    RECENT_STEPS = "recent-steps"
+    """
+    The joint state the motion held :attr:`ReplanningParameters.retraced_control_cycles`
+    control cycles ago, or its start if it ran shorter; the arm retraces every control
+    cycle in between with Giskard's collision avoidance of the arm off.
+    """
+
 
 @dataclass(eq=False, repr=False)
 class PathSinceMotionStart(MotionStatechartNode):
@@ -848,22 +863,22 @@ class ToolCenterPointMotionWithReplanning(MoveToolCenterPointMotion):
         self, path: MotionStatechartNode
     ) -> Sequence:
         """
-        :param path: The node moving the arm along a planned path.
+        :param path: The node moving the arm along a path checked against the bodies
+            themselves, such as a planned or an already driven one.
         :return: The path, followed while Giskard's collision avoidance leaves the
             arm's bodies alone, and the collision rules restored after it.
 
-        The planner has checked the path against the bodies themselves; Giskard's
-        avoidance would keep the arm out of its buffer zones around them, which the
-        path may pass through, and hold it back again.
+        Giskard's avoidance would keep the arm out of its buffer zones around the
+        bodies, which the path may pass through, and hold it back again.
         """
         arm_bodies = ArmCollisionPairs(
             world=self.world, robot=self.robot
         ).bodies_of_arm[self.arm]
         return Sequence(
-            name="follow planned path",
+            name=f"follow {path.name}",
             nodes=[
                 Parallel(
-                    name="planned path without collision avoidance of the arm",
+                    name=f"{path.name} without collision avoidance of the arm",
                     nodes=[
                         UpdateTemporaryCollisionRules(
                             name="allow collisions of the arm",
@@ -974,10 +989,10 @@ class RetractedStagnationReplannedToolCenterPointMotion(
         planned_path = self._planned_path(
             IllegalJointStateDatabase.for_daisy_arms().joint_configurations(self.world)
         )
-        remembered_path = self._remembered_path(planned_path)
+        retract = self._retract(planned_path)
         motion_remembering_its_path = Parallel(
             name="MoveTCP remembering its path",
-            nodes=[motion, remembered_path],
+            nodes=[motion, retract.monitor],
             minimum_success=1,
         )
         return ReplacedWhenTrue(
@@ -991,48 +1006,66 @@ class RetractedStagnationReplannedToolCenterPointMotion(
             replacement=Sequence(
                 name="retract and follow planned path",
                 nodes=[
-                    RetractAlongRememberedPath(
-                        name=f"retract to {self.retract_target}",
-                        monitor=remembered_path,
+                    (
+                        self._without_collision_avoidance_of_arm(retract)
+                        if self.retract_target is RetractTarget.RECENT_STEPS
+                        else retract
                     ),
                     self._without_collision_avoidance_of_arm(planned_path),
                 ],
             ),
         )
 
-    def _remembered_path(
+    def _retract(
         self, planned_path: PlannedJointPathToPose
-    ) -> PathSinceMotionStart:
+    ) -> RetractAlongRememberedPath | RetraceRecentJointStates:
         """
         :param planned_path: The path planned after retracting, whose planner's body
             pairs decide whether a joint state is clear.
-        :return: The node remembering the arm's path back to :attr:`retract_target`.
+        :return: The node moving the arm back to :attr:`retract_target`, whose monitor
+            remembers the way back while the motion runs.
         """
+        name = f"retract to {self.retract_target}"
         match self.retract_target:
+            case RetractTarget.RECENT_STEPS:
+                return RetraceRecentJointStates(
+                    name=name,
+                    monitor=RecentJointStates(
+                        name="recent joint states",
+                        connections=self.arm.active_connections,
+                        control_cycles=self.parameters.retraced_control_cycles,
+                    ),
+                )
             case RetractTarget.MOTION_START:
-                return PathSinceMotionStart(
-                    name="path since motion start",
-                    connections=self.arm.active_connections,
-                    waypoint_spacing=self.parameters.waypoint_spacing,
+                return RetractAlongRememberedPath(
+                    name=name,
+                    monitor=PathSinceMotionStart(
+                        name="path since motion start",
+                        connections=self.arm.active_connections,
+                        waypoint_spacing=self.parameters.waypoint_spacing,
+                    ),
                 )
             case RetractTarget.LAST_CLEAR_STATE:
                 manager = self.world.collision_manager
-                return PathSinceLastClearJointState(
-                    name="path since last clear joint state",
-                    connections=self.arm.active_connections,
-                    waypoint_spacing=self.parameters.waypoint_spacing,
-                    clearances=CollisionMatrix(
-                        {
-                            CollisionCheck(
-                                check.body_a,
-                                check.body_b,
-                                manager.get_buffer_zone_distance(
-                                    check.body_a, check.body_b
+                return RetractAlongRememberedPath(
+                    name=name,
+                    monitor=PathSinceLastClearJointState(
+                        name="path since last clear joint state",
+                        connections=self.arm.active_connections,
+                        waypoint_spacing=self.parameters.waypoint_spacing,
+                        clearances=CollisionMatrix(
+                            {
+                                CollisionCheck(
+                                    check.body_a,
+                                    check.body_b,
+                                    manager.get_buffer_zone_distance(
+                                        check.body_a, check.body_b
+                                    )
+                                    + self.parameters.retract_clearance,
                                 )
-                                + self.parameters.retract_clearance,
-                            )
-                            for check in planned_path.planner.collision_matrix().collision_checks
-                        }
+                                for check in planned_path.planner.collision_matrix().collision_checks
+                            }
+                        ),
                     ),
                 )
 

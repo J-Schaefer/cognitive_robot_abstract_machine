@@ -189,6 +189,7 @@ def test_path_since_motion_start_keeps_the_whole_path_while_the_arm_is_clear(
             RetractedStagnationReplannedToolCenterPointMotion,
         ),
         (RetractTarget.MOTION_START, RetractedStagnationReplannedToolCenterPointMotion),
+        (RetractTarget.RECENT_STEPS, RetractedStagnationReplannedToolCenterPointMotion),
     ],
 )
 def test_stagnation_replanning_keeps_the_parameters_of_the_motion(
@@ -259,6 +260,22 @@ def test_retracting_before_replanning_completes_the_demo_without_collision(
         "retracting",
         replans_on_stagnation=True,
         retract_target=RetractTarget.LAST_CLEAR_STATE,
+    )
+
+    trial.run()
+
+    assert trial.files.collisions.read_text() == ""
+    assert trial.files.replanning.read_text().count("\n") >= 1
+
+
+def test_retracing_recent_steps_before_replanning_completes_the_demo_without_collision(
+    tmp_path: Path,
+):
+    trial = _trial(
+        tmp_path,
+        "retracing",
+        replans_on_stagnation=True,
+        retract_target=RetractTarget.RECENT_STEPS,
     )
 
     trial.run()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import field, dataclass
 
 import krrood.symbolic_math.symbolic_math as sm
@@ -134,3 +135,43 @@ class CloseToJointConfigurations(MotionStatechartNode):
         if distance < self.threshold:
             return ObservationStateValues.TRUE
         return ObservationStateValues.FALSE
+
+
+# %% recent joint states
+
+
+@dataclass(eq=False, repr=False)
+class RecentJointStates(MotionStatechartNode):
+    """
+    Remembers the positions the connections held in the last :attr:`control_cycles`
+    control cycles while it runs; observes False throughout.
+    """
+
+    connections: list[ActiveConnection1DOF] = field(kw_only=True)
+    """
+    The connections whose positions are remembered.
+    """
+
+    control_cycles: int = field(default=200, kw_only=True)
+    """
+    How many of the latest positions are remembered.
+    """
+
+    states: deque[np.ndarray] = field(init=False, default_factory=deque)
+    """
+    The remembered positions of :attr:`connections`, one per control cycle, the earliest
+    first.
+    """
+
+    def on_start(self, context: MotionStatechartContext):
+        self.states = deque([self._current_positions()], maxlen=self.control_cycles)
+
+    def on_tick(self, context: MotionStatechartContext) -> ObservationStateValues:
+        self.states.append(self._current_positions())
+        return ObservationStateValues.FALSE
+
+    def _current_positions(self) -> np.ndarray:
+        """
+        :return: The positions :attr:`connections` are at.
+        """
+        return np.array([connection.position for connection in self.connections])

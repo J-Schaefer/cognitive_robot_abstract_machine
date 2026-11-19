@@ -36,7 +36,9 @@ The generic Giskard pieces live in giskardpy. They are documented in
 `giskardpy/doc/examples/replanning.md`:
 - `CloseToJointConfigurations`, a monitor
 - `ReplacedWhenTrue`, a goal
-- `JointWaypointPath` and `RetractToLastSafeJointConfiguration`, tasks
+- `RecentJointStates`, a monitor remembering the joint states of the last control cycles
+- `JointWaypointPath`, `RetractToLastSafeJointConfiguration` and
+  `RetraceRecentJointStates`, tasks
 
 ## How a replanned motion runs
 
@@ -272,6 +274,7 @@ Every trial starts with both arms parked.
 | `goal_seeds` | 64 | random inverse-kinematics seeds besides the current joint state |
 | `goal_seed_spread` | π | largest joint offset of a seed |
 | `retract_clearance` | 0 m | with `--retract-to last-clear-state`: distance on top of each pair's buffer zone that the retracted-to state keeps |
+| `retraced_control_cycles` | 200 | with `--retract-to recent-steps`: how many of its latest control cycles a stuck arm retraces |
 | `goal_sampling_seed` | 0 | seed of the seeds |
 | `distinct_goal_distance` | 0.05 rad | goal configurations closer than this count as one |
 
@@ -382,16 +385,23 @@ $E video --output $S/video --collision-avoidance --on-stagnation \
 ### Retracting before replanning (`--retract-to`)
 
 With `--retract-to <target>`, a stuck arm first moves back along the path it came, and
-OMPL plans from where the retract ends. `RetractTarget` names the two targets:
+OMPL plans from where the retract ends. `RetractTarget` names the three targets:
 
 | `--retract-to` | the arm retracts to | remembered by |
 |---|---|---|
 | `last-clear-state` | the last joint state of the motion in which every pair of the arm's bodies kept its Giskard buffer zone plus `retract_clearance`, or the motion's start if there was none | `PathSinceLastClearJointState` |
 | `motion-start` | the joint state the motion started at, where the previous motion reached its goal | `PathSinceMotionStart` |
+| `recent-steps` | the joint state the motion held `retraced_control_cycles` control cycles ago, or its start if it ran shorter | `RecentJointStates` (giskardpy) |
 
-Both remember the joint states the arm passed, at most `waypoint_spacing` apart, and
-`RetractAlongRememberedPath` follows them backwards. The arm leaves the way it came,
-not on a straight line in joint space (series 8 did that). The chart
+The first two remember the joint states the arm passed, at most `waypoint_spacing`
+apart, and `RetractAlongRememberedPath` follows them backwards with Giskard's collision
+avoidance on. `recent-steps` remembers the joint state of every control cycle, and
+`RetraceRecentJointStates` (giskardpy) follows them backwards with the avoidance of the
+arm off, like the planned path. It aims at the next remembered state once the arm is
+within `waypoint_threshold` (0.05 rad) of the current one, and at most one state further
+per control cycle, so the arm retraces the path it took instead of cutting its corners.
+Either way the arm leaves the way it came, not on a straight line in joint space
+(series 8 did that). The chart
 (`RetractedStagnationReplannedToolCenterPointMotion`):
 
 ```
@@ -399,9 +409,10 @@ ReplacedWhenTrue
 ├── monitor:     NoLongerProgressing
 ├── monitored:   Parallel (the motion counts as done once MoveTCP is)
 │                ├── the original MoveTCP task
-│                └── PathSinceMotionStart or PathSinceLastClearJointState
+│                └── PathSinceMotionStart, PathSinceLastClearJointState or RecentJointStates
 └── replacement: Sequence
-                 ├── RetractAlongRememberedPath   (avoidance on)
+                 ├── RetractAlongRememberedPath   (avoidance on), or
+                 │   RetraceRecentJointStates     (avoidance of the arm off)
                  └── the planned path, as above
 ```
 
