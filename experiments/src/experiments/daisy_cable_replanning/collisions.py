@@ -6,8 +6,12 @@ from enum import StrEnum
 from pathlib import Path
 
 import numpy as np
-from coraplex.plans.plan_callbacks import PlanCallback
-from coraplex.plans.plan_node import MotionNode, PlanNode
+from coraplex.robot_plans.actions.base import Action
+from cramph.composites import Sequence
+from cramph.data_types import LifeCycleValues
+from cramph.executor import StatechartExecutor, TickingExecutorExtension
+from cramph.node import StatechartNode
+from giskardpy.motion_statechart.graph_node import Task
 from giskardpy.motion_statechart.monitors.joint_monitors import JointConfigurationSet
 from krrood.adapters.json_serializer import from_json, to_json
 from semantic_digital_twin.callbacks.callback import StateChangeCallback
@@ -65,13 +69,12 @@ class MotionLabel:
 
     action: str
     """
-    Name of the type of the innermost action the motion belongs to, or ``plan`` if it
-    belongs to none.
+    Name of the type of the action the motion is a step of.
     """
 
     motion: str
     """
-    Name of the type of the motion.
+    Name of the motion.
     """
 
     def __str__(self) -> str:
@@ -286,10 +289,14 @@ class IllegalJointStateDatabase:
 # %% active motion
 
 
-@dataclass
-class ActiveMotionTracker(PlanCallback):
+@dataclass(kw_only=True)
+class ActiveMotionTracker(TickingExecutorExtension):
     """
     Keeps the label of the motion of a plan that started last.
+
+    A motion is a step of an action that moves the robot and is not a
+    :class:`~cramph.composites.Sequence`, since the steps recovering a stuck motion are
+    inserted next to it as one and belong to it.
     """
 
     stage: str = ""
@@ -307,6 +314,11 @@ class ActiveMotionTracker(PlanCallback):
     Number of motions started in the current stage.
     """
 
+    _running_motions: set[StatechartNode] = field(default_factory=set, init=False)
+    """
+    The motions that were running after the previous tick.
+    """
+
     def begin_stage(self, stage: str) -> None:
         """
         Restart the numbering of motions for the next stage.
@@ -316,18 +328,35 @@ class ActiveMotionTracker(PlanCallback):
         # The plain value, so a label can be read without the module naming the stage.
         self.stage = str(stage)
         self._motions_started = 0
+        self._running_motions = set()
 
-    def on_start(self, node: PlanNode) -> None:
-        if not isinstance(node, MotionNode):
-            return
-        action = node.parent_action_node
-        self.active_motion = MotionLabel(
-            stage=self.stage,
-            index=self._motions_started,
-            action=type(action.action).__name__ if action is not None else "plan",
-            motion=type(node.motion).__name__,
-        )
-        self._motions_started += 1
+    def after_tick(self, *, executor: StatechartExecutor) -> None:
+        running_motions = {
+            node
+            for node in executor.statechart.nodes
+            if node.life_cycle_state == LifeCycleValues.RUNNING
+            and self._is_motion(node)
+        }
+        for motion in running_motions - self._running_motions:
+            self.active_motion = MotionLabel(
+                stage=self.stage,
+                index=self._motions_started,
+                action=type(motion.parent_node).__name__,
+                motion=motion.name,
+            )
+            self._motions_started += 1
+        self._running_motions = running_motions
+
+    @staticmethod
+    def _is_motion(node: StatechartNode) -> bool:
+        """
+        :return: Whether the node is a motion, see :class:`ActiveMotionTracker`.
+        """
+        if not isinstance(node.parent_node, Action) or isinstance(
+            node, (Action, Sequence)
+        ):
+            return False
+        return any(isinstance(part, Task) for part in [node, *node.descendants])
 
 
 # %% arm bodies

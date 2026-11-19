@@ -3,20 +3,25 @@ from __future__ import annotations
 from copy import deepcopy
 
 import pytest
-from coraplex.datastructures.dataclasses import Context
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.semantic_annotations.cable import Cable
-from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
+from krrood_spatial_math.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import Connection6DoF
 from semantic_digital_twin.world_description.geometry import Box, Scale
 from semantic_digital_twin.world_description.shape_collection import ShapeCollection
 from semantic_digital_twin.world_description.world_entity import Body
 
+from ...plan_running import robot_extensions
+from ..world_snapshot import WorldSnapshot
+
 
 @pytest.fixture(scope="session")
 def cable_hanger_world(daisy_world):
-    world = daisy_world
+    """
+    A copy of the DAiSy world with a cable hanging from a hanger in front of the robot.
+    """
+    world = deepcopy(daisy_world)
     hanger_body = Body(
         name=PrefixedName("hanger"),
         collision=ShapeCollection([Box(scale=Scale(0.05, 0.05, 0.05))]),
@@ -55,17 +60,21 @@ def cable_hanger_world(daisy_world):
 
 @pytest.fixture
 def immutable_cable_hanger_world(cable_hanger_world):
-    world = cable_hanger_world
-    state = deepcopy(world.state._data)
-    view = world.get_semantic_annotations_by_type(DAiSy)[0]
-    context = Context(world, view)
-    yield world, view, context
-    world.state._data[:] = state
-    world.notify_state_change()
+    """
+    The shared cable hanger world, its DAiSy and the context extensions of its plans,
+    returned to its initial model and state after the test.
+    """
+    snapshot = WorldSnapshot.capture(cable_hanger_world)
+    daisy = cable_hanger_world.get_semantic_annotations_by_type(DAiSy)[0]
+    yield cable_hanger_world, daisy, robot_extensions(daisy)
+    snapshot.restore()
 
 
 @pytest.fixture
 def mutable_cable_hanger_world(cable_hanger_world):
-    copy_world = deepcopy(cable_hanger_world)
-    copy_view = copy_world.get_semantic_annotations_by_type(DAiSy)[0]
-    return copy_world, copy_view, Context(copy_world, copy_view)
+    """
+    A copy of the cable hanger world, its DAiSy and the context extensions of its plans.
+    """
+    world = deepcopy(cable_hanger_world)
+    daisy = world.get_semantic_annotations_by_type(DAiSy)[0]
+    return world, daisy, robot_extensions(daisy)

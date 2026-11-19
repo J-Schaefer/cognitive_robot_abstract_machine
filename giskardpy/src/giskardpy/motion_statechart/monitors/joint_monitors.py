@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import field, dataclass
+from dataclasses import dataclass, field
 
 import krrood.symbolic_math.symbolic_math as sm
 import numpy as np
@@ -9,33 +9,34 @@ from semantic_digital_twin.world_description.connections import (
     RevoluteConnection,
     ActiveConnection1DOF,
 )
-from giskardpy.motion_statechart.context import MotionStatechartContext
-from giskardpy.motion_statechart.data_types import ObservationStateValues
-from giskardpy.motion_statechart.graph_node import MotionStatechartNode, NodeArtifacts
+from cramph.data_types import ObservationStateValues
+from cramph.node import EndedByOwner
+from giskardpy.motion_statechart.graph_node import MotionStatechartNode
+from cramph.node import NodeArtifacts
 
 
-@dataclass(eq=False, repr=False)
-class JointPositionReached(MotionStatechartNode):
+@dataclass(eq=False, repr=False, kw_only=True)
+class JointPositionReached(EndedByOwner, MotionStatechartNode):
     """
     Monitors if a joint position is reached within a certain threshold.
     """
 
-    connection: ActiveConnection1DOF = field(kw_only=True)
+    connection: ActiveConnection1DOF
     """
     Monitored joint connection.
     """
 
-    position: float = field(kw_only=True)
+    position: float
     """
     Target position to monitor.
     """
 
-    threshold: float = field(default=0.01, kw_only=True)
+    threshold: float = 0.01
     """
     Threshold for position error.
     """
 
-    def build_artifacts(self, context: MotionStatechartContext) -> NodeArtifacts:
+    def build_artifacts(self) -> NodeArtifacts:
         current = self.connection.dof.variables.position
         if (
             isinstance(self.connection, RevoluteConnection)
@@ -94,26 +95,26 @@ class JointConfigurationSet:
         return np.array([connection.position for connection in self.connections])
 
 
-@dataclass(eq=False, repr=False)
-class CloseToJointConfigurations(MotionStatechartNode):
+@dataclass(eq=False, repr=False, kw_only=True)
+class CloseToJointConfigurations(EndedByOwner, MotionStatechartNode):
     """
     Observes True while the connections are closer than :attr:`threshold` to a
     configuration of a set, and remembers the last positions they held while at least
     :attr:`safe_distance` away from all of them.
     """
 
-    configurations: JointConfigurationSet = field(kw_only=True)
+    configurations: JointConfigurationSet
     """
     The configurations to stay away from.
     """
 
-    threshold: float = field(default=0.15, kw_only=True)
+    threshold: float = 0.15
     """
     Distance, as measured by :meth:`JointConfigurationSet.distance_to`, below which the
     connections count as close.
     """
 
-    safe_distance: float = field(default=0.3, kw_only=True)
+    safe_distance: float = 0.3
     """
     Distance at or above which positions count as safe.
     """
@@ -124,10 +125,18 @@ class CloseToJointConfigurations(MotionStatechartNode):
     from every configuration, or the positions this node started at if there were none.
     """
 
-    def on_start(self, context: MotionStatechartContext):
+    def on_start(self) -> None:
+        """
+        Differs from :meth:`~cramph.node.StatechartNode.on_start` in taking the
+        positions the connections start at as the last safe ones.
+        """
         self.last_safe_positions = self.configurations.current_positions()
 
-    def on_tick(self, context: MotionStatechartContext) -> ObservationStateValues:
+    def on_tick(self) -> ObservationStateValues:
+        """
+        Differs from :meth:`~cramph.node.StatechartNode.on_tick` in remembering safe
+        positions and observing whether the connections are close.
+        """
         positions = self.configurations.current_positions()
         distance = self.configurations.distance_to(positions)
         if distance >= self.safe_distance:
@@ -140,19 +149,19 @@ class CloseToJointConfigurations(MotionStatechartNode):
 # %% recent joint states
 
 
-@dataclass(eq=False, repr=False)
-class RecentJointStates(MotionStatechartNode):
+@dataclass(eq=False, repr=False, kw_only=True)
+class RecentJointStates(EndedByOwner, MotionStatechartNode):
     """
     Remembers the positions the connections held in the last :attr:`control_cycles`
     control cycles while it runs; observes False throughout.
     """
 
-    connections: list[ActiveConnection1DOF] = field(kw_only=True)
+    connections: list[ActiveConnection1DOF]
     """
     The connections whose positions are remembered.
     """
 
-    control_cycles: int = field(default=200, kw_only=True)
+    control_cycles: int = 200
     """
     How many of the latest positions are remembered.
     """
@@ -163,10 +172,18 @@ class RecentJointStates(MotionStatechartNode):
     first.
     """
 
-    def on_start(self, context: MotionStatechartContext):
+    def on_start(self) -> None:
+        """
+        Differs from :meth:`~cramph.node.StatechartNode.on_start` in remembering only
+        the positions the connections start at.
+        """
         self.states = deque([self._current_positions()], maxlen=self.control_cycles)
 
-    def on_tick(self, context: MotionStatechartContext) -> ObservationStateValues:
+    def on_tick(self) -> ObservationStateValues:
+        """
+        Differs from :meth:`~cramph.node.StatechartNode.on_tick` in remembering the
+        positions of this control cycle.
+        """
         self.states.append(self._current_positions())
         return ObservationStateValues.FALSE
 

@@ -8,8 +8,15 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from coraplex.plans.context_extensions import RobotAccess
+from coraplex.plans.executors import KinematicallySimulatedPlanExecutor
 from coraplex.plans.failures import MotionMadeNoProgress
-from coraplex.robot_plans.motions.gripper import MoveToolCenterPointMotion
+from coraplex.plans.plan_transformation import PlanRewriting
+from cramph.composites import Sequence
+from cramph.context import StatechartContext
+from cramph.failure_handling import HandledOnFailure
+from cramph.node import StatechartNode
+from cramph.statechart import Statechart
 from experiments.daisy_cable_replanning.collisions import (
     ActiveMotionTracker,
     ArmCollisionPairs,
@@ -21,14 +28,12 @@ from experiments.daisy_cable_replanning.replanning import (
     ReplanningLog,
     ReplanningParameters,
     RetractAlongRememberedPath,
-    RetractedStagnationReplannedToolCenterPointMotion,
     RetractTarget,
-    StagnationReplannedToolCenterPointMotion,
     StagnationReplanning,
-    ToolCenterPointMotionWithReplanning,
 )
 from experiments.daisy_cable_replanning.trials import CableDemoTrial, TrialFiles
-from giskardpy.motion_statechart.context import MotionStatechartContext
+from giskardpy.motion_statechart.tasks.cartesian_tasks import CartesianPose
+from krrood_spatial_math.spatial_types import Pose
 from semantic_digital_twin.collision_checking.collision_matrix import (
     CollisionCheck,
     CollisionMatrix,
@@ -37,11 +42,11 @@ from semantic_digital_twin.collision_checking.collision_rules import (
     AllowCollisionForBodies,
 )
 from semantic_digital_twin.robots.daisy import DAiSy
-from semantic_digital_twin.spatial_types.spatial_types import Pose
-from semantic_digital_twin.utils import daisy_installed
 from semantic_digital_twin.world import World
 
-pytestmark = pytest.mark.skipif(not daisy_installed(), reason="DAiSy not installed")
+pytestmark = pytest.mark.skipif(
+    not DAiSy.is_description_installed(), reason="DAiSy not installed"
+)
 
 # %% collision pairs
 
@@ -89,6 +94,15 @@ def _clearance_tracker(world: World, clearance: float) -> PathSinceLastClearJoin
     )
 
 
+def _run_in_a_statechart(world: World, node: StatechartNode) -> None:
+    """
+    Add the node to a statechart of the world and start it, as the statechart does when
+    the node starts running.
+    """
+    Statechart(context=StatechartContext(world=world)).add_node(node=node)
+    node.on_start()
+
+
 def _move_right_arm(
     world: World, tracker: PathSinceMotionStart, step: float
 ) -> np.ndarray:
@@ -105,51 +119,48 @@ def test_tracker_restarts_the_path_while_the_arm_keeps_the_clearance(
     parked_daisy_world: World,
 ):
     tracker = _clearance_tracker(parked_daisy_world, clearance=0.0)
-    context = MotionStatechartContext(world=parked_daisy_world)
-    tracker.on_start(context)
+    _run_in_a_statechart(parked_daisy_world, tracker)
 
     moved = _move_right_arm(
         parked_daisy_world, tracker, step=2 * tracker.waypoint_spacing
     )
-    tracker.on_tick(context)
+    tracker.on_tick()
 
-    assert tracker.path == [pytest.approx(moved)]
+    assert tracker.passed_positions == [pytest.approx(moved)]
 
 
 def test_tracker_extends_the_path_while_the_arm_does_not_keep_the_clearance(
     parked_daisy_world: World,
 ):
     tracker = _clearance_tracker(parked_daisy_world, clearance=10.0)
-    context = MotionStatechartContext(world=parked_daisy_world)
     start = np.array([connection.position for connection in tracker.connections])
-    tracker.on_start(context)
+    _run_in_a_statechart(parked_daisy_world, tracker)
 
     _move_right_arm(parked_daisy_world, tracker, step=tracker.waypoint_spacing / 2)
-    tracker.on_tick(context)
+    tracker.on_tick()
     long_step = _move_right_arm(
         parked_daisy_world, tracker, step=tracker.waypoint_spacing
     )
-    tracker.on_tick(context)
+    tracker.on_tick()
 
-    assert tracker.path == [pytest.approx(start), pytest.approx(long_step)]
+    assert tracker.passed_positions == [pytest.approx(start), pytest.approx(long_step)]
 
 
 def test_retract_follows_the_path_back_to_the_last_clear_joint_state(
     parked_daisy_world: World,
 ):
     tracker = _clearance_tracker(parked_daisy_world, clearance=10.0)
-    context = MotionStatechartContext(world=parked_daisy_world)
-    tracker.on_start(context)
+    _run_in_a_statechart(parked_daisy_world, tracker)
     for _ in range(3):
         _move_right_arm(parked_daisy_world, tracker, step=tracker.waypoint_spacing)
-        tracker.on_tick(context)
+        tracker.on_tick()
     retract = RetractAlongRememberedPath(name="retract", monitor=tracker)
 
-    waypoints = retract.plan_waypoints(context)
+    waypoints = retract.plan_waypoints()
 
     assert retract.connections == tracker.connections
     assert len(waypoints) == 4
-    assert waypoints == list(reversed(tracker.path))
+    assert waypoints == list(reversed(tracker.passed_positions))
 
 
 def test_path_since_motion_start_keeps_the_whole_path_while_the_arm_is_clear(
@@ -161,16 +172,15 @@ def test_path_since_motion_start_keeps_the_whole_path_while_the_arm_is_clear(
         connections=robot.right_arm.active_connections,
         waypoint_spacing=ReplanningParameters().waypoint_spacing,
     )
-    context = MotionStatechartContext(world=parked_daisy_world)
     start = np.array([connection.position for connection in tracker.connections])
-    tracker.on_start(context)
+    _run_in_a_statechart(parked_daisy_world, tracker)
 
     first = _move_right_arm(parked_daisy_world, tracker, step=tracker.waypoint_spacing)
-    tracker.on_tick(context)
+    tracker.on_tick()
     second = _move_right_arm(parked_daisy_world, tracker, step=tracker.waypoint_spacing)
-    tracker.on_tick(context)
+    tracker.on_tick()
 
-    assert tracker.path == [
+    assert tracker.passed_positions == [
         pytest.approx(start),
         pytest.approx(first),
         pytest.approx(second),
@@ -180,28 +190,18 @@ def test_path_since_motion_start_keeps_the_whole_path_while_the_arm_is_clear(
 # %% plan transformation
 
 
-@pytest.mark.parametrize(
-    "retract_target, replacement_type",
-    [
-        (None, StagnationReplannedToolCenterPointMotion),
-        (
-            RetractTarget.LAST_CLEAR_STATE,
-            RetractedStagnationReplannedToolCenterPointMotion,
-        ),
-        (RetractTarget.MOTION_START, RetractedStagnationReplannedToolCenterPointMotion),
-        (RetractTarget.RECENT_STEPS, RetractedStagnationReplannedToolCenterPointMotion),
-    ],
-)
-def test_stagnation_replanning_keeps_the_parameters_of_the_motion(
+@pytest.mark.parametrize("retract_target", [None, *RetractTarget])
+def test_stagnation_replanning_puts_a_copy_of_the_goal_under_failure_handling(
     parked_daisy_world: World,
     tmp_path: Path,
     retract_target: RetractTarget | None,
-    replacement_type: type[ToolCenterPointMotionWithReplanning],
 ):
     robot = parked_daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
-    motion = MoveToolCenterPointMotion(
-        target=Pose(reference_frame=parked_daisy_world.root), arm=robot.right_arm
+    original = CartesianPose(
+        tip_link=robot.right_arm.end_effector.tool_frame,
+        goal_pose=Pose(reference_frame=parked_daisy_world.root),
     )
+    plan = Sequence(nodes=[original])
     transformation = StagnationReplanning(
         parameters=ReplanningParameters(),
         replanning_log=ReplanningLog(
@@ -209,12 +209,47 @@ def test_stagnation_replanning_keeps_the_parameters_of_the_motion(
         ),
         retract_target=retract_target,
     )
+    executor = KinematicallySimulatedPlanExecutor(
+        context=StatechartContext.with_extensions(
+            world=parked_daisy_world,
+            extensions=[
+                RobotAccess(robot=robot),
+                PlanRewriting(transformations=[transformation]),
+            ],
+        )
+    )
+    statechart = Statechart(context=executor.context)
+    statechart.add_node(node=plan)
 
-    replacement = transformation.replacement_for(motion)
+    executor.prepare(statechart)
 
-    assert type(replacement) is replacement_type
-    assert (replacement.target, replacement.arm) == (motion.target, motion.arm)
-    assert replacement.parameters == transformation.parameters
+    (handled,) = plan.nodes
+    goals = [node for node in plan.descendants if isinstance(node, CartesianPose)]
+    assert type(handled) is HandledOnFailure
+    assert [goal in handled.descendants for goal in goals] == [True]
+    assert [(goal.goal_pose, goal.tip_link) for goal in goals] == [
+        (original.goal_pose, original.tip_link)
+    ]
+
+
+def test_a_goal_that_does_not_allow_replanning_is_left_as_it_is(
+    parked_daisy_world: World, tmp_path: Path
+):
+    robot = parked_daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
+    transformation = StagnationReplanning(
+        parameters=ReplanningParameters(),
+        replanning_log=ReplanningLog(
+            path=tmp_path / "log.jsonl", trial=0, motion_tracker=ActiveMotionTracker()
+        ),
+    )
+
+    assert not transformation.is_applicable(
+        CartesianPose(
+            tip_link=robot.right_arm.end_effector.tool_frame,
+            goal_pose=Pose(reference_frame=parked_daisy_world.root),
+            allow_replanning=False,
+        )
+    )
 
 
 # %% whole demo

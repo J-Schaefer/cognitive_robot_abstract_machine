@@ -1,13 +1,26 @@
 import uuid
 from abc import ABC
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import StrEnum
 from krrood.patterns.caching import memoize
 from uuid import UUID
 
-from typing_extensions import Dict, Any, Self, List, Optional
+from typing_extensions import Any, Self, get_args, get_type_hints
 
-from krrood.adapters.json_serializer import SubclassJSONSerializer, to_json, from_json
+from krrood.adapters.json_serializer import (
+    JSONData,
+    SubclassJSONSerializer,
+    to_json,
+    from_json,
+)
+from krrood.patterns.classproperty import classproperty
+from semantic_digital_twin.adapters.ros.exceptions import (
+    WorldUpdateReferencesUnknownEntityError,
+)
+from semantic_digital_twin.adapters.world_entity_kwargs_tracker import (
+    WorldEntityWithIDKwargsTracker,
+)
+from semantic_digital_twin.exceptions import WorldEntityWithIDNotInKwargs
 from semantic_digital_twin.world import World
 
 from semantic_digital_twin.world_description.world_modification import (
@@ -31,7 +44,7 @@ class MetaData(SubclassJSONSerializer):
     """The id of the origin world. This is used to identify messages that were published by the same publisher."""
 
     @memoize
-    def to_json(self, **kwargs) -> Dict[str, Any]:
+    def to_json(self, **kwargs) -> dict[str, Any]:
         return {
             **super().to_json(**kwargs),
             "node_name": self.node_name,
@@ -40,7 +53,7 @@ class MetaData(SubclassJSONSerializer):
         }
 
     @classmethod
-    def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
+    def _from_json(cls, *, data: dict[str, Any], **kwargs) -> Self:
         return cls(
             node_name=data["node_name"],
             process_id=data["process_id"],
@@ -101,10 +114,10 @@ class WorldStateUpdate(Message):
     Class describing the updates to the free variables of a world state.
     """
 
-    ids: List[UUID]
+    ids: list[UUID]
     """The ids of the changed free variables."""
 
-    states: List[float]
+    states: list[float]
     """The states of the changed free variables."""
 
 
@@ -131,11 +144,25 @@ class WorldUpdate(Message):
     Either field may be ``None`` when only one type of change is being communicated.
     """
 
-    modification_block: Optional[ModificationBlock] = None
+    modification_block: ModificationBlock | None = None
     """The model modification to apply, if any."""
 
-    state_update: Optional[WorldStateUpdate] = None
+    state_update: WorldStateUpdate | None = None
     """The state values to apply, if any."""
+
+    @classproperty
+    def modification_block_json_key(cls) -> str:
+        """
+        The key under which a serialized world update holds its model modification: the
+        name of the one field that holds a :class:`ModificationBlock`.
+        """
+        type_hints = get_type_hints(cls)
+        [key] = [
+            field_.name
+            for field_ in fields(cls)
+            if ModificationBlock in get_args(type_hints[field_.name])
+        ]
+        return key
 
 
 @dataclass
@@ -155,6 +182,65 @@ class MessageField(StrEnum):
 
     META_DATA = "meta_data"
     """The origin of the message."""
+
+    SEQUENCE_NUMBER = "sequence_number"
+    """The position of the message in the stream of its publisher."""
+
+
+@dataclass
+class ReceivedMessage:
+    """
+    A message as it arrived: its origin and position read, everything else still json.
+
+    The rest refers to entities of the world it is applied to, so it is built only when
+    the message is applied, against the world as it is then.
+    """
+
+    content: JSONData
+    """The serialized message."""
+
+    publisher: MetaData
+    """The origin of the message."""
+
+    sequence_number: int
+    """The position of the message in the stream of its publisher."""
+
+    @classmethod
+    def from_json(cls, content: JSONData) -> Self:
+        """
+        :param content: A serialized message.
+        :return: The message with its origin and position read.
+        """
+        return cls(
+            content=content,
+            publisher=from_json(content[MessageField.META_DATA]),
+            sequence_number=content[MessageField.SEQUENCE_NUMBER],
+        )
+
+    @property
+    def carries_model_modification(self) -> bool:
+        """
+        Whether the message is a world update that modifies the model.
+        """
+        return self.content.get(WorldUpdate.modification_block_json_key) is not None
+
+    def to_message(self, *, world: World) -> Message:
+        """
+        :param world: The world whose entities the message refers to.
+        :return: The message built against the world as it is now.
+        :raises WorldUpdateReferencesUnknownEntityError: If the message refers to an
+            entity the world does not have.
+        """
+        with world._world_lock:
+            tracker = WorldEntityWithIDKwargsTracker.from_world(world)
+            try:
+                return from_json(self.content, **tracker.create_kwargs())
+            except WorldEntityWithIDNotInKwargs as unknown_entity:
+                raise WorldUpdateReferencesUnknownEntityError(
+                    publisher=self.publisher,
+                    entity_id=unknown_entity.key,
+                    entity_name=unknown_entity.world_entity_name,
+                ) from unknown_entity
 
 
 class SnapshotField(StrEnum):
@@ -181,16 +267,16 @@ class WorldModelSnapshot(SubclassJSONSerializer):
     Snapshot containing the complete modification history and the latest world state.
     """
 
-    modifications: List[WorldModelModificationBlock]
+    modifications: list[WorldModelModificationBlock]
     """The ordered list of world model modification blocks."""
 
-    ids: List[UUID]
+    ids: list[UUID]
     """The names of the free variables contained in the state snapshot."""
 
-    states: List[float]
+    states: list[float]
     """The values of the free variables contained in the state snapshot."""
 
-    def to_json(self, **kwargs) -> Dict[str, Any]:
+    def to_json(self, **kwargs) -> dict[str, Any]:
         return {
             **super().to_json(**kwargs),
             SnapshotField.MODIFICATIONS: to_json(self.modifications, **kwargs),
@@ -201,7 +287,7 @@ class WorldModelSnapshot(SubclassJSONSerializer):
         }
 
     @classmethod
-    def _from_json(cls, data: Dict[str, Any], **kwargs) -> Self:
+    def _from_json(cls, *, data: dict[str, Any], **kwargs) -> Self:
         state = data.get(SnapshotField.STATE, {})
         return cls(
             modifications=[
@@ -214,7 +300,7 @@ class WorldModelSnapshot(SubclassJSONSerializer):
 
     @staticmethod
     def apply_to_json_snapshot_to_world(
-        world: World, json_data: Dict[str, Any], **kwargs
+        world: World, json_data: dict[str, Any], **kwargs
     ):
         """
         Deserialize modifications and state from JSON and apply them to the world.

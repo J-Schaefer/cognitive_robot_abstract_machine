@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Optional, List
 
 import coacd
 import numpy as np
@@ -58,7 +57,7 @@ class COACDMeshDecomposer(MeshDecomposer):
     "looser," simpler approximation.
     """
 
-    max_convex_hull: Optional[int] = None
+    max_convex_hull: int | None = None
     """
     Limits the total number of convex pieces generated. 
     If set to None, the algorithm will keep creating pieces until the threshold is met.
@@ -117,7 +116,7 @@ class COACDMeshDecomposer(MeshDecomposer):
     This helps keep the final count of pieces low without sacrificing much accuracy.
     """
 
-    max_convex_hull_vertices: Optional[int] = None
+    max_convex_hull_vertices: int | None = None
     """
     Maximum vertex value for each convex hull, only when decimate is enabled.
     Limits how many "corners" (vertices) each individual convex piece can have. 
@@ -125,7 +124,7 @@ class COACDMeshDecomposer(MeshDecomposer):
     for real-time performance.
     """
 
-    extrude_margin: Optional[float] = None
+    extrude_margin: float | None = None
     """
     Extrude margin, only when extrude is enabled.
     Adds a small "padding" or thickness to the generated pieces. 
@@ -143,7 +142,7 @@ class COACDMeshDecomposer(MeshDecomposer):
     Random seed used for sampling.
     """
 
-    def apply_to_mesh(self, mesh: Mesh) -> List[Mesh]:
+    def apply_to_mesh(self, mesh: Mesh) -> list[Mesh]:
         """
         Apply the COACD mesh decomposition to a given mesh.
         Returns a list of TriangleMesh objects representing the decomposed convex parts.

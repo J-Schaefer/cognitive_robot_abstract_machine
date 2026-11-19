@@ -10,8 +10,11 @@ from enum import StrEnum
 from pathlib import Path
 
 import numpy as np
-from coraplex.datastructures.dataclasses import Context
-from coraplex.execution_environment import kinematically_simulated_robot
+from coraplex.plans.context_extensions import RobotAccess
+from coraplex.plans.executors import KinematicallySimulatedPlanExecutor
+from coraplex.plans.plan_transformation import PlanRewriting
+from cramph.context import StatechartContext
+from cramph.statechart import Statechart
 from experiments.daisy_cable_replanning.cable_demo import DemoScript
 from experiments.daisy_cable_replanning.collisions import (
     ActiveMotionTracker,
@@ -379,7 +382,7 @@ class CableDemoTrial:
         random_generator = np.random.default_rng(self.seed)
         # OMPL draws from one generator per process, seeded once before any planner.
         ompl_util.RNG.setSeed(self.seed)
-        world = URDFParser.from_file(file_path=DAiSy.get_ros_file_path()).parse()
+        world = URDFParser.from_file(file_path=DAiSy.get_ros_file_path()).create_world()
         DAiSy.from_world(world)
         robot = world.get_semantic_annotations_by_type(DAiSy)[0]
         for arm in robot.all_arms:
@@ -399,12 +402,8 @@ class CableDemoTrial:
             robot,
             self.noise.perturbed_layout(demo.CableWorkcellLayout(), random_generator),
         )
-        context = Context(
-            world,
-            robot,
-            plan_transformations=self._plan_transformations(motion_tracker),
-        )
-        plans = demo.CableDemoPlans(context=context, workcell=workcell)
+        transformations = self._plan_transformations(motion_tracker)
+        plans = demo.CableDemoPlans(robot=robot, workcell=workcell)
         recorder = self._start_video(world)
         with ExitStack() as video:
             if recorder is not None:
@@ -412,14 +411,23 @@ class CableDemoTrial:
                 video.callback(lambda: recorder.stop().write(self.video))
             for stage in demo.CableDemoStage:
                 motion_tracker.begin_stage(stage)
-                stage_plan = plans.for_stage(stage).plan
-                stage_plan.node_callbacks.append(motion_tracker)
-                # Homing starts from wherever the arms are, as in the demo.
-                with kinematically_simulated_robot(
+                executor = KinematicallySimulatedPlanExecutor(
+                    context=StatechartContext.with_extensions(
+                        world=world,
+                        extensions=[
+                            RobotAccess(robot=robot),
+                            PlanRewriting(transformations=list(transformations)),
+                        ],
+                    ),
+                    # Homing starts from wherever the arms are, as in the demo.
                     collision_avoidance=self.collision_avoidance
-                    and stage is not demo.CableDemoStage.HOME
-                ):
-                    stage_plan.perform()
+                    and stage is not demo.CableDemoStage.HOME,
+                    extensions=[motion_tracker],
+                )
+                statechart = Statechart(context=executor.context)
+                statechart.add_node(node=plans.for_stage(stage))
+                executor.compile(statechart=statechart)
+                executor.execute()
 
     def _plan_transformations(
         self, motion_tracker: ActiveMotionTracker

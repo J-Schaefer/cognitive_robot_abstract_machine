@@ -1,10 +1,21 @@
+"""
+Tests of the DAiSy robot description.
+"""
+
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
+
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.robots.daisy import DAiSy, DAiSyLink
 from semantic_digital_twin.robots.griplink_gripper import (
     GriplinkFlexConfiguration,
     GriplinkPresetConfiguration,
 )
+
+# %% griplink configurations
 
 
 def test_daisy_grippers_build_griplink_configurations(daisy_world):
@@ -88,3 +99,50 @@ def test_right_forearm_keeps_the_larger_buffer_zone_to_the_left_gripper(daisy_wo
         buffer_zones[DAiSyLink.LEFT_GRIPPER_SIDE_CYLINDER]
         == DAiSy.forearm_to_other_gripper_buffer_zone_distance
     )
+
+
+# %% action topics
+
+
+@pytest.mark.parametrize(
+    "state", [GripperState.OPEN, GripperState.CLOSE, GripperState.FLEXCLOSE]
+)
+def test_daisy_grippers_serve_each_state_under_the_topic_of_its_griplink_endpoint(
+    daisy_world, state
+):
+    daisy = daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
+
+    for end_effector in daisy.all_end_effectors:
+        assert (
+            end_effector.action_topic_serving(state)
+            == end_effector.griplink_endpoint(state).action_topic
+        )
+
+
+def test_daisy_grippers_serve_no_state_without_a_griplink_endpoint(daisy_world):
+    daisy = daisy_world.get_semantic_annotations_by_type(DAiSy)[0]
+
+    for end_effector in daisy.all_end_effectors:
+        assert end_effector.action_topic_serving(None) is None
+
+
+# %% importing without ROS
+
+
+def test_daisy_is_importable_without_griplink_interfaces():
+    """
+    The DAiSy robot description loads in a process without the ROS griplink action
+    package, so code and tests that never command the real grippers run without ROS.
+    """
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).parent / "daisy_import_without_griplink_interfaces.py"),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == DAiSy.__name__

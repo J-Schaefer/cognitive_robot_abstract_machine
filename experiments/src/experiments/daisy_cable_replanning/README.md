@@ -22,54 +22,65 @@ runs into are added to the database for the next round.
 |---|---|
 | `cable_demo.py` | `DemoScript`, which imports `demo.py` as a module, so its workcell and plans are used as they are |
 | `trials.py` | `CableDemoTrial`, one run of the demo in its own process; `CableDemoExperiment`, many runs; `TrialNoise` |
-| `collisions.py` | recording: `ArmCollisionRecorder`, `IllegalJointState`, `IllegalJointStateDatabase`, `MotionLabel` |
-| `replanning.py` | replanning: `ReplanningTransformation`, `ReplannedToolCenterPointMotion`, `StagnationReplannedToolCenterPointMotion`, `RetractedStagnationReplannedToolCenterPointMotion`, `PathSinceMotionStart`, `PathSinceLastClearJointState`, `RetractAlongRememberedPath`, `JointSpacePlanner`, `GoalConfigurationSampler`, `ReplanningParameters` |
+| `collisions.py` | recording: `ArmCollisionRecorder`, `IllegalJointState`, `IllegalJointStateDatabase`, `MotionLabel`, `ActiveMotionTracker` (an executor extension naming the running motion) |
+| `replanning.py` | replanning: `ReplanningTransformation`, `IllegalJointStateReplanning`, `StagnationReplanning`, `RecoveryBeforeStuckMotion`, `PlannedJointPathToPose`, `PathSinceMotionStart`, `PathSinceLastClearJointState`, `RetractAlongRememberedPath`, `JointSpacePlanner`, `GoalConfigurationSampler`, `ReplanningParameters` |
 | `summary.py` | `ExperimentOutcome` and `ReplanningComparison`, the numbers reported below |
 | `joint_state_metrics.py` | `SeriesJointStateMetrics`, the joint state counts of a series (`joint-states` command) |
 | `curation.py` | `IllegalJointStateCuration`, choosing recorded states to keep; `KeptDatabase`, the permanent files |
 | `joint_state_browser.py`, `robot_snapshot.py` | the window for choosing states to keep, and the rendering of the robot in it |
-| `stuck_motion_replanning.py`, `stuck_motion_demo.py` | replanning stuck motions in this process, so the charts can run on the real robot; the demo running the cable demo once that way |
+| `stuck_motion_replanning.py`, `stuck_motion_demo.py` | `StuckMotionReplanning`, `JointPathToPose` and `JointPathPlanning`, planning stuck motions in this process so the statechart can run on the real robot; the demo running the cable demo once that way |
 | `command_line.py`, `__main__.py` | the command line: `record`, `replan`, `summarize`, `joint-states`, `video`, `browse`, `trial` |
 | `run_series.sh` | one complete series, as run for the results below |
 
-The generic Giskard pieces live in giskardpy. They are documented in
-`giskardpy/doc/examples/replanning.md`:
-- `CloseToJointConfigurations`, a monitor
-- `ReplacedWhenTrue`, a goal
+The generic pieces live in giskardpy and cramph:
+- `CloseToJointConfigurations`, a monitor (giskardpy)
+- `Stalled`, a monitor turning True once a node stops approaching its goal (giskardpy)
 - `RecentJointStates`, a monitor remembering the joint states of the last control cycles
+  (giskardpy)
 - `JointWaypointPath`, `RetractToLastSafeJointConfiguration` and
-  `RetraceRecentJointStates`, tasks
+  `RetraceRecentJointStates`, tasks (giskardpy)
+- `StoppedWhenTrue` and `HandledOnFailure`, goals (cramph), and `RecoveryByInsertion`, a
+  failure handling strategy (coraplex)
+- `CartesianPose.allow_replanning` (giskardpy), set to `False` by the cable actions for
+  the motions in which both grippers hold the cable
 
 ## How a replanned motion runs
 
-`ReplanningTransformation` is a coraplex plan transformation. It replaces each
-`MoveToolCenterPointMotion` of the actions that illegal joint states were recorded in
-(`CableGraspAction`, `CableRegraspAction`, `CableRehangAction`) with a
-`ReplannedToolCenterPointMotion`. The motion chart of that motion is:
+`ReplanningTransformation` is a coraplex plan transformation of `CartesianPose` goals.
+`IllegalJointStateReplanning` replaces every pose goal of an arm's tool frame that
+allows replanning and is a step of a sequence, in the actions that illegal joint states
+were recorded in (`CableGraspAction`, `CableRegraspAction`, `CableRehangAction`), with:
 
 ```
-ReplacedWhenTrue
-├── monitor:     CloseToJointConfigurations
-│                observes True once the arms are within trigger_distance of an
-│                illegal joint state, and remembers the last joint state that was
-│                at least safe_distance from all of them
-├── monitored:   the original MoveTCP task, i.e. Giskard's optimization-based motion
-└── replacement: Sequence
-                 ├── RetractToLastSafeJointConfiguration  (back to the remembered state)
-                 └── PlannedJointPathToPose
-                     1. GoalConfigurationSampler: inverse kinematics from the current
-                        joint state and goal_seeds random seeds gives the distinct
-                        joint configurations that reach the target pose
-                     2. JointSpacePlanner: OMPL RRT-Connect in the six joints of the
-                        moving arm (the other arm is held still), to the valid goal
-                        configuration nearest to the current joint state first, then
-                        to the next nearest. A joint state is valid if
-                          - the arm's bodies keep collision_margin from the robot and
-                            the workcell (the soft cable is ignored), and
-                          - it keeps clearance from every illegal joint state
-                     3. the simplified path, as waypoints at most waypoint_spacing
-                        apart, is followed by Giskard
+HandledOnFailure  (cramph)
+├── handled:  StoppedWhenTrue
+│             ├── monitor:   CloseToJointConfigurations
+│             │              observes True once the arms are within trigger_distance of
+│             │              an illegal joint state, and remembers the last joint state
+│             │              that was at least safe_distance from all of them
+│             └── monitored: a copy of the pose goal, i.e. Giskard's optimization-based
+│                            motion
+└── strategy: RecoveryByInsertion, once: when the monitor stopped the goal, it inserts
+              before it the Sequence "recovery of the stuck motion"
+              ├── RetractToLastSafeJointConfiguration  (back to the remembered state)
+              └── PlannedJointPathToPose
+                  1. GoalConfigurationSampler: inverse kinematics from the current
+                     joint state and goal_seeds random seeds gives the distinct
+                     joint configurations that reach the target pose
+                  2. JointSpacePlanner: OMPL RRT-Connect in the six joints of the
+                     moving arm (the other arm is held still), to the valid goal
+                     configuration nearest to the current joint state first, then
+                     to the next nearest. A joint state is valid if
+                       - the arm's bodies keep collision_margin from the robot and
+                         the workcell (the soft cable is ignored), and
+                       - it keeps clearance from every illegal joint state
+                  3. the simplified path, as waypoints at most waypoint_spacing
+                     apart, is followed by Giskard
+              and runs the goal again, from where the planned path left the arm
 ```
+
+The recovery changes the statechart while it runs, so it only works in a statechart
+ticked in this process, such as the kinematic simulation of a trial.
 
 The distance to an illegal joint state is the largest joint difference, counting only
 the joints of the arm or arms whose bodies collided in that state.
@@ -101,7 +112,7 @@ There are two ways to run the demo once:
 
 | | `trial` command | `stuck_motion_demo.py` |
 |---|---|---|
-| where | kinematic simulation in this process | simulated, semi-real or real robot |
+| where | kinematic simulation in this process | simulated, standalone controller or real robot |
 | workcell | perturbed by the seed (`TrialNoise`) | nominal, no noise |
 | replanning | none, around illegal joint states, or when stuck (optionally retracting first) | when stuck, planned in this process |
 | collisions recorded | yes (`ArmCollisionRecorder`) | no |
@@ -141,7 +152,7 @@ $E trial --number 0 --seed 117 --directory $D/retract \
 - To compare one seed with and without replanning side by side, use the `video`
   command with `--seed` (see *Step by step*).
 
-### Simulated, semi-real or real: the stuck-motion demo (`stuck_motion_demo.py`)
+### Simulated, standalone or real: the stuck-motion demo (`stuck_motion_demo.py`)
 
 This runs the four stages once on the nominal workcell. Collision avoidance is on in
 every stage but homing, and a stuck motion is replanned in this process (see *Running
@@ -153,7 +164,7 @@ it once, also on the real robot*). It doesn't retract before replanning.
 python -m experiments.daisy_cable_replanning.stuck_motion_demo --execution simulated
 ```
 
-**Semi-real:** Giskard simulates the joints and shows the robot in RViz. Terminal 1:
+**Standalone:** Giskard simulates the joints and shows the robot in RViz. Terminal 1:
 
 ```bash
 ros2 launch giskardpy_ros giskardpy_daisy_standalone.launch.py
@@ -162,13 +173,13 @@ ros2 launch giskardpy_ros giskardpy_daisy_standalone.launch.py
 Terminal 2, once RViz shows the robot:
 
 ```bash
-python -m experiments.daisy_cable_replanning.stuck_motion_demo --execution semi-real
+python -m experiments.daisy_cable_replanning.stuck_motion_demo --execution standalone
 ```
 
 **Real robot:**
 
 > [!WARNING]
-> Run the demo semi-real first. Keep the emergency stop at hand: a
+> Run the demo standalone first. Keep the emergency stop at hand: a
 > planned path is followed with Giskard's collision avoidance off for the moving arm.
 
 1. Bring up both UR5 arms and both Griplink grippers. The arm and gripper IP
@@ -351,19 +362,20 @@ A second trigger needs no database at all:
    from where the arm got stuck.
 3. Giskard follows that path, and the original plan continues with the next motion.
 
-`StagnationReplanning` gives every `MoveToolCenterPointMotion` this chart:
+`StagnationReplanning` gives every pose goal that allows replanning this chart:
 
 ```
-ReplacedWhenTrue
-├── monitor:     NoLongerProgressing   (StillProgressing negated: True once nothing
-│                                       short of its goal approached it for 1.5 s)
-├── monitored:   the original MoveTCP task
-└── replacement: Sequence
-                 ├── Parallel
-                 │   ├── UpdateTemporaryCollisionRules  (Giskard's avoidance leaves
-                 │   │                                   the arm's bodies alone)
-                 │   └── PlannedJointPathToPose         (IK goals + RRT-Connect)
-                 └── UpdateTemporaryCollisionRules      (the rules from before restored)
+HandledOnFailure
+├── handled:  StoppedWhenTrue
+│             ├── monitor:   Stalled  (True once nothing short of its goal approached
+│             │                        it for 1.5 s)
+│             └── monitored: a copy of the pose goal
+└── strategy: RecoveryByInsertion, inserting before the goal
+              Sequence
+              └── Parallel
+                  ├── UpdateTemporaryCollisionRules  (Giskard's avoidance leaves the
+                  │                                   arm's bodies alone while it runs)
+                  └── PlannedJointPathToPose         (IK goals + RRT-Connect)
 ```
 
 While the arm follows the planned path, Giskard's collision avoidance is off for the
@@ -401,19 +413,21 @@ arm off, like the planned path. It aims at the next remembered state once the ar
 within `waypoint_threshold` (0.05 rad) of the current one, and at most one state further
 per control cycle, so the arm retraces the path it took instead of cutting its corners.
 Either way the arm leaves the way it came, not on a straight line in joint space
-(series 8 did that). The chart
-(`RetractedStagnationReplannedToolCenterPointMotion`):
+(series 8 did that). The chart:
 
 ```
-ReplacedWhenTrue
-├── monitor:     NoLongerProgressing
-├── monitored:   Parallel (the motion counts as done once MoveTCP is)
-│                ├── the original MoveTCP task
-│                └── PathSinceMotionStart, PathSinceLastClearJointState or RecentJointStates
-└── replacement: Sequence
-                 ├── RetractAlongRememberedPath   (avoidance on), or
-                 │   RetraceRecentJointStates     (avoidance of the arm off)
-                 └── the planned path, as above
+HandledOnFailure
+├── handled:  StoppedWhenTrue
+│             ├── monitor:   Stalled
+│             └── monitored: Parallel (done once the pose goal is)
+│                            ├── a copy of the pose goal
+│                            └── PathSinceMotionStart, PathSinceLastClearJointState or
+│                                RecentJointStates
+└── strategy: RecoveryByInsertion, inserting before the goal
+              Sequence
+              ├── RetractAlongRememberedPath   (avoidance on), or
+              │   RetraceRecentJointStates     (avoidance of the arm off)
+              └── the planned path, as above
 ```
 
 Series 8 and 9 ran with `--retract-when-stuck`, which is `--retract-to
@@ -421,24 +435,31 @@ last-clear-state` today.
 
 ### Running it once, also on the real robot (`stuck_motion_demo.py`)
 
-`StagnationReplanning` plans inside the motion chart, so the chart holds the planner
-and the world and can't be sent to a Giskard running elsewhere. `StuckMotionReplanning`
-(`stuck_motion_replanning.py`) plans in this process instead:
+`StagnationReplanning` changes the statechart while it runs, which only works in a
+statechart ticked in this process. A plan for the real robot is sent to Giskard as one
+statechart, so `StuckMotionReplanning` (`stuck_motion_replanning.py`) plans in this
+process instead. Every pose goal that allows replanning becomes:
 
-1. Every `MoveToolCenterPointMotion` becomes a `ToolCenterPointMotionEndingWhenStuck`.
-   Its chart is the same `ReplacedWhenTrue`, with `NoLongerProgressing` as the monitor,
-   but the replacement is a `Print`, so the chart ends without failing when the motion
-   gets stuck.
-2. A `PlannedPathAfterStuckMotion` node follows it. It is an execution boundary, so it
-   runs after the motion's chart. If the tool frame ended short of the target, it plans
-   with `GoalConfigurationSampler` and `JointSpacePlanner` in this process. Then it
-   sends a `FixedJointWaypointPath` (giskardpy) with the planned waypoints, with the
-   arm's collision avoidance off as above.
+```
+TryInOrder
+├── StoppedWhenTrue
+│   ├── monitor:   Stalled
+│   └── monitored: a copy of the pose goal
+└── JointPathToPose  (chooses its child in this process once it starts)
+```
+
+Once the goal is stopped, Giskard asks this process for the child of `JointPathToPose`.
+`JointPathPlanning`, its child chooser, plans with `GoalConfigurationSampler` and
+`JointSpacePlanner` from where the arm is in the synchronized world, and hands Giskard a
+`FixedJointWaypointPath` (giskardpy) with the planned waypoints, with the arm's
+collision avoidance off as above. Giskard has to import the `experiments` package to
+read `JointPathToPose`.
 
 The demo runs the four stages once on the nominal workcell, without trial noise.
-Collision avoidance is on in every stage but homing. *Running a single experiment*
-explains how to run it. The motion labels in its replanning log are empty for
-semi-real and real runs, because their motion nodes report no start.
+Collision avoidance is on in every stage but homing. `--execution` takes `simulated`,
+`standalone` (a standalone controller) or `real` (the real robot and its griplink
+grippers). The motion labels in its replanning log are empty for runs against a
+controller, because the motion tracker only sees the ticks of this process.
 
 ## Keeping illegal joint states for good
 

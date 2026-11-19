@@ -149,7 +149,7 @@ class RobotSnapshot:
         :param joint_names: The joints a shown joint state gives positions of.
         :return: A snapshot of DAiSy with parked arms next to the nominal workcell.
         """
-        world = URDFParser.from_file(file_path=DAiSy.get_ros_file_path()).parse()
+        world = URDFParser.from_file(file_path=DAiSy.get_ros_file_path()).create_world()
         DAiSy.from_world(world)
         robot = world.get_semantic_annotations_by_type(DAiSy)[0]
         for arm in robot.all_arms:

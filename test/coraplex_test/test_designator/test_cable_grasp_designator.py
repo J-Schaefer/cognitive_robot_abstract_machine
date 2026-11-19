@@ -4,38 +4,34 @@ from collections.abc import Callable
 
 import numpy as np
 import pytest
-from coraplex.execution_environment import kinematically_simulated_robot
-from coraplex.plans.factories import sequential
 from coraplex.robot_plans.actions.core.cable_actions import CableGraspAction
 from coraplex.robot_plans.actions.core.robot_body import ParkArmsAction
+from giskardpy.motion_statechart.tasks.cartesian_tasks import CartesianPose
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.semantic_annotations.cable import Cable
+
+from ...plan_running import expand, run_plan
 
 
 def test_cable_grasp_attaches_cable_to_end_effector(
     mutable_cable_hanger_world,
 ):
-    world, view, context = mutable_cable_hanger_world
+    world, view, extensions = mutable_cable_hanger_world
 
     cable_annotations = world.get_semantic_annotations_by_type(Cable)
     assert len(cable_annotations) == 1
     cable_annotation = cable_annotations[0]
 
-    plan = sequential(
-        [
-            ParkArmsAction(view.all_arms),
-            CableGraspAction(
-                cable_annotation=cable_annotation,
-                hanger_body=world.get_body_by_name(PrefixedName("hanger")),
-                grasp_offset=0.1,
-                front_offset=0.1,
-            ),
-        ],
-        context=context,
-    ).plan
-
-    with kinematically_simulated_robot:
-        plan.perform()
+    run_plan(ParkArmsAction(arms=view.all_arms), extensions)
+    run_plan(
+        CableGraspAction(
+            cable_annotation=cable_annotation,
+            hanger_body=world.get_body_by_name(PrefixedName("hanger")),
+            grasp_offset=0.1,
+            front_offset=0.1,
+        ),
+        extensions,
+    )
 
     left_arm = view.left_arm
     right_arm = view.right_arm
@@ -56,9 +52,9 @@ def test_cable_grasp_attaches_cable_to_end_effector(
         is not None
     )
 
-    assert (
-        attached_to_left or attached_to_right
-    ), "Cable must be attached to one of the end effectors after grasp"
+    assert attached_to_left or attached_to_right, (
+        "Cable must be attached to one of the end effectors after grasp"
+    )
 
 
 @pytest.mark.parametrize(
@@ -78,19 +74,25 @@ def test_scoop_arm_target_is_moved_back_against_its_approach_by_its_setback(
     approach_start: str,
     setback_of: Callable[[CableGraspAction], float],
 ):
-    world, _, context = immutable_cable_hanger_world
+    """
+    The scoop arm's target is moved back against its approach by the target's setback.
+    """
+    world, _, extensions = immutable_cable_hanger_world
     (cable_annotation,) = world.get_semantic_annotations_by_type(Cable)
     hanger_body = world.get_body_by_name(PrefixedName("hanger"))
-    set_back = CableGraspAction(
-        cable_annotation=cable_annotation, hanger_body=hanger_body
+    set_back = expand(
+        CableGraspAction(cable_annotation=cable_annotation, hanger_body=hanger_body),
+        extensions,
     )
-    not_set_back = CableGraspAction(
-        cable_annotation=cable_annotation,
-        hanger_body=hanger_body,
-        scoop_setback=0.0,
-        free_cable_setback=0.0,
+    not_set_back = expand(
+        CableGraspAction(
+            cable_annotation=cable_annotation,
+            hanger_body=hanger_body,
+            scoop_setback=0.0,
+            free_cable_setback=0.0,
+        ),
+        extensions,
     )
-    sequential([set_back, not_set_back], context=context)
     scoop_arm = set_back._choose_scoop_arm()
     moved, original = (
         action._calculate_scoop_poses(scoop_arm, scoop_arm.end_effector)
@@ -108,10 +110,43 @@ def test_scoop_arm_target_is_moved_back_against_its_approach_by_its_setback(
     assert np.dot(displacement, approach) < 0
 
 
+def test_only_the_scoop_arm_leaving_the_cable_held_by_both_grippers_is_not_replanned(
+    immutable_cable_hanger_world,
+):
+    """
+    Of the two moves of the scoop arm to the pre-free-cable pose, only the one with both
+    grippers on the cable may not be replanned.
+    """
+    world, _, extensions = immutable_cable_hanger_world
+    (cable_annotation,) = world.get_semantic_annotations_by_type(Cable)
+    action = expand(
+        CableGraspAction(
+            cable_annotation=cable_annotation,
+            hanger_body=world.get_body_by_name(PrefixedName("hanger")),
+        ),
+        extensions,
+    )
+    scoop_arm = action._choose_scoop_arm()
+    pre_free_cable_position = action._calculate_scoop_poses(
+        scoop_arm, scoop_arm.end_effector
+    )["pre_free_cable_pose"].position.to_np()
+    goals = [node for node in action.descendants if isinstance(node, CartesianPose)]
+    to_pre_free_cable_pose = [
+        goal
+        for goal in goals
+        if np.allclose(goal.goal_pose.position.to_np(), pre_free_cable_position)
+    ]
+
+    assert [goal.allow_replanning for goal in to_pre_free_cable_pose] == [True, False]
+    assert all(
+        goal.allow_replanning for goal in goals if goal not in to_pre_free_cable_pose
+    )
+
+
 def test_cable_grasp_chooses_closer_arm_for_scooping(
     immutable_cable_hanger_world,
 ):
-    world, view, context = immutable_cable_hanger_world
+    world, view, extensions = immutable_cable_hanger_world
 
     cable_annotations = world.get_semantic_annotations_by_type(Cable)
     cable_annotation = cable_annotations[0]
@@ -122,9 +157,8 @@ def test_cable_grasp_chooses_closer_arm_for_scooping(
         grasp_offset=0.1,
         front_offset=0.1,
     )
-    plan = sequential([ParkArmsAction(view.all_arms), action], context=context).plan
-    with kinematically_simulated_robot:
-        plan.perform()
+    run_plan(ParkArmsAction(arms=view.all_arms), extensions)
+    run_plan(action, extensions)
 
     scoop_arm = action._choose_scoop_arm()
     grasp_arm = view.right_arm if scoop_arm == view.left_arm else view.left_arm

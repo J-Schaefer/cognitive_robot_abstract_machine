@@ -1,11 +1,21 @@
 #! /usr/bin/env python3
 """
-DAiSy cable demo: home both arms, grasp the cable from its hanger with both hands,
-regrasp it above the table and hang it back.
+DAiSy grasps a cable from its hanger with both arms, regrasps it above the table and
+hangs it back onto the hanger.
 
-Run it as a script. The classes it defines describe the cable workcell and the plans
-of the demo, and are imported by ``experiments.daisy_cable_replanning``, which runs the
-demo many times.
+Run it as a script and choose where the plan runs with ``executor_type``:
+
+- :class:`~coraplex.plans.executors.KinematicallySimulatedPlanExecutor` simulates DAiSy
+  in this process,
+- :class:`~coraplex.plans.executors.RealRobotPlanExecutor` sends the plan to a running
+  standalone controller (``ros2 launch giskardpy_ros giskardpy_daisy_standalone.launch.py``),
+- :class:`~coraplex.griplink_grippers.RealDAiSyPlanExecutor` drives the real DAiSy and
+  its griplink grippers.
+
+Every stage is performed on its own, since each cable action computes its poses from the
+world as the previous stage left it. The classes it defines describe the cable workcell
+and the plans of the demo, and are imported by ``experiments.daisy_cable_replanning``,
+which runs the demo many times.
 """
 
 # %% Imports
@@ -18,28 +28,38 @@ from math import pi
 from pathlib import Path
 from time import sleep
 
-# Monorepo imports
-from coraplex.datastructures.dataclasses import Context
-from coraplex.datastructures.enums import ExecutionType
-from coraplex.execution_environment import (
-    kinematically_simulated_robot,
-    real_robot,
-    semi_real_robot,
+from coraplex.demonstrations import RobotDemonstrationRosSession
+from coraplex.griplink_grippers import RealDAiSyPlanExecutor  # noqa: F401
+from coraplex.plans.context_extensions import RobotAccess
+from coraplex.plans.executors import (  # noqa: F401
+    KinematicallySimulatedPlanExecutor,
+    PlanExecutor,
+    RealRobotPlanExecutor,
+    SimulatedPlanExecutor,
 )
-from coraplex.language import SequentialNode
-from coraplex.plans.factories import sequential
-from coraplex.robot_plans import MoveGripperMotion, MoveJointsMotion
 from coraplex.robot_plans.actions.core.cable_actions import (
     CableGraspAction,
     CableRegraspAction,
     CableRehangAction,
 )
-from coraplex.robot_plans.actions.core.robot_body import ParkArmsAction
-
-# Custom imports
-from define_real_daisy import setup_real_daisy
-from define_sim_daisy import setup_sim_daisy
+from coraplex.robot_plans.actions.core.robot_body import (
+    ParkArmsAction,
+    SetGripperAction,
+)
+from cramph.composites import Sequence
+from cramph.context import StatechartContext
+from cramph.node import StatechartNode
+from cramph.statechart import Statechart
+from krrood_spatial_math.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.adapters.mesh import STLParser
+from semantic_digital_twin.adapters.ros.visualization.viz_marker import (
+    VizMarkerPublisher,
+)
+from semantic_digital_twin.adapters.ros.world_synchronizer import (
+    ModelReloadSynchronizer,
+    WorldSynchronizer,
+)
+from semantic_digital_twin.adapters.urdf import URDFParser
 from semantic_digital_twin.collision_checking.collision_rules import (
     AllowCollisionForBodies,
     AvoidCollisionBetweenGroups,
@@ -55,13 +75,12 @@ from semantic_digital_twin.robots.griplink_gripper import (
     GriplinkGripPreset,
     GriplinkPresetConfiguration,
 )
-from semantic_digital_twin.robots.robot_parts import Arm
+from semantic_digital_twin.robots.robot_parts import EndEffector
 from semantic_digital_twin.semantic_annotations.cable import Cable
-from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.connections import FixedConnection
 from semantic_digital_twin.world_description.world_entity import Body
-from typing_extensions import Self
+from typing_extensions import Callable, Self
 
 # %% Cable Workcell Definition
 
@@ -268,13 +287,15 @@ class CableWorkcell:
         """
         :return: The root body of the mesh, newly fixed to the parent.
         """
-        mesh_world = STLParser(str(mesh.file_path)).parse()
+        mesh_world = STLParser(file_path=str(mesh.file_path)).create_world()
         mesh_root = mesh_world.root
         with world.modify_world():
             world.merge_world(
                 mesh_world,
                 FixedConnection(
-                    parent, mesh_root, parent_T_connection_expression=parent_T_mesh
+                    parent=parent,
+                    child=mesh_root,
+                    parent_T_connection_expression=parent_T_mesh,
                 ),
             )
         return mesh_root
@@ -313,9 +334,9 @@ class CableDemoPlans:
     The plans of the cable demo, one per :class:`CableDemoStage`.
     """
 
-    context: Context
+    robot: DAiSy
     """
-    The context the plans are performed in.
+    The robot performing the demo.
     """
 
     workcell: CableWorkcell
@@ -323,24 +344,7 @@ class CableDemoPlans:
     The cable, and the hanger it is taken from and hung back on.
     """
 
-    left_safe_posture: tuple[float, ...] = SafeArmPosture.LEFT.value
-    """
-    Joint positions the left arm is moved to while homing.
-    """
-
-    right_safe_posture: tuple[float, ...] = SafeArmPosture.RIGHT.value
-    """
-    Joint positions the right arm is moved to before regrasping and rehanging.
-    """
-
-    @property
-    def robot(self) -> DAiSy:
-        """
-        :return: The robot performing the demo.
-        """
-        return self.context.robot
-
-    def for_stage(self, stage: CableDemoStage) -> SequentialNode:
+    def for_stage(self, stage: CableDemoStage) -> StatechartNode:
         """
         :return: The plan of the stage.
         """
@@ -354,154 +358,93 @@ class CableDemoPlans:
             case CableDemoStage.REHANG:
                 return self.rehang()
 
-    def home(self) -> SequentialNode:
+    def home(self) -> Sequence:
         """
-        :return: Cycling both grippers, parking the right arm, moving the left arm to
-            its safe posture and half closing both grippers.
+        :return: Cycling both grippers, parking both arms and half closing both
+            grippers.
         """
-        left_gripper = self.robot.left_arm.end_effector
-        right_gripper = self.robot.right_arm.end_effector
-        return sequential(
-            [
+        return Sequence(
+            nodes=[
                 self._both_grippers(
-                    left_gripper.default_configuration(GripperState.OPEN),
-                    right_gripper.default_configuration(GripperState.OPEN),
+                    lambda gripper: gripper.default_configuration(GripperState.OPEN)
                 ),
                 self._both_grippers(
-                    left_gripper.default_configuration(GripperState.CLOSE),
-                    right_gripper.default_configuration(GripperState.CLOSE),
+                    lambda gripper: gripper.default_configuration(GripperState.CLOSE)
                 ),
                 self._both_grippers(
-                    GriplinkPresetConfiguration.from_state_type(
-                        left_gripper,
+                    lambda gripper: GriplinkPresetConfiguration.from_state_type(
+                        gripper,
                         GripperState.OPEN,
                         grip_preset=GriplinkGripPreset.PRESET_0,
-                    ),
-                    GriplinkPresetConfiguration.from_state_type(
-                        right_gripper,
-                        GripperState.OPEN,
-                        grip_preset=GriplinkGripPreset.PRESET_0,
-                    ),
+                    )
                 ),
                 ParkArmsAction(arms=self.robot.all_arms),
                 # TODO Move this motion to the CableGraspAction and add generic version depending on the arm
                 self._both_grippers(
-                    GriplinkFlexConfiguration.from_state_type(
-                        left_gripper,
+                    lambda gripper: GriplinkFlexConfiguration.from_state_type(
+                        gripper,
                         GripperState.FLEXCLOSE,
                         grip_position=0.07,
                         grip_velocity=0.3,
-                    ),
-                    GriplinkFlexConfiguration.from_state_type(
-                        right_gripper,
-                        GripperState.FLEXCLOSE,
-                        grip_position=0.07,
-                        grip_velocity=0.3,
-                    ),
+                    )
                 ),
-            ],
-            self.context,
+            ]
         )
 
-    def grasp(self) -> SequentialNode:
+    def grasp(self) -> CableGraspAction:
         """
         :return: Scooping the cable off the hanger with one arm and grasping it below
             with the other.
         """
-        return sequential(
-            [
-                CableGraspAction(
-                    cable_annotation=self.workcell.cable,
-                    hanger_body=self.workcell.hanger,
-                    grasp_offset=0.1,
-                    side_offset=0.2,
-                    front_offset=-0.04,
-                    down_offset=0.1677,
-                    approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
-                    approach_sign=-1,  # y-axis pointing to the back
-                ),
-            ],
-            self.context,
+        return CableGraspAction(
+            cable_annotation=self.workcell.cable,
+            hanger_body=self.workcell.hanger,
+            grasp_offset=0.1,
+            side_offset=0.2,
+            front_offset=-0.04,
+            down_offset=0.1677,
+            approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
+            approach_sign=-1,  # y-axis pointing to the back
         )
 
-    def regrasp(self) -> SequentialNode:
+    def regrasp(self) -> CableRegraspAction:
         """
-        :return: Moving the right arm out of the way and regrasping the cable with both
-            hands above the table.
+        :return: Regrasping the cable with both hands above the table.
         """
-        return sequential(
-            [
-                CableRegraspAction(
-                    cable_annotation=self.workcell.cable,
-                    hanger_body=self.workcell.hanger,
-                    approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
-                    approach_sign=-1,  # y-axis pointing to the back
-                    regrasp_height=0.6,  # height above the table to perform the regrasp
-                ),
-            ],
-            self.context,
+        return CableRegraspAction(
+            cable_annotation=self.workcell.cable,
+            hanger_body=self.workcell.hanger,
+            approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
+            approach_sign=-1,  # y-axis pointing to the back
+            regrasp_height=0.6,  # height above the table to perform the regrasp
         )
 
-    def rehang(self) -> SequentialNode:
+    def rehang(self) -> CableRehangAction:
         """
-        :return: Moving the right arm out of the way and hanging the cable back on the
-            hanger.
+        :return: Hanging the cable back on the hanger.
         """
-        return sequential(
-            [
-                CableRehangAction(
-                    cable_annotation=self.workcell.cable,
-                    hanger_body=self.workcell.hanger,
-                    side_offset=0.05,
-                    front_offset=0.07,
-                    up_offset=0.03,
-                    approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
-                    approach_sign=-1,  # y-axis pointing to the back
-                ),
-            ],
-            self.context,
+        return CableRehangAction(
+            cable_annotation=self.workcell.cable,
+            hanger_body=self.workcell.hanger,
+            side_offset=0.05,
+            front_offset=0.07,
+            up_offset=0.03,
+            approach_direction=1,  # approach in y direction, coming from the front of the cable hanger
+            approach_sign=-1,  # y-axis pointing to the back
         )
 
-    def _move_right_arm_to_safe_posture(
-        self,
-    ) -> list[ParkArmsAction | MoveJointsMotion]:
-        """
-        :return: Parking the right arm and moving it on to its safe posture.
-        """
-        # TODO: this should be in the action description
-        return [
-            ParkArmsAction(arms=[self.robot.right_arm]),
-            self._move_to_posture(self.robot.right_arm, self.right_safe_posture),
-        ]
-
-    @staticmethod
-    def _move_to_posture(arm: Arm, posture: tuple[float, ...]) -> MoveJointsMotion:
-        """
-        :return: The motion moving the arm's joints, from shoulder to wrist, to the
-            posture.
-        """
-        return MoveJointsMotion(
-            names=[connection.name.name for connection in arm.active_connections],
-            positions=list(posture),
-        )
-
-    @staticmethod
     def _both_grippers(
-        left_configuration: GripperConfiguration,
-        right_configuration: GripperConfiguration,
-    ) -> SequentialNode:
+        self, configuration_of: Callable[[EndEffector], GripperConfiguration]
+    ) -> Sequence:
         """
-        :return: The motions of both WPG/Griplink grippers into their configurations,
-            one after the other.
+        :param configuration_of: The configuration to move a gripper into.
+        :return: Moving the left, then the right griplink gripper, one after the other
+            since moving them in parallel fails on the real robot.
         """
-        # shortcut: sequential because parallel() performs each motion in a thread of
-        # its own, which races on the shared world in simulation and sends concurrent
-        # Giskard goals on the real robot; switch back once ParallelNode is fixed in
-        # coraplex.
-        return sequential(
-            [
-                MoveGripperMotion(configuration=left_configuration),
-                MoveGripperMotion(configuration=right_configuration),
+        return Sequence(
+            nodes=[
+                SetGripperAction(configuration=configuration_of(arm.end_effector))
+                for arm in (self.robot.left_arm, self.robot.right_arm)
             ]
         )
 
@@ -510,50 +453,53 @@ class CableDemoPlans:
 
 if __name__ == "__main__":
     verbose = True
-    collision_avoidance = False
-    # execution_mode = ExecutionType.REAL
-    execution_mode = ExecutionType.SEMI_REAL
-    # execution_mode = ExecutionType.KINEMATICALLY_SIMULATED
+    collision_avoidance = True
+    executor_type: type[PlanExecutor] = RealRobotPlanExecutor
+    # executor_type = RealDAiSyPlanExecutor
+    # executor_type = KinematicallySimulatedPlanExecutor
 
-    print(f"Running in: {execution_mode}")
-    execution_environment = {
-        ExecutionType.REAL: real_robot,
-        ExecutionType.SEMI_REAL: semi_real_robot,
-        ExecutionType.KINEMATICALLY_SIMULATED: kinematically_simulated_robot,
-    }[execution_mode]
+    print(f"Running with: {executor_type.__name__}")
 
     # %% Robot and World Setup
-    if execution_mode in (ExecutionType.REAL, ExecutionType.SEMI_REAL):
-        node, world, robot_view, context = setup_real_daisy()
+    ros_session = RobotDemonstrationRosSession.start("daisy_cable_demo_node")
+    if issubclass(executor_type, SimulatedPlanExecutor):
+        world = URDFParser.from_file(file_path=DAiSy.get_ros_file_path()).create_world()
+        DAiSy.from_world(world)
+        VizMarkerPublisher(_world=world, node=ros_session.node)
     else:
-        node, world, robot_view, context = setup_sim_daisy()
+        world = ros_session.fetch_world()
+        WorldSynchronizer(_world=world, node=ros_session.node)
+        ModelReloadSynchronizer(_world=world, node=ros_session.node)
 
-    # %% Define Additional Objects
+    robot_view = world.get_semantic_annotations_by_type(DAiSy)[0]
     workcell = CableWorkcell.find_or_add_to(world, robot_view, CableWorkcellLayout())
-    plans = CableDemoPlans(context=context, workcell=workcell)
+    plans = CableDemoPlans(robot=robot_view, workcell=workcell)
 
     # %% Debug Prints
     if verbose:
         print(world.root.name)
-        for dof in context.robot.degrees_of_freedom_with_hardware_interface:
+        for dof in robot_view.degrees_of_freedom_with_hardware_interface:
             print(f"{dof.name}: {dof.variables.position.resolve():.2f}")
 
-    # %% Home Robot
-    with execution_environment(collision_avoidance=False):
-        plans.home().perform()
-
-    sleep(3)
-
-    # %% Grasp Cable
-    with execution_environment(collision_avoidance=collision_avoidance):
-        plans.grasp().perform()
-
-    # %% Regrasp Cable
-    with execution_environment(collision_avoidance=collision_avoidance):
-        plans.regrasp().perform()
-
-    # %% Rehang Cable
-    with execution_environment(collision_avoidance=collision_avoidance):
-        plans.rehang().perform()
+    # %% Demo Plan
+    for stage in CableDemoStage:
+        executor = executor_type(
+            context=StatechartContext.with_extensions(
+                world=world, extensions=[RobotAccess(robot=robot_view)]
+            ),
+            ros_node=ros_session.node,
+            collision_avoidance=collision_avoidance
+            and stage is not CableDemoStage.HOME,
+        )
+        statechart = Statechart(context=executor.context)
+        statechart.add_node(node=plans.for_stage(stage))
+        try:
+            executor.compile(statechart=statechart)
+            executor.execute()
+        finally:
+            executor.close()
+        if stage is CableDemoStage.HOME:
+            sleep(3)
 
     print("Plan finished.")
+    ros_session.stop()

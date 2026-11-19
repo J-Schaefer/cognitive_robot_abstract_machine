@@ -1,48 +1,40 @@
 from __future__ import annotations
 
 import logging
+from abc import ABC
 from dataclasses import dataclass, field
 from math import pi
-from typing import Any
 
 import numpy as np
-from krrood.entity_query_language.core.variable import Variable
-from krrood.entity_query_language.factories import (
-    ConditionType,
-    and_,
-    or_,
-    variable_from,
+from cramph.node import StatechartNode
+from giskardpy.motion_statechart.tasks.cartesian_tasks import (
+    CartesianPose,
+    CartesianPoseStraight,
 )
-from semantic_digital_twin.datastructures.definitions import GripperState
-from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
-from semantic_digital_twin.robots.griplink_gripper import GriplinkFlexConfiguration
-from semantic_digital_twin.robots.robot_parts import AbstractRobot, Arm, EndEffector
-from semantic_digital_twin.semantic_annotations.cable import Cable
-from semantic_digital_twin.spatial_types.spatial_types import (
+from krrood_spatial_math.spatial_types import (
     HomogeneousTransformationMatrix,
     Point3,
     Pose,
     Quaternion,
     RotationMatrix,
 )
+from semantic_digital_twin.collision_checking.collision_matrix import CollisionRule
+from semantic_digital_twin.collision_checking.collision_rules import (
+    AllowCollisionForBodies,
+)
+from semantic_digital_twin.datastructures.definitions import GripperState
+from semantic_digital_twin.robots.griplink_gripper import GriplinkFlexConfiguration
+from semantic_digital_twin.robots.robot_parts import AbstractRobot, Arm, EndEffector
+from semantic_digital_twin.semantic_annotations.cable import Cable
 from semantic_digital_twin.world_description.world_entity import Body
 
-from coraplex.datastructures.dataclasses import Context
-from coraplex.datastructures.enums import MovementType
-from coraplex.plans.attachment_nodes import ReAttachNode
-from coraplex.plans.factories import sequential
-from coraplex.plans.plan_node import PlanNode
-from coraplex.querying.gripper_verification import (
-    IsGripperHoldingPart,
-    IsGripperNotFullyClosed,
+from coraplex.robot_plans.actions.base import SequentialAction
+from coraplex.robot_plans.actions.core.exceptions import CableNotHeld
+from coraplex.robot_plans.actions.core.robot_body import (
+    ParkArmsAction,
+    SetGripperAction,
 )
-from coraplex.querying.predicates import GripperIsFree, GripperIsNotFree
-from coraplex.robot_plans.actions.base import ActionDescription
-from coraplex.robot_plans.actions.core.robot_body import ParkArmsAction
-from coraplex.robot_plans.motions.gripper import (
-    MoveGripperMotion,
-    MoveToolCenterPointMotion,
-)
+from coraplex.robot_plans.mixins import MovesToolCenterPoint, ReattachesBranches
 
 logger = logging.getLogger(__name__)
 
@@ -200,15 +192,24 @@ def _determine_holding_arm(cable_body: Body, robot: AbstractRobot) -> Arm:
     elif parent == right_end_effector.tool_frame:
         return robot.right_arm
 
-    raise RuntimeError("Cable is not attached to any end effector")
+    raise CableNotHeld(cable_body=cable_body)
 
 
-def _open_gripper_motion(end_effector: EndEffector) -> MoveGripperMotion:
+def _open_gripper_motion(end_effector: EndEffector) -> SetGripperAction:
     """
-    Build the motion that opens the given end effector.
+    Build the action that opens the given end effector.
     """
-    return MoveGripperMotion(
+    return SetGripperAction(
         configuration=end_effector.default_configuration(GripperState.OPEN)
+    )
+
+
+def _close_gripper_motion(end_effector: EndEffector) -> SetGripperAction:
+    """
+    Build the action that closes the given end effector.
+    """
+    return SetGripperAction(
+        configuration=end_effector.default_configuration(GripperState.CLOSE)
     )
 
 
@@ -219,9 +220,9 @@ def _flex_gripper_motion(
     grip_force: float | None = None,
     grip_speed: float | None = None,
     grip_acceleration: float | None = None,
-) -> MoveGripperMotion:
+) -> SetGripperAction:
     """
-    Build the motion that commands a WPG/Griplink gripper into a flex state.
+    Build the action that commands a WPG/Griplink gripper into a flex state.
 
     :param state_type: The flex state to command, either :attr:`GripperState.FLEXCLOSE`
         or :attr:`GripperState.FLEXOPEN`.
@@ -231,7 +232,7 @@ def _flex_gripper_motion(
     :param grip_acceleration: Motion acceleration of the gripper in metres per second
         squared [0.1..4].
     """
-    return MoveGripperMotion(
+    return SetGripperAction(
         configuration=GriplinkFlexConfiguration.from_state_type(
             end_effector,
             state_type,
@@ -243,82 +244,99 @@ def _flex_gripper_motion(
     )
 
 
-# %% pre- and post-condition functions
+# %% cable actions
 
 
-def _pre_condition_both_grippers_free(
-    variables: dict[str, Variable],
-    context: Context,
-    kwargs: dict[str, Any],
-) -> ConditionType:
-    left_end_effector = context.robot.left_arm.end_effector
-    right_end_effector = context.robot.right_arm.end_effector
-    return and_(
-        GripperIsFree(left_end_effector),
-        GripperIsFree(right_end_effector),
-    )
+@dataclass(eq=False, repr=False, kw_only=True)
+class CableAction(MovesToolCenterPoint, ReattachesBranches, SequentialAction, ABC):
+    """
+    An action handling a cable hanging from a cable hanger, whose poses are expressed
+    along the front, side and up axes of the hanger.
 
+    The steps are computed from the world as it is when the action joins a statechart,
+    so an action depending on the outcome of an earlier one, such as which arm holds the
+    cable, has to be performed after that one finished.
+    """
 
-def _pre_condition_one_gripper_free(
-    variables: dict[str, Variable],
-    context: Context,
-    kwargs: dict[str, Any],
-) -> ConditionType:
-    left_end_effector = context.robot.left_arm.end_effector
-    right_end_effector = context.robot.right_arm.end_effector
-    return or_(
-        and_(
-            GripperIsNotFree(left_end_effector),
-            GripperIsFree(right_end_effector),
-        ),
-        and_(
-            GripperIsFree(left_end_effector),
-            GripperIsNotFree(right_end_effector),
-        ),
-    )
+    cable_annotation: Cable
+    """
+    The cable semantic annotation the action handles.
+    """
 
+    hanger_body: Body
+    """
+    Body of the cable hanger to hang the cable on.
+    """
 
-def _post_condition_cable_in_either_gripper(
-    variables: dict[str, Variable],
-    context: Context,
-    kwargs: dict[str, Any],
-) -> ConditionType:
-    left_end_effector = context.robot.left_arm.end_effector
-    right_end_effector = context.robot.right_arm.end_effector
-    cable_body = kwargs["cable_annotation"].root
-    return or_(
-        is_body_in_gripper(variable_from(cable_body), left_end_effector) > 0.9,
-        is_body_in_gripper(variable_from(cable_body), right_end_effector) > 0.9,
-        and_(
-            IsGripperHoldingPart(left_end_effector, ros_node=context.ros_node),
-            IsGripperNotFullyClosed(left_end_effector),
-        ),
-        and_(
-            IsGripperHoldingPart(right_end_effector, ros_node=context.ros_node),
-            IsGripperNotFullyClosed(right_end_effector),
-        ),
-    )
+    approach_direction: int = 0
+    """
+    Index of the hanger's local axis that is the front-facing axis.
 
+    0 is the X axis, 1 is the Y axis, 2 is the Z axis. The other two axes form a right-
+    handed frame with the front axis.
+    """
 
-def _post_condition_cable_in_both_grippers(
-    variables: dict[str, Variable],
-    context: Context,
-    kwargs: dict[str, Any],
-) -> ConditionType:
-    left_end_effector = context.robot.left_arm.end_effector
-    right_end_effector = context.robot.right_arm.end_effector
-    cable_body = kwargs["cable_annotation"].root
-    return and_(
-        is_body_in_gripper(variable_from(cable_body), left_end_effector) > 0.9,
-        is_body_in_gripper(variable_from(cable_body), right_end_effector) > 0.9,
-    )
+    approach_sign: int = 1
+    """
+    Direction the approach axis is pointing.
+
+    If the axis is pointing towards the approach direction the approach_sign is +1, if
+    the axis is pointing to the back the approach_sign is -1.
+    """
+
+    def create_temporary_collision_rules(self) -> list[CollisionRule]:
+        """
+        :return: An allowance for the cable to touch anything, since it is grasped while
+            it still hangs on its hanger and is hung back onto it.
+        """
+        return [
+            AllowCollisionForBodies(
+                allowed_collision_bodies={self.cable_annotation.root}
+            )
+        ]
+
+    def _move_tool_center_point(
+        self,
+        target: Pose,
+        arm: Arm,
+        straight: bool = False,
+        position_threshold: float | None = None,
+        allow_replanning: bool = True,
+    ) -> CartesianPose:
+        """
+        :param target: Where the tool center point of `arm` should end up.
+        :param arm: The arm whose tool center point is moved.
+        :param straight: Whether the tool center point moves along a straight line.
+        :param position_threshold: Distance in metres within which `target` counts as
+            reached; ``None`` keeps :attr:`position_threshold`.
+        :param allow_replanning: See
+            :attr:`~giskardpy.motion_statechart.tasks.cartesian_tasks.CartesianPose.allow_replanning`.
+        :return: A new goal moving the tool center point of `arm` to `target`, keeping
+            the base still.
+        """
+        goal_type = CartesianPoseStraight if straight else CartesianPose
+        goal = goal_type(
+            root_link=self.controlled_root,
+            tip_link=arm.end_effector.tool_frame,
+            goal_pose=target,
+            translation_threshold=(
+                self.position_threshold
+                if position_threshold is None
+                else position_threshold
+            ),
+            orientation_threshold=self.orientation_threshold,
+            allow_replanning=allow_replanning,
+        )
+        for node in self.keep_base_still():
+            goal.add_node(node=node)
+        return goal
 
 
 # %% CableGraspAction
 
 
-@dataclass
-class CableGraspAction(ActionDescription):
+@dataclass(eq=False, repr=False, kw_only=True)
+class CableGraspAction(CableAction):
     """
     Performs a two-handed grasp of a cable.
 
@@ -326,16 +344,6 @@ class CableGraspAction(ActionDescription):
     The other arm then grasps the cable below the scooping gripper. The arm used for
     scooping is chosen dynamically based on which arm can better reach the cable hanging
     point.
-    """
-
-    cable_annotation: Cable
-    """
-    The cable semantic annotation to grasp.
-    """
-
-    hanger_body: Body
-    """
-    Body of the cable hanger to hang the cable on.
     """
 
     grasp_offset: float = field(default=0.1)
@@ -359,46 +367,26 @@ class CableGraspAction(ActionDescription):
     Distance in metres to offset the scoop arm below the cable hanger.
     """
 
-    scoop_setback: float = field(default=0.001)
+    scoop_setback: float = 0.001
     """
     Distance in metres the scoop pose is moved back against the approach, so the finger
     tips stay clear of the post.
     """
 
-    free_cable_setback: float = field(default=0.0035)
+    free_cable_setback: float = 0.0035
     """
     Distance in metres the free-cable pose is moved back against the approach and down,
     diagonally, so the finger tips stay clear of the hanger's front edge.
     """
 
-    approach_direction: int = 0
-    """
-    Index of the hanger's local axis that is the front-facing axis.
-
-    0 is the X axis, 1 is the Y axis, 2 is the Z axis. The other two axes form a right-
-    handed frame with the front axis.
-    """
-
-    gripper_width: int = 0.1
+    gripper_width: float = 0.1
     """
     Opening width of the gripper.
 
     Used as side offset when grasping the scooped up cable.
     """
 
-    approach_sign: int = 1
-    """
-    Direction the approach axis is pointing.
-
-    If the axis is pointing towards the approach direction the approach_sign is +1, if
-    the axis is pointing to the back the approach_sign is -1.
-    """
-
-    pre_condition = staticmethod(_pre_condition_both_grippers_free)
-    post_condition = staticmethod(_post_condition_cable_in_either_gripper)
-
-    @property
-    def _action_plan(self) -> PlanNode:
+    def create_steps(self) -> list[StatechartNode]:
         scoop_arm = self._choose_scoop_arm()
         grasp_arm = (
             self.robot.right_arm
@@ -427,7 +415,7 @@ class CableGraspAction(ActionDescription):
         pre_grasp_pose = grasp_poses["pre_grasp_pose"]
         grasp_pose = grasp_poses["grasp_pose"]
 
-        front_world, side_world, up_world = _hanger_axes(
+        front_world, _, _ = _hanger_axes(
             self.cable_annotation.hanging_from.global_transform,
             self.approach_direction,
             self.approach_sign,
@@ -459,156 +447,126 @@ class CableGraspAction(ActionDescription):
         print(f"Pre-grasp pose: {pre_grasp_pose.position}")
         print(f"Grasp pose: {grasp_pose.position}")
 
-        return sequential(
-            children=[
-                _open_gripper_motion(scoop_end_effector),
-                _open_gripper_motion(grasp_end_effector),
-                ParkArmsAction(arms=[scoop_arm]),
-                MoveToolCenterPointMotion(
-                    approach_pose,
-                    scoop_arm,
-                    movement_type=MovementType.CARTESIAN,
-                ),
-                MoveToolCenterPointMotion(
-                    pre_scoop_pose,
-                    scoop_arm,
-                    movement_type=MovementType.CARTESIAN,
-                ),
-                MoveToolCenterPointMotion(
-                    scoop_pose,
-                    scoop_arm,
-                    movement_type=MovementType.STRAIGHT_TRANSLATION,
-                    position_threshold=0.001,
-                ),
-                _flex_gripper_motion(
-                    scoop_end_effector,
-                    GripperState.FLEXCLOSE,
-                    grip_position=0,
-                    grip_speed=0.15,
-                ),
-                ReAttachNode(
-                    body=self.cable_annotation.root,
-                    new_parent=scoop_end_effector.tool_frame,
-                ),
-                MoveToolCenterPointMotion(
-                    post_scoop_pose,
-                    scoop_arm,
-                    movement_type=MovementType.CARTESIAN,
-                    position_threshold=0.001,
-                ),
-                MoveToolCenterPointMotion(
-                    approach_grasp_pose,
-                    grasp_arm,
-                    movement_type=MovementType.CARTESIAN,
-                ),
-                MoveToolCenterPointMotion(
-                    pre_grasp_pose,
-                    grasp_arm,
-                    movement_type=MovementType.CARTESIAN,
-                ),
-                _flex_gripper_motion(
-                    grasp_end_effector,
-                    GripperState.FLEXCLOSE,
-                    grip_position=0.07,
-                    grip_speed=0.3,
-                    grip_acceleration=2,
-                ),
-                _flex_gripper_motion(
-                    grasp_end_effector,
-                    GripperState.FLEXOPEN,
-                    grip_position=0.075,
-                    grip_speed=0.3,
-                    grip_acceleration=2,
-                ),
-                MoveToolCenterPointMotion(
-                    grasp_pose,
-                    grasp_arm,
-                    movement_type=MovementType.CARTESIAN,
-                    position_threshold=0.001,
-                ),
-                _flex_gripper_motion(
-                    grasp_end_effector,
-                    GripperState.FLEXCLOSE,
-                    grip_position=0,
-                    grip_force=180,
-                ),
-                ReAttachNode(
-                    body=self.cable_annotation.root,
-                    new_parent=grasp_end_effector.tool_frame,
-                ),
-                MoveToolCenterPointMotion(
-                    clear_scoop_pose,
-                    scoop_arm,
-                    movement_type=MovementType.CARTESIAN,
-                ),
-                MoveToolCenterPointMotion(
-                    Pose(
-                        position=clear_scoop_pose.position,
-                        orientation=clear_scoop_pose.quaternion.multiply(
-                            Quaternion.from_rpy(0, 0, pi / 2)
-                        ),
-                        reference_frame=self.world.root,
+        return [
+            _open_gripper_motion(scoop_end_effector),
+            _open_gripper_motion(grasp_end_effector),
+            ParkArmsAction(arms=[scoop_arm]),
+            self._move_tool_center_point(
+                approach_pose,
+                scoop_arm,
+            ),
+            self._move_tool_center_point(
+                pre_scoop_pose,
+                scoop_arm,
+            ),
+            self._move_tool_center_point(
+                scoop_pose,
+                scoop_arm,
+                straight=True,
+                position_threshold=0.001,
+            ),
+            _close_gripper_motion(
+                scoop_end_effector,
+            ),
+            *self.reattach(self.cable_annotation.root, scoop_end_effector.tool_frame),
+            self._move_tool_center_point(
+                post_scoop_pose,
+                scoop_arm,
+                position_threshold=0.001,
+            ),
+            self._move_tool_center_point(
+                approach_grasp_pose,
+                grasp_arm,
+            ),
+            self._move_tool_center_point(
+                pre_grasp_pose,
+                grasp_arm,
+            ),
+            _flex_gripper_motion(
+                grasp_end_effector,
+                GripperState.FLEXCLOSE,
+                grip_position=0.07,
+                grip_speed=0.3,
+                grip_acceleration=2,
+            ),
+            _flex_gripper_motion(
+                grasp_end_effector,
+                GripperState.FLEXOPEN,
+                grip_position=0.075,
+                grip_speed=0.3,
+                grip_acceleration=2,
+            ),
+            self._move_tool_center_point(
+                grasp_pose,
+                grasp_arm,
+                position_threshold=0.001,
+            ),
+            _flex_gripper_motion(
+                grasp_end_effector,
+                GripperState.FLEXCLOSE,
+                grip_position=0,
+                grip_force=180,
+            ),
+            *self.reattach(self.cable_annotation.root, grasp_end_effector.tool_frame),
+            self._move_tool_center_point(clear_scoop_pose, scoop_arm),
+            self._move_tool_center_point(
+                Pose(
+                    position=clear_scoop_pose.position,
+                    orientation=clear_scoop_pose.quaternion.multiply(
+                        Quaternion.from_rpy(0, 0, pi / 2)
                     ),
-                    scoop_arm,
-                    movement_type=MovementType.CARTESIAN,
+                    reference_frame=self.world.root,
                 ),
-                _open_gripper_motion(scoop_end_effector),
-                MoveToolCenterPointMotion(
-                    return_scoop_pose,
-                    scoop_arm,
-                    movement_type=MovementType.CARTESIAN,
-                ),
-                MoveToolCenterPointMotion(
-                    target=Pose(
-                        translate_pose_along_local_axis(
-                            translate_pose_along_local_axis(
-                                pose=grasp_pose,
-                                axis=[0, 1, 0],
-                                distance=-0.07,
-                            ),
-                            axis=[1, 0, 0],
-                            distance=0.2,
-                        ).position,
-                        orientation=grasp_pose.quaternion.multiply(
-                            Quaternion.from_rpy(0, 0, pi / 6)
-                        ),
-                        reference_frame=self.world.root,
-                    ),
-                    arm=grasp_arm,
-                    movement_type=MovementType.CARTESIAN,
-                ),
-                MoveToolCenterPointMotion(
-                    pre_free_cable_pose, scoop_arm, movement_type=MovementType.CARTESIAN
-                ),
-                MoveToolCenterPointMotion(
-                    free_cable_pose,
-                    scoop_arm,
-                    movement_type=MovementType.STRAIGHT_TRANSLATION,
-                    position_threshold=0.001,
-                ),
-                _flex_gripper_motion(
-                    scoop_end_effector,
-                    GripperState.FLEXCLOSE,
-                    grip_position=0,
-                    grip_force=30,
-                    grip_speed=0.12,
-                ),
-                MoveToolCenterPointMotion(
-                    pre_free_cable_pose,
-                    scoop_arm,
-                    movement_type=MovementType.CARTESIAN,
-                    allow_replanning=False,
-                ),
-                _open_gripper_motion(scoop_end_effector),
-                MoveToolCenterPointMotion(
+                scoop_arm,
+            ),
+            _open_gripper_motion(scoop_end_effector),
+            self._move_tool_center_point(
+                return_scoop_pose,
+                scoop_arm,
+            ),
+            self._move_tool_center_point(
+                target=Pose(
                     translate_pose_along_local_axis(
-                        pose=grasp_pose, axis=[0, 1, 0], distance=0.07
+                        translate_pose_along_local_axis(
+                            pose=grasp_pose,
+                            axis=[0, 1, 0],
+                            distance=-0.07,
+                        ),
+                        axis=[1, 0, 0],
+                        distance=0.2,
+                    ).position,
+                    orientation=grasp_pose.quaternion.multiply(
+                        Quaternion.from_rpy(0, 0, pi / 6)
                     ),
-                    grasp_arm,
-                    movement_type=MovementType.CARTESIAN,
+                    reference_frame=self.world.root,
                 ),
-            ],
-        )
+                arm=grasp_arm,
+            ),
+            self._move_tool_center_point(pre_free_cable_pose, scoop_arm),
+            self._move_tool_center_point(
+                free_cable_pose,
+                scoop_arm,
+                straight=True,
+                position_threshold=0.001,
+            ),
+            _flex_gripper_motion(
+                scoop_end_effector,
+                GripperState.FLEXCLOSE,
+                grip_position=0,
+                grip_force=30,
+                grip_speed=0.12,
+            ),
+            self._move_tool_center_point(
+                pre_free_cable_pose, scoop_arm, allow_replanning=False
+            ),
+            _open_gripper_motion(scoop_end_effector),
+            self._move_tool_center_point(
+                translate_pose_along_local_axis(
+                    pose=grasp_pose, axis=[0, 1, 0], distance=0.07
+                ),
+                grasp_arm,
+            ),
+        ]
 
     def _calculate_scoop_poses(
         self, scoop_arm: Arm, scoop_end_effector
@@ -905,24 +863,14 @@ class CableGraspAction(ActionDescription):
 # %% CableRegraspAction
 
 
-@dataclass
-class CableRegraspAction(ActionDescription):
+@dataclass(eq=False, repr=False, kw_only=True)
+class CableRegraspAction(CableAction):
     """
     Regrasps a cable that is already held by one arm.
 
     After the initial grasp, one arm holds the cable and the other arm is free. This
     action positions the cable horizontally above the table and has the free arm grasp
     the other end of the cable. After execution both arms hold the cable.
-    """
-
-    cable_annotation: Cable
-    """
-    The cable semantic annotation to regrasp.
-    """
-
-    hanger_body: Body
-    """
-    Body of the cable hanger to hang the cable on.
     """
 
     regrasp_height: float = field(default=0.5)
@@ -942,26 +890,7 @@ class CableRegraspAction(ActionDescription):
     center of the cable.
     """
 
-    approach_direction: int = 0
-    """
-    Index of the hanger's local axis that is the front-facing axis.
-
-    0 is the X axis, 1 is the Y axis, 2 is the Z axis.
-    """
-
-    approach_sign: int = 1
-    """
-    Direction the approach axis is pointing.
-
-    If the axis is pointing towards the approach direction the approach_sign is +1, if
-    the axis is pointing to the back the approach_sign is -1.
-    """
-
-    pre_condition = staticmethod(_pre_condition_one_gripper_free)
-    post_condition = staticmethod(_post_condition_cable_in_both_grippers)
-
-    @property
-    def _action_plan(self) -> PlanNode:
+    def create_steps(self) -> list[StatechartNode]:
         holding_arm = _determine_holding_arm(self.cable_annotation.root, self.robot)
         free_arm = (
             self.robot.right_arm
@@ -1040,81 +969,69 @@ class CableRegraspAction(ActionDescription):
         print(f"Target hold spread pose: {hold_spread_pose.position}")
         print(f"Target free spread pose: {free_spread_pose.position}")
 
-        return sequential(
-            children=[
-                _open_gripper_motion(free_arm_end_effector),
-                ParkArmsAction(arms=[holding_arm]),
-                MoveToolCenterPointMotion(
-                    holding_pose,
-                    holding_arm,
-                    movement_type=MovementType.CARTESIAN,
+        return [
+            _open_gripper_motion(free_arm_end_effector),
+            ParkArmsAction(arms=[holding_arm]),
+            self._move_tool_center_point(
+                holding_pose,
+                holding_arm,
+            ),
+            self._move_tool_center_point(
+                translate_pose_along_local_axis(
+                    pose=free_grasp_pose, axis=[0, 0, 1], distance=-0.05
                 ),
-                MoveToolCenterPointMotion(
-                    translate_pose_along_local_axis(
-                        pose=free_grasp_pose, axis=[0, 0, 1], distance=-0.05
-                    ),
-                    free_arm,
-                    movement_type=MovementType.CARTESIAN,
+                free_arm,
+            ),
+            self._move_tool_center_point(
+                free_grasp_pose,
+                free_arm,
+                position_threshold=0.001,
+            ),
+            _flex_gripper_motion(
+                free_arm_end_effector,
+                GripperState.FLEXCLOSE,
+                grip_position=0,
+                grip_force=30,
+            ),
+            *self.reattach(
+                self.cable_annotation.root, free_arm_end_effector.tool_frame
+            ),
+            self._move_tool_center_point(
+                target=translate_pose_along_local_axis(
+                    pose=free_grasp_pose, axis=[0, 1, 0], distance=0.3
                 ),
-                MoveToolCenterPointMotion(
-                    free_grasp_pose,
-                    free_arm,
-                    movement_type=MovementType.CARTESIAN,
-                    position_threshold=0.001,
+                arm=free_arm,
+                allow_replanning=False,
+            ),
+            self._move_tool_center_point(
+                target=translate_pose_along_local_axis(
+                    pose=free_grasp_pose, axis=[0, 1, 0], distance=0.05
                 ),
-                _flex_gripper_motion(
-                    free_arm_end_effector,
-                    GripperState.FLEXCLOSE,
-                    grip_position=0,
-                    grip_force=30,
-                ),
-                ReAttachNode(
-                    body=self.cable_annotation.root,
-                    new_parent=free_arm_end_effector.tool_frame,
-                ),
-                MoveToolCenterPointMotion(
-                    target=translate_pose_along_local_axis(
-                        pose=free_grasp_pose, axis=[0, 1, 0], distance=0.3
-                    ),
-                    arm=free_arm,
-                    movement_type=MovementType.CARTESIAN,
-                    allow_replanning=False,
-                ),
-                MoveToolCenterPointMotion(
-                    target=translate_pose_along_local_axis(
-                        pose=free_grasp_pose, axis=[0, 1, 0], distance=0.05
-                    ),
-                    arm=free_arm,
-                    movement_type=MovementType.CARTESIAN,
-                    allow_replanning=False,
-                ),
-                MoveToolCenterPointMotion(
-                    inter_holding_arm_pose,
-                    holding_arm,
-                    movement_type=MovementType.CARTESIAN,
-                    allow_replanning=False,
-                ),
-                MoveToolCenterPointMotion(
-                    inter_free_arm_pose,
-                    free_arm,
-                    movement_type=MovementType.CARTESIAN,
-                    allow_replanning=False,
-                ),
-                MoveToolCenterPointMotion(
-                    free_spread_pose,
-                    free_arm,
-                    movement_type=MovementType.CARTESIAN,
-                    allow_replanning=False,
-                ),
-                MoveToolCenterPointMotion(
-                    hold_spread_pose,
-                    holding_arm,
-                    movement_type=MovementType.CARTESIAN,
-                    allow_replanning=False,
-                ),
-                _open_gripper_motion(holding_arm_end_effector),
-            ],
-        )
+                arm=free_arm,
+                allow_replanning=False,
+            ),
+            self._move_tool_center_point(
+                inter_holding_arm_pose,
+                holding_arm,
+                allow_replanning=False,
+            ),
+            self._move_tool_center_point(
+                inter_free_arm_pose,
+                free_arm,
+                allow_replanning=False,
+            ),
+            self._move_tool_center_point(
+                free_spread_pose,
+                free_arm,
+                allow_replanning=False,
+            ),
+            self._move_tool_center_point(
+                hold_spread_pose,
+                holding_arm,
+                allow_replanning=False,
+            ),
+            _open_gripper_motion(holding_arm_end_effector),
+        ]
 
     def _build_mid_pose(
         self,
@@ -1200,20 +1117,10 @@ class CableRegraspAction(ActionDescription):
 # %% CableRehangAction
 
 
-@dataclass
-class CableRehangAction(ActionDescription):
+@dataclass(eq=False, repr=False, kw_only=True)
+class CableRehangAction(CableAction):
     """
     Hangs the cable again to the specified hanger.
-    """
-
-    cable_annotation: Cable
-    """
-    The cable semantic annotation to grasp.
-    """
-
-    hanger_body: Body
-    """
-    Body of the cable hanger to hang the cable on.
     """
 
     side_offset: float = field(default=0.1)
@@ -1234,27 +1141,7 @@ class CableRehangAction(ActionDescription):
     hanger's up axis.
     """
 
-    approach_direction: int = 0
-    """
-    Index of the hanger's local axis that is the front-facing axis.
-
-    0 is the X axis, 1 is the Y axis, 2 is the Z axis. The other two axes form a right-
-    handed frame with the front axis.
-    """
-
-    approach_sign: int = 1
-    """
-    Direction the approach axis is pointing.
-
-    If the axis is pointing towards the approach direction the approach_sign is +1, if
-    the axis is pointing to the back the approach_sign is -1.
-    """
-
-    pre_condition = staticmethod(_pre_condition_one_gripper_free)
-    post_condition = staticmethod(_post_condition_cable_in_either_gripper)
-
-    @property
-    def _action_plan(self) -> PlanNode:
+    def create_steps(self) -> list[StatechartNode]:
         holding_arm = _determine_holding_arm(self.cable_annotation.root, self.robot)
         free_arm = (
             self.robot.right_arm
@@ -1267,12 +1154,6 @@ class CableRehangAction(ActionDescription):
 
         hang_poses = self._calculate_hang_pose(holding_arm)
 
-        front_world, side_world, up_world = _hanger_axes(
-            self.hanger_body.global_transform,
-            self.approach_direction,
-            self.approach_sign,
-        )
-
         inter_hang_pose = hang_poses["inter_hang_pose"]
         approach_hang_pose = hang_poses["approach_hang_pose"]
         pre_hang_pose = hang_poses["pre_hang_pose"]
@@ -1283,42 +1164,33 @@ class CableRehangAction(ActionDescription):
         print(f"Pre hang pose: {pre_hang_pose.position}")
         print(f"Hang pose: {hang_pose.position}")
 
-        return sequential(
-            [
-                MoveToolCenterPointMotion(
-                    target=inter_hang_pose,
-                    arm=holding_arm,
-                    movement_type=MovementType.CARTESIAN,
-                ),
-                MoveToolCenterPointMotion(
-                    target=approach_hang_pose,
-                    arm=holding_arm,
-                    movement_type=MovementType.CARTESIAN,
-                ),
-                MoveToolCenterPointMotion(
-                    target=pre_hang_pose,
-                    arm=holding_arm,
-                    movement_type=MovementType.CARTESIAN,
-                    position_threshold=0.001,
-                ),
-                MoveToolCenterPointMotion(
-                    target=hang_pose,
-                    arm=holding_arm,
-                    movement_type=MovementType.STRAIGHT_TRANSLATION,
-                    position_threshold=0.001,
-                ),
-                ReAttachNode(
-                    body=self.cable_annotation.root,
-                    new_parent=self.hanger_body,
-                ),
-                _open_gripper_motion(holding_arm_end_effector),
-                MoveToolCenterPointMotion(
-                    target=pre_hang_pose,
-                    arm=holding_arm,
-                    movement_type=MovementType.CARTESIAN,
-                ),
-            ],
-        )
+        return [
+            self._move_tool_center_point(
+                target=inter_hang_pose,
+                arm=holding_arm,
+            ),
+            self._move_tool_center_point(
+                target=approach_hang_pose,
+                arm=holding_arm,
+            ),
+            self._move_tool_center_point(
+                target=pre_hang_pose,
+                arm=holding_arm,
+                position_threshold=0.001,
+            ),
+            self._move_tool_center_point(
+                target=hang_pose,
+                arm=holding_arm,
+                straight=True,
+                position_threshold=0.001,
+            ),
+            *self.reattach(self.cable_annotation.root, self.hanger_body),
+            _open_gripper_motion(holding_arm_end_effector),
+            self._move_tool_center_point(
+                target=pre_hang_pose,
+                arm=holding_arm,
+            ),
+        ]
 
     def _calculate_hang_pose(self, holding_arm: Arm) -> dict[str, Pose]:
         """

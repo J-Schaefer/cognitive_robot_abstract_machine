@@ -10,12 +10,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from coraplex.datastructures.dataclasses import Context
-from coraplex.plans.plan_node import MotionNode, PlanNode
-from coraplex.robot_plans.motions.gripper import (
-    MoveGripperMotion,
-    MoveToolCenterPointMotion,
-)
+from coraplex.robot_plans.actions.core.cable_actions import CableAction
+from coraplex.robot_plans.actions.core.robot_body import SetGripperAction
 from experiments.daisy_cable_replanning.cable_demo import DemoScript
 from experiments.daisy_cable_replanning.collisions import (
     ActiveMotionTracker,
@@ -41,11 +37,15 @@ from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.robots.griplink_gripper import GriplinkFlexConfiguration
 from semantic_digital_twin.robots.robot_parts import EndEffector
 from semantic_digital_twin.semantic_annotations.cable import Cable
-from semantic_digital_twin.spatial_types.spatial_types import Pose
-from semantic_digital_twin.utils import daisy_installed
+from giskardpy.motion_statechart.tasks.cartesian_tasks import CartesianPose
+from krrood_spatial_math.spatial_types import Pose
 from semantic_digital_twin.world import World
 
-pytestmark = pytest.mark.skipif(not daisy_installed(), reason="DAiSy not installed")
+from ...plan_running import expand, robot_extensions
+
+pytestmark = pytest.mark.skipif(
+    not DAiSy.is_description_installed(), reason="DAiSy not installed"
+)
 
 
 # %% helpers
@@ -216,7 +216,7 @@ def _cable_demo_plans(world: World) -> tuple[object, object]:
         world, robot, demo.CableWorkcellLayout()
     )
     return (
-        demo.CableDemoPlans(context=Context(world, robot), workcell=workcell),
+        demo.CableDemoPlans(robot=robot, workcell=workcell),
         workcell,
     )
 
@@ -232,11 +232,9 @@ def test_scoop_arm_target_has_a_goal_configuration_the_planner_accepts(
     """
     robot = _robot(parked_daisy_world)
     plans, workcell = _cable_demo_plans(parked_daisy_world)
-    (grasp,) = plans.grasp().children
-    scoop_arm = grasp.designator._choose_scoop_arm()
-    pose = grasp.designator._calculate_scoop_poses(scoop_arm, scoop_arm.end_effector)[
-        target
-    ]
+    grasp = expand(plans.grasp(), robot_extensions(robot))
+    scoop_arm = grasp._choose_scoop_arm()
+    pose = grasp._calculate_scoop_poses(scoop_arm, scoop_arm.end_effector)[target]
     parameters = ReplanningParameters()
     goals = GoalConfigurationSampler(
         world=parked_daisy_world,
@@ -271,22 +269,21 @@ def test_scoop_arm_target_has_a_goal_configuration_the_planner_accepts(
 # %% motions while both grippers hold the cable
 
 
-def _tool_center_point_motions_by_grip(
-    plan: PlanNode, holding_end_effectors: set[EndEffector]
-) -> list[tuple[MoveToolCenterPointMotion, bool]]:
+def _tool_center_point_goals_by_grip(
+    action: CableAction, holding_end_effectors: set[EndEffector]
+) -> list[tuple[CartesianPose, bool]]:
     """
-    :param holding_end_effectors: The end effectors closed on the cable before the plan.
-    :return: Every tool center point motion among the plan's children, in order, with
-        whether both grippers are closed on the cable when it starts.
+    :param action: An expanded cable action.
+    :param holding_end_effectors: The end effectors closed on the cable before the
+        action.
+    :return: Every pose goal among the action's steps, in order, with whether both
+        grippers are closed on the cable when it starts.
     """
     closed_end_effectors = set(holding_end_effectors)
-    motions = []
-    for child in plan.children:
-        if not isinstance(child, MotionNode):
-            continue
-        motion = child.designator
-        if isinstance(motion, MoveGripperMotion):
-            configuration = motion.configuration
+    goals = []
+    for step in action.nodes:
+        if isinstance(step, SetGripperAction):
+            configuration = step.configuration
             if (
                 isinstance(configuration, GriplinkFlexConfiguration)
                 and configuration.grip_position
@@ -295,9 +292,9 @@ def _tool_center_point_motions_by_grip(
                 closed_end_effectors.add(configuration.end_effector)
             else:
                 closed_end_effectors.discard(configuration.end_effector)
-        elif isinstance(motion, MoveToolCenterPointMotion):
-            motions.append((motion, len(closed_end_effectors) == 2))
-    return motions
+        elif isinstance(step, CartesianPose):
+            goals.append((step, len(closed_end_effectors) == 2))
+    return goals
 
 
 def test_grasp_replans_the_motions_with_one_gripper_on_the_cable_and_at_clear_scoop_pose(
@@ -305,29 +302,26 @@ def test_grasp_replans_the_motions_with_one_gripper_on_the_cable_and_at_clear_sc
 ):
     """
     The scoop arm's motions at the clear scoop pose may be replanned although both
-    grippers hold the cable; every other motion with both grippers on the cable may
-    not.
+    grippers hold the cable; every other motion with both grippers on the cable may not.
     """
     plans, _ = _cable_demo_plans(parked_daisy_world)
-    (grasp,) = plans.grasp().children
-    scoop_arm = grasp.designator._choose_scoop_arm()
-    clear_scoop_position = grasp.designator._calculate_scoop_poses(
+    grasp = expand(plans.grasp(), robot_extensions(_robot(parked_daisy_world)))
+    scoop_arm = grasp._choose_scoop_arm()
+    clear_scoop_position = grasp._calculate_scoop_poses(
         scoop_arm, scoop_arm.end_effector
     )["clear_scoop_pose"].position.to_np()
 
-    motions = _tool_center_point_motions_by_grip(
-        grasp.designator._action_plan, holding_end_effectors=set()
-    )
+    goals = _tool_center_point_goals_by_grip(grasp, holding_end_effectors=set())
     at_clear_scoop_pose = [
-        motion.arm == scoop_arm
-        and motion.target.position.to_np() == pytest.approx(clear_scoop_position)
-        for motion, _ in motions
+        goal.tip_link is scoop_arm.end_effector.tool_frame
+        and goal.goal_pose.position.to_np() == pytest.approx(clear_scoop_position)
+        for goal, _ in goals
     ]
 
     assert sum(at_clear_scoop_pose) == 2
-    assert [motion.allow_replanning for motion, _ in motions] == [
+    assert [goal.allow_replanning for goal, _ in goals] == [
         not held_by_both or at_pose
-        for (_, held_by_both), at_pose in zip(motions, at_clear_scoop_pose)
+        for (_, held_by_both), at_pose in zip(goals, at_clear_scoop_pose)
     ]
 
 
@@ -338,15 +332,15 @@ def test_regrasp_replans_exactly_the_motions_with_one_gripper_on_the_cable(
     holding_gripper = _robot(parked_daisy_world).left_arm.end_effector
     with parked_daisy_world.modify_world():
         parked_daisy_world.move_branch(workcell.cable.root, holding_gripper.tool_frame)
-    (regrasp,) = plans.regrasp().children
+    regrasp = expand(plans.regrasp(), robot_extensions(_robot(parked_daisy_world)))
 
-    motions = _tool_center_point_motions_by_grip(
-        regrasp.designator._action_plan, holding_end_effectors={holding_gripper}
+    goals = _tool_center_point_goals_by_grip(
+        regrasp, holding_end_effectors={holding_gripper}
     )
 
-    assert any(held_by_both for _, held_by_both in motions)
-    assert [motion.allow_replanning for motion, _ in motions] == [
-        not held_by_both for _, held_by_both in motions
+    assert any(held_by_both for _, held_by_both in goals)
+    assert [goal.allow_replanning for goal, _ in goals] == [
+        not held_by_both for _, held_by_both in goals
     ]
 
 

@@ -24,9 +24,11 @@ from experiments.daisy_cable_replanning.joint_state_browser import (
 from experiments.daisy_cable_replanning.robot_snapshot import RobotSnapshot
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
-from semantic_digital_twin.utils import daisy_installed
+from semantic_digital_twin.robots.daisy import DAiSy
 
-pytestmark = pytest.mark.skipif(not daisy_installed(), reason="DAiSy not installed")
+pytestmark = pytest.mark.skipif(
+    not DAiSy.is_description_installed(), reason="DAiSy not installed"
+)
 
 # %% fixtures
 

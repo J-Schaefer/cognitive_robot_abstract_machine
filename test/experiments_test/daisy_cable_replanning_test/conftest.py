@@ -14,7 +14,6 @@ from experiments.daisy_cable_replanning.cable_demo import DemoScript
 from semantic_digital_twin.adapters.urdf import URDFParser
 from semantic_digital_twin.datastructures.definitions import StaticJointState
 from semantic_digital_twin.robots.daisy import DAiSy
-from semantic_digital_twin.utils import daisy_installed
 from semantic_digital_twin.world import World
 
 # %% DAiSy world
@@ -25,9 +24,9 @@ def parked_daisy_world() -> World:
     """
     A DAiSy world with both arms parked.
     """
-    if not daisy_installed():
+    if not DAiSy.is_description_installed():
         pytest.skip("DAiSy not installed")
-    world = URDFParser.from_file(file_path=DAiSy.get_ros_file_path()).parse()
+    world = URDFParser.from_file(file_path=DAiSy.get_ros_file_path()).create_world()
     DAiSy.from_world(world)
     robot = world.get_semantic_annotations_by_type(DAiSy)[0]
     for arm in robot.all_arms:

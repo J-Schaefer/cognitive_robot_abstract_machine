@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from enum import StrEnum
 from itertools import pairwise
@@ -11,10 +11,18 @@ from math import ceil, pi
 from pathlib import Path
 
 import numpy as np
-from coraplex.plans.plan_node import ActionNode, MotionNode
-from coraplex.plans.plan_transformation import PlanTransformation
-from coraplex.robot_plans.actions.base import ActionDescription
-from coraplex.robot_plans.motions.gripper import MoveToolCenterPointMotion
+from coraplex.datastructures.enums import InsertionPosition
+from coraplex.plans.context_extensions import RobotAccess
+from coraplex.plans.plan_transformation import (
+    PlanRewriting,
+    PlanTransformation,
+    RecoveryByInsertion,
+    SequentialInsertion,
+)
+from cramph.composites import Parallel, Sequence, StoppedWhenTrue
+from cramph.data_types import ObservationStateValues
+from cramph.failure_handling import HandledOnFailure
+from cramph.node import EndedByOwner, StatechartNode
 from experiments.daisy_cable_replanning.collisions import (
     ActiveMotionTracker,
     ArmCollisionPairs,
@@ -26,26 +34,24 @@ from experiments.daisy_cable_replanning.exceptions import (
     NoValidGoalConfiguration,
     RejectedGoalConfiguration,
 )
-from giskardpy.motion_statechart.context import MotionStatechartContext
-from giskardpy.motion_statechart.data_types import ObservationStateValues
-from giskardpy.motion_statechart.goals.collision_avoidance import (
-    UpdateTemporaryCollisionRules,
-)
-from giskardpy.motion_statechart.goals.templates import Parallel, Sequence
 from giskardpy.motion_statechart.graph_node import MotionStatechartNode
 from giskardpy.motion_statechart.monitors.joint_monitors import (
     CloseToJointConfigurations,
     JointConfigurationSet,
     RecentJointStates,
 )
-from giskardpy.motion_statechart.monitors.progress_monitors import NoLongerProgressing
-from giskardpy.motion_statechart.monitors.templates import ReplacedWhenTrue
+from giskardpy.motion_statechart.monitors.progress_monitors import Stalled
+from giskardpy.motion_statechart.tasks.cartesian_tasks import CartesianPose
+from giskardpy.motion_statechart.tasks.collision_avoidance import (
+    UpdateTemporaryCollisionRules,
+)
 from giskardpy.motion_statechart.tasks.joint_tasks import (
     JointWaypointPath,
     RetraceRecentJointStates,
     RetractToLastSafeJointConfiguration,
 )
 from krrood.adapters.json_serializer import to_json
+from krrood_spatial_math.spatial_types import Pose
 from ompl import base as ompl_base
 from ompl import geometric as ompl_geometric
 from semantic_digital_twin.collision_checking.collision_detector import ClosestPoints
@@ -60,10 +66,12 @@ from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.robots.robot_parts import Arm
 from semantic_digital_twin.semantic_annotations.cable import Cable
 from semantic_digital_twin.spatial_computations.ik_solver import IKSolverException
-from semantic_digital_twin.spatial_types.spatial_types import Pose
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.connections import ActiveConnection1DOF
-from semantic_digital_twin.world_description.world_entity import Body
+from semantic_digital_twin.world_description.world_entity import (
+    Body,
+    KinematicStructureEntity,
+)
 from typing_extensions import Self
 
 # %% parameters
@@ -621,34 +629,34 @@ class ReplanningLog:
 # %% planned path
 
 
-@dataclass(eq=False, repr=False)
+@dataclass(eq=False, repr=False, kw_only=True)
 class PlannedJointPathToPose(JointWaypointPath):
     """
     Moves an arm along a path planned, once it starts, from where the arm is to a joint
     configuration that puts its tool frame at a goal pose.
     """
 
-    planner: JointSpacePlanner = field(kw_only=True)
+    planner: JointSpacePlanner
     """
     Plans the path.
     """
 
-    goal_sampler: GoalConfigurationSampler = field(kw_only=True)
+    goal_sampler: GoalConfigurationSampler
     """
     Finds the joint configurations that put the arm's tool frame at the goal pose.
     """
 
-    goal_pose: Pose = field(kw_only=True)
+    goal_pose: Pose
     """
     Where the tool frame is brought.
     """
 
-    replanning_log: ReplanningLog = field(kw_only=True)
+    replanning_log: ReplanningLog
     """
     Where the planned path is recorded.
     """
 
-    def plan_waypoints(self, context: MotionStatechartContext) -> list[np.ndarray]:
+    def plan_waypoints(self) -> list[np.ndarray]:
         goals = self.goal_sampler.configurations_reaching(self.goal_pose)
         waypoints = self.planner.plan(goals)
         self.replanning_log.record(waypoints)
@@ -684,35 +692,38 @@ class RetractTarget(StrEnum):
     """
 
 
-@dataclass(eq=False, repr=False)
-class PathSinceMotionStart(MotionStatechartNode):
+@dataclass(eq=False, repr=False, kw_only=True)
+class PathSinceMotionStart(EndedByOwner, MotionStatechartNode):
     """
     Remembers the joint states an arm passed since it started; observes False
     throughout.
     """
 
-    connections: list[ActiveConnection1DOF] = field(kw_only=True)
+    connections: list[ActiveConnection1DOF]
     """
     The joints of the arm.
     """
 
-    waypoint_spacing: float = field(kw_only=True)
+    waypoint_spacing: float
     """
     Largest joint difference, in radians, between consecutive remembered joint states.
     """
 
-    path: list[np.ndarray] = field(init=False, default_factory=list)
+    passed_positions: list[np.ndarray] = field(init=False, default_factory=list)
     """
     The remembered positions of :attr:`connections`, the earliest first.
     """
 
-    def on_start(self, context: MotionStatechartContext) -> None:
-        self.path = [self._current_positions()]
+    def on_start(self) -> None:
+        self.passed_positions = [self._current_positions()]
 
-    def on_tick(self, context: MotionStatechartContext) -> ObservationStateValues:
+    def on_tick(self) -> ObservationStateValues:
         positions = self._current_positions()
-        if np.max(np.abs(positions - self.path[-1])) >= self.waypoint_spacing:
-            self.path.append(positions)
+        if (
+            np.max(np.abs(positions - self.passed_positions[-1]))
+            >= self.waypoint_spacing
+        ):
+            self.passed_positions.append(positions)
         return ObservationStateValues.FALSE
 
     def _current_positions(self) -> np.ndarray:
@@ -722,7 +733,7 @@ class PathSinceMotionStart(MotionStatechartNode):
         return np.array([connection.position for connection in self.connections])
 
 
-@dataclass(eq=False, repr=False)
+@dataclass(eq=False, repr=False, kw_only=True)
 class PathSinceLastClearJointState(PathSinceMotionStart):
     """
     Remembers the joint states an arm passed since its last clear joint state, the one
@@ -730,30 +741,30 @@ class PathSinceLastClearJointState(PathSinceMotionStart):
     started if there was none.
     """
 
-    clearances: CollisionMatrix = field(kw_only=True)
+    clearances: CollisionMatrix
     """
     The pairs of bodies, each with the distance it has to keep for a joint state to
     count as clear.
     """
 
-    def on_tick(self, context: MotionStatechartContext) -> ObservationStateValues:
+    def on_tick(self) -> ObservationStateValues:
         positions = self._current_positions()
         if not ProbedJointState(
-            world=context.world, connections=self.connections
+            world=self.world, connections=self.connections
         ).is_collision_free(positions, self.clearances):
-            return super().on_tick(context)
-        self.path = [positions]
+            return super().on_tick()
+        self.passed_positions = [positions]
         return ObservationStateValues.FALSE
 
 
-@dataclass(eq=False, repr=False)
+@dataclass(eq=False, repr=False, kw_only=True)
 class RetractAlongRememberedPath(JointWaypointPath):
     """
     Moves the joints a :class:`PathSinceMotionStart` watches back along the remembered
     path to where it begins.
     """
 
-    monitor: PathSinceMotionStart = field(kw_only=True)
+    monitor: PathSinceMotionStart
     """
     The node that remembers the path.
     """
@@ -767,51 +778,86 @@ class RetractAlongRememberedPath(JointWaypointPath):
         self.connections = self.monitor.connections
         super().__post_init__()
 
-    def plan_waypoints(self, context: MotionStatechartContext) -> list[np.ndarray]:
-        return list(reversed(self.monitor.path))
+    def plan_waypoints(self) -> list[np.ndarray]:
+        return list(reversed(self.monitor.passed_positions))
 
 
-# %% replanned motions
+# %% recovering a stuck motion
 
 
 @dataclass
-class ToolCenterPointMotionWithReplanning(MoveToolCenterPointMotion):
+class RecoveryBeforeStuckMotion(SequentialInsertion[StoppedWhenTrue]):
     """
-    Moves the tool center point like :class:`MoveToolCenterPointMotion`, but gives way
-    to a joint path planned to the same target when its subclass's trigger fires.
-    """
-
-    parameters: ReplanningParameters = field(kw_only=True)
-    """
-    When the motion gives way and how the replacing path is planned.
+    Inserts the steps recovering a motion its monitor stopped right before the step
+    holding it, so the motion runs again from where they leave the arm.
     """
 
-    replanning_log: ReplanningLog = field(kw_only=True)
+    steps: list[StatechartNode]
     """
-    Where the replacing paths are recorded.
+    The steps recovering the motion, in the order they run.
     """
 
-    @classmethod
-    def replacing(cls, motion: MoveToolCenterPointMotion, **replanning: object) -> Self:
+    @property
+    def position(self) -> InsertionPosition:
+        return InsertionPosition.BEFORE
+
+    def is_applicable(self, plan_node: StoppedWhenTrue) -> bool:
+        return True
+
+    def anchor(self, plan_node: StoppedWhenTrue) -> StatechartNode:
+        return plan_node
+
+    def nodes_to_insert(self, plan_node: StoppedWhenTrue) -> list[StatechartNode]:
+        return [Sequence(name="recovery of the stuck motion", nodes=self.steps)]
+
+
+# %% plan transformations
+
+
+@dataclass
+class MovingArm:
+    """
+    An arm whose path is planned, with the robot and the world it moves in.
+    """
+
+    arm: Arm
+    """
+    The arm whose path is planned.
+    """
+
+    robot: DAiSy
+    """
+    The robot the arm belongs to.
+    """
+
+    world: World
+    """
+    The world the robot is in.
+    """
+
+    @staticmethod
+    def arm_with_tool_frame(
+        robot: DAiSy, tool_frame: KinematicStructureEntity
+    ) -> Arm | None:
         """
-        :param motion: The motion to replace.
-        :param replanning: The fields this class adds to the motion's own.
-        :return: A motion of this class with the parameters of the given motion.
+        :return: The arm of the robot whose tool frame is `tool_frame`, if any.
         """
-        values = vars(motion)
-        return cls(
-            **{
-                motion_field.name: values[motion_field.name]
-                for motion_field in fields(motion)
-                if motion_field.init
-            },
-            **replanning,
+        return next(
+            (
+                arm
+                for arm in robot.all_arms
+                if arm.end_effector.tool_frame is tool_frame
+            ),
+            None,
         )
 
-    def _planner(
-        self, illegal_configurations: JointConfigurationSet
+    def path_planner(
+        self,
+        parameters: ReplanningParameters,
+        illegal_configurations: JointConfigurationSet,
     ) -> JointSpacePlanner:
         """
+        :param parameters: How the path is planned.
         :param illegal_configurations: The joint configurations the path keeps clear
             of.
         :return: The planner of the arm's path, ignoring the soft cable.
@@ -820,91 +866,222 @@ class ToolCenterPointMotionWithReplanning(MoveToolCenterPointMotion):
             world=self.world,
             robot=self.robot,
             arm=self.arm,
-            # The cable is soft and meant to be touched; the demo allows its
-            # collisions.
+            # The cable is soft and meant to be touched; the demo allows its collisions.
             ignored_bodies={
                 cable.root
                 for cable in self.world.get_semantic_annotations_by_type(Cable)
             },
             illegal_configurations=illegal_configurations,
-            parameters=self.parameters,
+            parameters=parameters,
         )
 
-    @property
-    def _goal_sampler(self) -> GoalConfigurationSampler:
+    def goal_sampler(
+        self, parameters: ReplanningParameters
+    ) -> GoalConfigurationSampler:
         """
-        :return: The sampler of the arm's joint configurations reaching the target.
+        :param parameters: How many seeds are tried and how far they spread.
+        :return: The sampler of the arm's joint configurations reaching a pose.
         """
         return GoalConfigurationSampler(
-            world=self.world,
-            arm=self.arm,
-            root=self.robot.root,
-            parameters=self.parameters,
+            world=self.world, arm=self.arm, root=self.robot.root, parameters=parameters
         )
 
-    def _planned_path(
-        self, illegal_configurations: JointConfigurationSet
-    ) -> PlannedJointPathToPose:
-        """
-        :param illegal_configurations: The joint configurations the path keeps clear
-            of.
-        :return: The path to the target, planned once it starts.
-        """
-        return PlannedJointPathToPose(
-            name="planned joint path",
-            connections=self.arm.active_connections,
-            planner=self._planner(illegal_configurations),
-            goal_sampler=self._goal_sampler,
-            goal_pose=self.target,
-            replanning_log=self.replanning_log,
-        )
-
-    def _without_collision_avoidance_of_arm(
-        self, path: MotionStatechartNode
-    ) -> Sequence:
+    def without_collision_avoidance(self, path: JointWaypointPath) -> Parallel:
         """
         :param path: The node moving the arm along a path checked against the bodies
             themselves, such as a planned or an already driven one.
         :return: The path, followed while Giskard's collision avoidance leaves the
-            arm's bodies alone, and the collision rules restored after it.
-
-        Giskard's avoidance would keep the arm out of its buffer zones around the
-        bodies, which the path may pass through, and hold it back again.
+            arm's bodies alone, since it would keep the arm out of the buffer zones the
+            path may pass through.
         """
         arm_bodies = ArmCollisionPairs(
             world=self.world, robot=self.robot
         ).bodies_of_arm[self.arm]
-        return Sequence(
-            name=f"follow {path.name}",
+        return Parallel(
+            name=f"{path.name} without collision avoidance of the arm",
             nodes=[
-                Parallel(
-                    name=f"{path.name} without collision avoidance of the arm",
-                    nodes=[
-                        UpdateTemporaryCollisionRules(
-                            name="allow collisions of the arm",
-                            temporary_rules=[
-                                AllowCollisionForBodies(
-                                    allowed_collision_bodies=arm_bodies
-                                )
-                            ],
-                        ),
-                        path,
+                UpdateTemporaryCollisionRules(
+                    name="allow collisions of the arm",
+                    temporary_rules=[
+                        AllowCollisionForBodies(allowed_collision_bodies=arm_bodies)
                     ],
                 ),
-                UpdateTemporaryCollisionRules(
-                    name="restore collision rules",
-                    temporary_rules=list(self.world.collision_manager.temporary_rules),
-                ),
+                path,
             ],
         )
 
 
 @dataclass
-class ReplannedToolCenterPointMotion(ToolCenterPointMotionWithReplanning):
+class ReplannedGoal(MovingArm):
     """
-    Leaves the motion as soon as the arms come close to an illegal joint state,
-    retracts to the last safe joint state and reaches the target along a path planned
-    around the illegal joint states.
+    A pose goal of an arm's tool frame that is replaced, with what replanning it reads.
+    """
+
+    goal: CartesianPose
+    """
+    A copy of the goal, not yet part of a statechart.
+    """
+
+
+@dataclass
+class MonitoredGoalWithRecovery:
+    """
+    A pose goal its monitor stops, and the steps run before it runs again.
+    """
+
+    monitored_goal: StoppedWhenTrue
+    """
+    The goal, stopped once the monitor fires.
+    """
+
+    recovery_steps: list[StatechartNode]
+    """
+    The steps run once the monitor stopped the goal, in the order they run.
+    """
+
+
+@dataclass
+class ReplanningTransformation(PlanTransformation[CartesianPose], ABC):
+    """
+    Replaces the pose goals of an arm's tool frame that allow replanning and are steps of
+    a sequence by its subclass's :meth:`replacement_for`, which reaches the goal pose
+    along a planned joint path once the goal gets stuck.
+    """
+
+    parameters: ReplanningParameters = field(kw_only=True)
+    """
+    When a goal gives way and how the path is planned.
+    """
+
+    replanning_log: ReplanningLog = field(kw_only=True)
+    """
+    Where the planned paths are recorded.
+    """
+
+    def is_applicable(self, plan_node: CartesianPose) -> bool:
+        """
+        A goal is replanned in a :class:`~cramph.composites.Sequence`, which runs the
+        recovery as a step before it.
+        """
+        return (
+            plan_node.allow_replanning
+            and isinstance(plan_node.parent_node, Sequence)
+            and self._arm_moved_by(plan_node) is not None
+        )
+
+    def apply(self, plan_node: CartesianPose) -> None:
+        robot = plan_node.context.require_extension(extension_type=RobotAccess).robot
+        plan_node.statechart.replace(
+            node=plan_node,
+            replacement=self.replacement_for(
+                ReplannedGoal(
+                    goal=self._copy_of(plan_node),
+                    arm=self._arm_moved_by(plan_node),
+                    robot=robot,
+                    world=plan_node.world,
+                )
+            ),
+        )
+
+    @abstractmethod
+    def replacement_for(self, replanned: ReplannedGoal) -> StatechartNode:
+        """
+        :param replanned: The pose goal to replace.
+        :return: The node running in the goal's place.
+        """
+
+    @staticmethod
+    def _arm_moved_by(goal: CartesianPose) -> Arm | None:
+        """
+        :return: The arm of the robot whose tool frame the goal moves, if any.
+        """
+        robot = goal.context.require_extension(extension_type=RobotAccess).robot
+        return MovingArm.arm_with_tool_frame(robot, goal.tip_link)
+
+    @staticmethod
+    def _copy_of(goal: CartesianPose) -> CartesianPose:
+        """
+        :return: A new goal reaching the same pose, handed copies of the nodes the goal
+            was handed, which the plan's rewriting leaves alone.
+        """
+        copy = replace(goal)
+        for handed_node in goal.nodes[len(goal.create_tasks()) :]:
+            copy.add_node(node=replace(handed_node))
+        goal.context.require_extension(extension_type=PlanRewriting).treat_as_offered(
+            copy
+        )
+        return copy
+
+    def _stalled(self, monitored_node: StatechartNode) -> Stalled:
+        """
+        :return: The monitor turning True once the node stops approaching its goal.
+        """
+        return Stalled(
+            name="no longer progressing",
+            monitored_node=monitored_node,
+            timeout=timedelta(seconds=self.parameters.stagnation_timeout),
+        )
+
+
+@dataclass
+class InsertedRecoveryReplanning(ReplanningTransformation, ABC):
+    """
+    Puts each goal under failure handling that, once its subclass's monitor stopped the
+    goal, inserts the steps recovering it before the goal and runs the goal again.
+
+    .. warning:: The recovery changes the statechart while it runs, so it only works in a
+        statechart ticked in this process.
+    """
+
+    def replacement_for(self, replanned: ReplannedGoal) -> HandledOnFailure:
+        monitored = self.monitored_goal_with_recovery(replanned)
+        return HandledOnFailure(
+            name=replanned.goal.name,
+            handled_node=monitored.monitored_goal,
+            failure_handling_strategy=RecoveryByInsertion(
+                maximum_attempts=1,
+                transformation=RecoveryBeforeStuckMotion(
+                    steps=monitored.recovery_steps
+                ),
+            ),
+        )
+
+    @abstractmethod
+    def monitored_goal_with_recovery(
+        self, replanned: ReplannedGoal
+    ) -> MonitoredGoalWithRecovery:
+        """
+        :param replanned: The pose goal to replace.
+        :return: The goal, stopped once this transformation's monitor fires, with the
+            steps recovering it.
+        """
+
+    def _planned_path(
+        self,
+        replanned: ReplannedGoal,
+        illegal_configurations: JointConfigurationSet,
+    ) -> PlannedJointPathToPose:
+        """
+        :param illegal_configurations: The joint configurations the path keeps clear
+            of.
+        :return: The path of the arm to the goal pose, planned once it starts.
+        """
+        return PlannedJointPathToPose(
+            name="planned joint path",
+            connections=replanned.arm.active_connections,
+            planner=replanned.path_planner(self.parameters, illegal_configurations),
+            goal_sampler=replanned.goal_sampler(self.parameters),
+            goal_pose=replanned.goal.goal_pose,
+            replanning_log=self.replanning_log,
+        )
+
+
+@dataclass
+class IllegalJointStateReplanning(InsertedRecoveryReplanning):
+    """
+    Stops the pose goals of the actions illegal joint states were recorded in as soon as
+    the arms come close to one, retracts to the last safe joint state and plans a path
+    to the goal pose around the illegal joint states.
     """
 
     illegal_joint_states: IllegalJointStateDatabase = field(kw_only=True)
@@ -912,10 +1089,19 @@ class ReplannedToolCenterPointMotion(ToolCenterPointMotionWithReplanning):
     The joint states to stay away from.
     """
 
-    @property
-    def _motion_chart(self) -> ReplacedWhenTrue:
+    def is_applicable(self, plan_node: CartesianPose) -> bool:
+        return super().is_applicable(plan_node) and type(
+            plan_node.parent_node
+        ).__name__ in {
+            state.motion.action
+            for state in self.illegal_joint_states.illegal_joint_states
+        }
+
+    def monitored_goal_with_recovery(
+        self, replanned: ReplannedGoal
+    ) -> MonitoredGoalWithRecovery:
         illegal_configurations = self.illegal_joint_states.joint_configurations(
-            self.world
+            replanned.world
         )
         monitor = CloseToJointConfigurations(
             name="close to illegal joint state",
@@ -923,237 +1109,26 @@ class ReplannedToolCenterPointMotion(ToolCenterPointMotionWithReplanning):
             threshold=self.parameters.trigger_distance,
             safe_distance=self.parameters.safe_distance,
         )
-        return ReplacedWhenTrue(
-            name="MoveTCP or replanned path",
-            monitor=monitor,
-            monitored_node=super()._motion_chart,
-            replacement=Sequence(
-                name="retract and follow planned path",
-                nodes=[
-                    RetractToLastSafeJointConfiguration(
-                        name="retract to last safe joint state", monitor=monitor
-                    ),
-                    self._planned_path(illegal_configurations),
-                ],
+        return MonitoredGoalWithRecovery(
+            monitored_goal=StoppedWhenTrue(
+                monitor=monitor, monitored_node=replanned.goal
             ),
+            recovery_steps=[
+                RetractToLastSafeJointConfiguration(
+                    name="retract to last safe joint state", monitor=monitor
+                ),
+                self._planned_path(replanned, illegal_configurations),
+            ],
         )
 
 
 @dataclass
-class StagnationReplannedToolCenterPointMotion(ToolCenterPointMotionWithReplanning):
+class StagnationReplanning(InsertedRecoveryReplanning):
     """
-    Leaves the motion once it stops approaching its target short of reaching it, as it
-    does when collision avoidance holds the arm back, and reaches the target from where
-    the arm got stuck along a collision-free planned path.
-    """
-
-    @property
-    def _motion_chart(self) -> ReplacedWhenTrue:
-        motion = super()._motion_chart
-        return ReplacedWhenTrue(
-            name="MoveTCP or replanned path",
-            monitor=NoLongerProgressing(
-                name="no longer progressing",
-                monitored_node=motion,
-                timeout=timedelta(seconds=self.parameters.stagnation_timeout),
-            ),
-            monitored_node=motion,
-            replacement=self._without_collision_avoidance_of_arm(
-                self._planned_path(
-                    IllegalJointStateDatabase.for_daisy_arms().joint_configurations(
-                        self.world
-                    )
-                )
-            ),
-        )
-
-
-@dataclass
-class RetractedStagnationReplannedToolCenterPointMotion(
-    ToolCenterPointMotionWithReplanning
-):
-    """
-    Like :class:`StagnationReplannedToolCenterPointMotion`, but once the motion is stuck
-    the arm first retracts along its path to :attr:`retract_target`, and the path to
-    the target is planned from there.
-    """
-
-    retract_target: RetractTarget = field(kw_only=True)
-    """
-    Where the arm retracts to.
-    """
-
-    @property
-    def _motion_chart(self) -> ReplacedWhenTrue:
-        motion = super()._motion_chart
-        planned_path = self._planned_path(
-            IllegalJointStateDatabase.for_daisy_arms().joint_configurations(self.world)
-        )
-        retract = self._retract(planned_path)
-        motion_remembering_its_path = Parallel(
-            name="MoveTCP remembering its path",
-            nodes=[motion, retract.monitor],
-            minimum_success=1,
-        )
-        return ReplacedWhenTrue(
-            name="MoveTCP or retract and replanned path",
-            monitor=NoLongerProgressing(
-                name="no longer progressing",
-                monitored_node=motion_remembering_its_path,
-                timeout=timedelta(seconds=self.parameters.stagnation_timeout),
-            ),
-            monitored_node=motion_remembering_its_path,
-            replacement=Sequence(
-                name="retract and follow planned path",
-                nodes=[
-                    (
-                        self._without_collision_avoidance_of_arm(retract)
-                        if self.retract_target is RetractTarget.RECENT_STEPS
-                        else retract
-                    ),
-                    self._without_collision_avoidance_of_arm(planned_path),
-                ],
-            ),
-        )
-
-    def _retract(
-        self, planned_path: PlannedJointPathToPose
-    ) -> RetractAlongRememberedPath | RetraceRecentJointStates:
-        """
-        :param planned_path: The path planned after retracting, whose planner's body
-            pairs decide whether a joint state is clear.
-        :return: The node moving the arm back to :attr:`retract_target`, whose monitor
-            remembers the way back while the motion runs.
-        """
-        name = f"retract to {self.retract_target}"
-        match self.retract_target:
-            case RetractTarget.RECENT_STEPS:
-                return RetraceRecentJointStates(
-                    name=name,
-                    monitor=RecentJointStates(
-                        name="recent joint states",
-                        connections=self.arm.active_connections,
-                        control_cycles=self.parameters.retraced_control_cycles,
-                    ),
-                )
-            case RetractTarget.MOTION_START:
-                return RetractAlongRememberedPath(
-                    name=name,
-                    monitor=PathSinceMotionStart(
-                        name="path since motion start",
-                        connections=self.arm.active_connections,
-                        waypoint_spacing=self.parameters.waypoint_spacing,
-                    ),
-                )
-            case RetractTarget.LAST_CLEAR_STATE:
-                manager = self.world.collision_manager
-                return RetractAlongRememberedPath(
-                    name=name,
-                    monitor=PathSinceLastClearJointState(
-                        name="path since last clear joint state",
-                        connections=self.arm.active_connections,
-                        waypoint_spacing=self.parameters.waypoint_spacing,
-                        clearances=CollisionMatrix(
-                            {
-                                CollisionCheck(
-                                    check.body_a,
-                                    check.body_b,
-                                    manager.get_buffer_zone_distance(
-                                        check.body_a, check.body_b
-                                    )
-                                    + self.parameters.retract_clearance,
-                                )
-                                for check in planned_path.planner.collision_matrix().collision_checks
-                            }
-                        ),
-                    ),
-                )
-
-
-# %% plan transformations
-
-
-@dataclass
-class ReplanningTransformation(PlanTransformation[ActionDescription], ABC):
-    """
-    Replaces the tool center point motions of the actions it applies to by motions
-    that give way to a planned path, except those that do not allow replanning.
-    """
-
-    parameters: ReplanningParameters = field(kw_only=True)
-    """
-    When a motion gives way and how the replacing path is planned.
-    """
-
-    replanning_log: ReplanningLog = field(kw_only=True)
-    """
-    Where the replacing paths are recorded.
-    """
-
-    @abstractmethod
-    def replacement_for(
-        self, motion: MoveToolCenterPointMotion
-    ) -> ToolCenterPointMotionWithReplanning:
-        """
-        :return: The motion replacing the given one.
-        """
-
-    def apply(self, plan_node: ActionNode) -> None:
-        for node in plan_node.descendants:
-            if (
-                not isinstance(node, MotionNode)
-                or type(node.designator) is not MoveToolCenterPointMotion
-                or not node.designator.allow_replanning
-            ):
-                continue
-            self.rewrite_motion_node(node)
-
-    def rewrite_motion_node(self, node: MotionNode) -> None:
-        """
-        Replace the tool center point motion of the node by :meth:`replacement_for`.
-
-        :param node: A node of a :class:`MoveToolCenterPointMotion`.
-        """
-        node.designator = self.replacement_for(node.designator)
-        node.designator.plan_node = node
-
-
-@dataclass
-class IllegalJointStateReplanning(ReplanningTransformation):
-    """
-    Replaces the tool center point motions of the actions illegal joint states were
-    recorded in by :class:`ReplannedToolCenterPointMotion`.
-    """
-
-    illegal_joint_states: IllegalJointStateDatabase = field(kw_only=True)
-    """
-    The joint states to stay away from.
-    """
-
-    def is_applicable(self, plan_node: ActionNode) -> bool:
-        return type(plan_node.action).__name__ in {
-            state.motion.action
-            for state in self.illegal_joint_states.illegal_joint_states
-        }
-
-    def replacement_for(
-        self, motion: MoveToolCenterPointMotion
-    ) -> ReplannedToolCenterPointMotion:
-        return ReplannedToolCenterPointMotion.replacing(
-            motion,
-            illegal_joint_states=self.illegal_joint_states,
-            parameters=self.parameters,
-            replanning_log=self.replanning_log,
-        )
-
-
-@dataclass
-class StagnationReplanning(ReplanningTransformation):
-    """
-    Replaces the tool center point motions of every action by
-    :class:`StagnationReplannedToolCenterPointMotion`, or by
-    :class:`RetractedStagnationReplannedToolCenterPointMotion` if the arm retracts
-    first.
+    Stops every pose goal once it stops approaching its pose short of reaching it, as it
+    does when collision avoidance holds the arm back, and plans a collision-free path to
+    the pose, from where the arm got stuck or after retracting it to
+    :attr:`retract_target`.
     """
 
     retract_target: RetractTarget | None = field(default=None, kw_only=True)
@@ -1162,19 +1137,102 @@ class StagnationReplanning(ReplanningTransformation):
     where it got stuck.
     """
 
-    def is_applicable(self, plan_node: ActionNode) -> bool:
-        return True
-
-    def replacement_for(
-        self, motion: MoveToolCenterPointMotion
-    ) -> ToolCenterPointMotionWithReplanning:
+    def monitored_goal_with_recovery(
+        self, replanned: ReplannedGoal
+    ) -> MonitoredGoalWithRecovery:
+        path = self._planned_path(
+            replanned,
+            IllegalJointStateDatabase.for_daisy_arms().joint_configurations(
+                replanned.world
+            ),
+        )
+        planned_path = replanned.without_collision_avoidance(path)
+        goal = replanned.goal
         if self.retract_target is None:
-            return StagnationReplannedToolCenterPointMotion.replacing(
-                motion, parameters=self.parameters, replanning_log=self.replanning_log
+            return MonitoredGoalWithRecovery(
+                monitored_goal=StoppedWhenTrue(
+                    monitor=self._stalled(goal), monitored_node=goal
+                ),
+                recovery_steps=[planned_path],
             )
-        return RetractedStagnationReplannedToolCenterPointMotion.replacing(
-            motion,
-            parameters=self.parameters,
-            replanning_log=self.replanning_log,
-            retract_target=self.retract_target,
+        retract = self._retract(replanned, path.planner)
+        goal_remembering_its_path = Parallel(
+            name=f"{goal.name} remembering its path",
+            nodes=[goal, retract.monitor],
+            minimum_success=1,
+        )
+        return MonitoredGoalWithRecovery(
+            monitored_goal=StoppedWhenTrue(
+                monitor=self._stalled(goal_remembering_its_path),
+                monitored_node=goal_remembering_its_path,
+            ),
+            recovery_steps=[
+                (
+                    replanned.without_collision_avoidance(retract)
+                    if self.retract_target is RetractTarget.RECENT_STEPS
+                    else retract
+                ),
+                planned_path,
+            ],
+        )
+
+    def _retract(
+        self, replanned: ReplannedGoal, planner: JointSpacePlanner
+    ) -> RetractAlongRememberedPath | RetraceRecentJointStates:
+        """
+        :param planner: The planner of the path planned after retracting, whose body
+            pairs decide whether a joint state is clear.
+        :return: The node moving the arm back to :attr:`retract_target`, whose monitor
+            remembers the way back while the goal runs.
+        """
+        name = f"retract to {self.retract_target}"
+        connections = replanned.arm.active_connections
+        match self.retract_target:
+            case RetractTarget.RECENT_STEPS:
+                return RetraceRecentJointStates(
+                    name=name,
+                    monitor=RecentJointStates(
+                        name="recent joint states",
+                        connections=connections,
+                        control_cycles=self.parameters.retraced_control_cycles,
+                    ),
+                )
+            case RetractTarget.MOTION_START:
+                return RetractAlongRememberedPath(
+                    name=name,
+                    monitor=PathSinceMotionStart(
+                        name="path since motion start",
+                        connections=connections,
+                        waypoint_spacing=self.parameters.waypoint_spacing,
+                    ),
+                )
+            case RetractTarget.LAST_CLEAR_STATE:
+                return RetractAlongRememberedPath(
+                    name=name,
+                    monitor=PathSinceLastClearJointState(
+                        name="path since last clear joint state",
+                        connections=connections,
+                        waypoint_spacing=self.parameters.waypoint_spacing,
+                        clearances=self._retract_clearances(replanned, planner),
+                    ),
+                )
+
+    def _retract_clearances(
+        self, replanned: ReplannedGoal, planner: JointSpacePlanner
+    ) -> CollisionMatrix:
+        """
+        :return: The pairs of bodies the planner checks the path against, each with its
+            Giskard buffer zone plus :attr:`ReplanningParameters.retract_clearance`.
+        """
+        manager = replanned.world.collision_manager
+        return CollisionMatrix(
+            {
+                CollisionCheck(
+                    check.body_a,
+                    check.body_b,
+                    manager.get_buffer_zone_distance(check.body_a, check.body_b)
+                    + self.parameters.retract_clearance,
+                )
+                for check in planner.collision_matrix().collision_checks
+            }
         )
