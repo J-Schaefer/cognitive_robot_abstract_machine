@@ -21,6 +21,10 @@ from semantic_digital_twin.adapters.ros import background_node
 from semantic_digital_twin.world_description.world_entity import (
     KinematicStructureEntity,
 )
+from typing_extensions import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from semantic_digital_twin.world import World
 
 # %% kinematic chain endpoints
 
@@ -40,6 +44,19 @@ class RootTipPair:
     """
     Name of the link the chain ends at.
     """
+
+    @staticmethod
+    def link_named(*, world: World, name: str) -> KinematicStructureEntity:
+        """
+        :param world: The world holding the link.
+        :param name: The name of a chain endpoint.
+        :return: The root of `world` if `name` is the name of its root, such as ``map``,
+            which a robot description may name one of its own links as well; the link
+            of `world` named `name` otherwise.
+        """
+        if name == world.root.name.name:
+            return world.root
+        return world.get_kinematic_structure_entity_by_name(name)
 
     @classmethod
     def pair_up(
@@ -198,11 +215,11 @@ class InteractiveMarkerNode:
         :raises WorldEntityNotFoundError: If entities cannot be found after all retries.
         """
         for chain in self.chains:
-            root_body = self.giskard.world.get_kinematic_structure_entity_by_name(
-                chain.root_link
+            root_body = RootTipPair.link_named(
+                world=self.giskard.world, name=chain.root_link
             )
-            tip_body = self.giskard.world.get_kinematic_structure_entity_by_name(
-                chain.tip_link
+            tip_body = RootTipPair.link_named(
+                world=self.giskard.world, name=chain.tip_link
             )
             kinematic_chain = KinematicChainMarker(
                 root_link=chain.root_link,
