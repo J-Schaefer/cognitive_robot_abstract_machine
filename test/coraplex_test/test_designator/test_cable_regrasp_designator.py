@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from coraplex.execution_environment import kinematically_simulated_robot
-from coraplex.plans.factories import sequential
 from coraplex.robot_plans.actions.core.cable_actions import (
     CableGraspAction,
     CableRegraspAction,
@@ -12,9 +10,11 @@ from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.reasoning.robot_predicates import is_body_in_gripper
 from semantic_digital_twin.semantic_annotations.cable import Cable
 
+from ...plan_running import run_plan
+
 
 def test_regrasp_identifies_holding_arm(mutable_cable_hanger_world):
-    world, view, context = mutable_cable_hanger_world
+    world, view, extensions = mutable_cable_hanger_world
 
     cable_annotations = world.get_semantic_annotations_by_type(Cable)
     assert len(cable_annotations) == 1
@@ -26,25 +26,14 @@ def test_regrasp_identifies_holding_arm(mutable_cable_hanger_world):
         grasp_offset=0.1,
         front_offset=0.1,
     )
-    plan = sequential(
-        [ParkArmsAction(view.all_arms), grasp_action],
-        context=context,
-    ).plan
-
-    with kinematically_simulated_robot:
-        plan.perform()
+    run_plan(ParkArmsAction(arms=view.all_arms), extensions)
+    run_plan(grasp_action, extensions)
 
     regrasp_action = CableRegraspAction(
         cable_annotation=cable_annotation,
         hanger_body=world.get_body_by_name(PrefixedName("hanger")),
     )
-    regrasp_plan = sequential(
-        [regrasp_action],
-        context=context,
-    ).plan
-
-    with kinematically_simulated_robot:
-        regrasp_plan.perform()
+    run_plan(regrasp_action, extensions)
 
     holding_arm = _determine_holding_arm(cable_annotation.root, view)
     free_arm = view.right_arm if holding_arm == view.left_arm else view.left_arm
@@ -58,31 +47,27 @@ def test_regrasp_identifies_holding_arm(mutable_cable_hanger_world):
 
 
 def test_regrasp_cable_held_by_both_arms(mutable_cable_hanger_world):
-    world, view, context = mutable_cable_hanger_world
+    world, view, extensions = mutable_cable_hanger_world
 
     cable_annotations = world.get_semantic_annotations_by_type(Cable)
     assert len(cable_annotations) == 1
     cable_annotation = cable_annotations[0]
 
-    plan = sequential(
-        [
-            ParkArmsAction(view.all_arms),
-            CableGraspAction(
-                cable_annotation=cable_annotation,
-                hanger_body=world.get_body_by_name(PrefixedName("hanger")),
-                grasp_offset=0.1,
-                front_offset=0.1,
-            ),
-            CableRegraspAction(
-                cable_annotation=cable_annotation,
-                hanger_body=world.get_body_by_name(PrefixedName("hanger")),
-            ),
-        ],
-        context=context,
-    ).plan
-
-    with kinematically_simulated_robot:
-        plan.perform()
+    hanger_body = world.get_body_by_name(PrefixedName("hanger"))
+    run_plan(ParkArmsAction(arms=view.all_arms), extensions)
+    run_plan(
+        CableGraspAction(
+            cable_annotation=cable_annotation,
+            hanger_body=hanger_body,
+            grasp_offset=0.1,
+            front_offset=0.1,
+        ),
+        extensions,
+    )
+    run_plan(
+        CableRegraspAction(cable_annotation=cable_annotation, hanger_body=hanger_body),
+        extensions,
+    )
 
     left_end_effector = view.left_arm.end_effector
     right_end_effector = view.right_arm.end_effector

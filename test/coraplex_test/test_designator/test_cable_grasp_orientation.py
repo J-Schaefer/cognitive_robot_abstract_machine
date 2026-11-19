@@ -8,7 +8,7 @@ import pytest
 from coraplex.robot_plans.actions.core.cable_actions import (
     _gripper_orientation_from_z_axis,
 )
-from semantic_digital_twin.spatial_types.spatial_types import Quaternion
+from krrood_spatial_math.spatial_types import Quaternion
 
 
 def _apply_rotation(quat: Quaternion, vector: np.ndarray) -> np.ndarray:

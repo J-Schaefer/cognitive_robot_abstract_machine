@@ -9,6 +9,7 @@ from krrood.exceptions import DataclassException
 if TYPE_CHECKING:
     from coraplex.robot_plans.actions.core.misc import DetectAction
     from semantic_digital_twin.robots.robot_part_mixins import HasTwoFingers
+    from semantic_digital_twin.world_description.world_entity import Body
 
 # %% detecting
 
@@ -63,3 +64,24 @@ class WidthBeyondGripperOpening(DataclassException):
             "grasp the object across a side narrower than the gripper opens, or with a "
             "gripper that opens wider."
         )
+
+
+# %% handling a cable
+
+
+@dataclass
+class CableNotHeld(DataclassException):
+    """
+    Raised when an action needs the arm holding a cable, but no end effector holds it.
+    """
+
+    cable_body: Body
+    """
+    The body of the cable that is not held.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.cable_body.name} is not attached to any end effector."
+
+    def suggest_correction(self) -> str:
+        return "perform the cable grasp before an action that needs the cable held."

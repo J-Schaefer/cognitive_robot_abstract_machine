@@ -3,11 +3,11 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Self
+from typing_extensions import TYPE_CHECKING, Self
 
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.semantic_annotations.mixins import HasRootBody
-from semantic_digital_twin.spatial_types import HomogeneousTransformationMatrix
+from krrood_spatial_math.spatial_types import HomogeneousTransformationMatrix
 from semantic_digital_twin.world_description.connections import FixedConnection
 from semantic_digital_twin.world_description.geometry import (
     Color,
@@ -102,7 +102,7 @@ class Cable(HasRootBody):
         height_offset: float = 0.0,
         cable_thickness: float = 0.01,
         cable_shape: CableShape = CableShape.CYLINDER,
-        cable_color: Color = Color.YELLOW(),
+        cable_color: Color | None = None,
     ) -> Self:
         """
         Create a Cable annotation with a new body whose geometry is a cylinder by
@@ -121,8 +121,10 @@ class Cable(HasRootBody):
         :param height_offset: Z offset of the hanging point in the parent frame.
         :param cable_thickness: Thickness of the cable cross-section in metres.
         :param cable_shape: Cross-sectional shape of the cable geometry.
-        :param cable_color: Color of the cable's visual geometry.
+        :param cable_color: Color of the cable's visual geometry, yellow if not given.
         """
+        if cable_color is None:
+            cable_color = Color.YELLOW()
         cable_body = Body(name=name)
         collision = cls._build_geometry(
             cable_body, cable_thickness, length, cable_shape
