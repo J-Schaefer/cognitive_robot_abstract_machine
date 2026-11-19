@@ -310,6 +310,15 @@ class TestCollisionRules:
         rule.update(pr2_world_copy)
         assert grasped_body in rule.allowed_collision_bodies
 
+    def test_AllowCollisionForBodies_keeps_its_bodies_after_update(
+        self, pr2_world_copy
+    ):
+        pr2 = pr2_world_copy.get_semantic_annotations_by_type(PR2)[0]
+        body = pr2.bodies_with_collision[0]
+        rule = AllowCollisionForBodies(allowed_collision_bodies={body})
+        rule.update(pr2_world_copy)
+        assert rule.allowed_collision_bodies == {body}
+
     def test_a_robot_holding_nothing_has_no_held_body_pairs(self, pr2_world_copy):
         rule = AllowCollisionBetweenEndEffectorsAndHeldBodies()
         rule.update(pr2_world_copy)

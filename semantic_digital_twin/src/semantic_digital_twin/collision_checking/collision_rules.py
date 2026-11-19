@@ -280,6 +280,13 @@ class AllowCollisionForBodies(AllowCollisionRule):
     The set of bodies for which all collisions should be allowed.
     """
 
+    def update(self, world: World):
+        """
+        Differs from :meth:`AllowCollisionRule.update` in keeping
+        :attr:`allowed_collision_bodies`, since they are given rather than computed.
+        """
+        CollisionRule.update(self, world)
+
     def _update(self, world: World): ...
 
 
