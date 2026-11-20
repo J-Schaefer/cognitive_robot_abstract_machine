@@ -20,7 +20,7 @@ from coraplex.plans.plan_transformation import (
     SequentialInsertion,
 )
 from cramph.composites import Parallel, Sequence, StoppedWhenTrue
-from cramph.data_types import ObservationStateValues
+from cramph.data_types import ObservationStateValue
 from cramph.failure_handling import HandledOnFailure
 from cramph.node import EndedByOwner, StatechartNode
 from experiments.daisy_cable_replanning.collisions import (
@@ -33,6 +33,10 @@ from experiments.daisy_cable_replanning.exceptions import (
     NoJointPathFound,
     NoValidGoalConfiguration,
     RejectedGoalConfiguration,
+)
+from experiments.daisy_cable_replanning.inverse_kinematics import (
+    IKSolverException,
+    InverseKinematicsSolver,
 )
 from giskardpy.motion_statechart.graph_node import MotionStatechartNode
 from giskardpy.motion_statechart.monitors.joint_monitors import (
@@ -65,7 +69,6 @@ from semantic_digital_twin.collision_checking.collision_rules import (
 from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.robots.robot_parts import Arm
 from semantic_digital_twin.semantic_annotations.cable import Cable
-from semantic_digital_twin.spatial_computations.ik_solver import IKSolverException
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.connections import ActiveConnection1DOF
 from semantic_digital_twin.world_description.world_entity import (
@@ -309,7 +312,7 @@ class GoalConfigurationSampler:
         # Approved exception to the no-try-except rule: the solver reports a seed that
         # does not converge only by raising, and other seeds may still succeed.
         try:
-            solution = self.world.compute_inverse_kinematics(
+            solution = InverseKinematicsSolver(self.world).solve(
                 root=self.root,
                 tip=self.arm.end_effector.tool_frame,
                 target=pose.homogeneous_matrix,
@@ -717,14 +720,14 @@ class PathSinceMotionStart(EndedByOwner, MotionStatechartNode):
     def on_start(self) -> None:
         self.passed_positions = [self._current_positions()]
 
-    def on_tick(self) -> ObservationStateValues:
+    def on_tick(self) -> ObservationStateValue:
         positions = self._current_positions()
         if (
             np.max(np.abs(positions - self.passed_positions[-1]))
             >= self.waypoint_spacing
         ):
             self.passed_positions.append(positions)
-        return ObservationStateValues.FALSE
+        return ObservationStateValue.FALSE
 
     def _current_positions(self) -> np.ndarray:
         """
@@ -747,14 +750,14 @@ class PathSinceLastClearJointState(PathSinceMotionStart):
     count as clear.
     """
 
-    def on_tick(self) -> ObservationStateValues:
+    def on_tick(self) -> ObservationStateValue:
         positions = self._current_positions()
         if not ProbedJointState(
             world=self.world, connections=self.connections
         ).is_collision_free(positions, self.clearances):
             return super().on_tick()
         self.passed_positions = [positions]
-        return ObservationStateValues.FALSE
+        return ObservationStateValue.FALSE
 
 
 @dataclass(eq=False, repr=False, kw_only=True)

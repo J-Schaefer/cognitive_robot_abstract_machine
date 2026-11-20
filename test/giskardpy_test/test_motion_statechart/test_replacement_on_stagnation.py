@@ -9,7 +9,7 @@ from datetime import timedelta
 
 from cramph.composites import StoppedWhenTrue, TryInOrder
 from cramph.context import StatechartContext
-from cramph.data_types import LifeCycleValues
+from cramph.data_types import LifeCycleValue
 from cramph.executor import StatechartExecutor
 from cramph.nodes_for_testing import ConstTrueNode
 from cramph.statechart import Statechart
@@ -72,15 +72,15 @@ def test_a_motion_held_back_from_its_goal_is_replaced(prismatic_bot: World):
     goal = _replaced_when_stuck(prismatic_bot, held_back=True)
     stopped_motion, replacement = goal.nodes
 
-    assert stopped_motion.monitored_node.life_cycle_state == LifeCycleValues.INTERRUPTED
-    assert replacement.life_cycle_state == LifeCycleValues.SUCCEEDED
-    assert goal.life_cycle_state == LifeCycleValues.SUCCEEDED
+    assert stopped_motion.monitored_node.life_cycle_state == LifeCycleValue.INTERRUPTED
+    assert replacement.life_cycle_state == LifeCycleValue.SUCCEEDED
+    assert goal.life_cycle_state == LifeCycleValue.SUCCEEDED
 
 
 def test_a_motion_that_progresses_is_not_replaced(prismatic_bot: World):
     goal = _replaced_when_stuck(prismatic_bot, held_back=False)
 
-    assert goal.life_cycle_state == LifeCycleValues.SUCCEEDED
+    assert goal.life_cycle_state == LifeCycleValue.SUCCEEDED
     _, replacement = goal.nodes
 
-    assert replacement.life_cycle_state == LifeCycleValues.NOT_STARTED
+    assert replacement.life_cycle_state == LifeCycleValue.NOT_STARTED

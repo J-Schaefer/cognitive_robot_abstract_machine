@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 from coraplex.robot_plans.actions.base import Action
 from cramph.composites import Sequence
-from cramph.data_types import LifeCycleValues
+from cramph.data_types import LifeCycleValue
 from cramph.executor import StatechartExecutor, TickingExecutorExtension
 from cramph.node import StatechartNode
 from giskardpy.motion_statechart.graph_node import Task
@@ -334,7 +334,7 @@ class ActiveMotionTracker(TickingExecutorExtension):
         running_motions = {
             node
             for node in executor.statechart.nodes
-            if node.life_cycle_state == LifeCycleValues.RUNNING
+            if node.life_cycle_state == LifeCycleValue.RUNNING
             and self._is_motion(node)
         }
         for motion in running_motions - self._running_motions:

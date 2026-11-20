@@ -24,6 +24,7 @@ runs into are added to the database for the next round.
 | `trials.py` | `CableDemoTrial`, one run of the demo in its own process; `CableDemoExperiment`, many runs; `TrialNoise` |
 | `collisions.py` | recording: `ArmCollisionRecorder`, `IllegalJointState`, `IllegalJointStateDatabase`, `MotionLabel`, `ActiveMotionTracker` (an executor extension naming the running motion) |
 | `replanning.py` | replanning: `ReplanningTransformation`, `IllegalJointStateReplanning`, `StagnationReplanning`, `RecoveryBeforeStuckMotion`, `PlannedJointPathToPose`, `PathSinceMotionStart`, `PathSinceLastClearJointState`, `RetractAlongRememberedPath`, `JointSpacePlanner`, `GoalConfigurationSampler`, `ReplanningParameters` |
+| `inverse_kinematics.py` | `InverseKinematicsSolver`, the QP-based inverse kinematics `GoalConfigurationSampler` uses (moved here from semantic_digital_twin, which no longer has it; needs `daqp`) |
 | `summary.py` | `ExperimentOutcome` and `ReplanningComparison`, the numbers reported below |
 | `joint_state_metrics.py` | `SeriesJointStateMetrics`, the joint state counts of a series (`joint-states` command) |
 | `curation.py` | `IllegalJointStateCuration`, choosing recorded states to keep; `KeptDatabase`, the permanent files |

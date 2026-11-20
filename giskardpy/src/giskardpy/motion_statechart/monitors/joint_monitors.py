@@ -9,7 +9,7 @@ from semantic_digital_twin.world_description.connections import (
     RevoluteConnection,
     ActiveConnection1DOF,
 )
-from cramph.data_types import ObservationStateValues
+from cramph.data_types import ObservationStateValue
 from cramph.node import EndedByOwner
 from giskardpy.motion_statechart.graph_node import MotionStatechartNode
 from cramph.node import NodeArtifacts
@@ -132,7 +132,7 @@ class CloseToJointConfigurations(EndedByOwner, MotionStatechartNode):
         """
         self.last_safe_positions = self.configurations.current_positions()
 
-    def on_tick(self) -> ObservationStateValues:
+    def on_tick(self) -> ObservationStateValue:
         """
         Differs from :meth:`~cramph.node.StatechartNode.on_tick` in remembering safe
         positions and observing whether the connections are close.
@@ -142,8 +142,8 @@ class CloseToJointConfigurations(EndedByOwner, MotionStatechartNode):
         if distance >= self.safe_distance:
             self.last_safe_positions = positions
         if distance < self.threshold:
-            return ObservationStateValues.TRUE
-        return ObservationStateValues.FALSE
+            return ObservationStateValue.TRUE
+        return ObservationStateValue.FALSE
 
 
 # %% recent joint states
@@ -179,13 +179,13 @@ class RecentJointStates(EndedByOwner, MotionStatechartNode):
         """
         self.states = deque([self._current_positions()], maxlen=self.control_cycles)
 
-    def on_tick(self) -> ObservationStateValues:
+    def on_tick(self) -> ObservationStateValue:
         """
         Differs from :meth:`~cramph.node.StatechartNode.on_tick` in remembering the
         positions of this control cycle.
         """
         self.states.append(self._current_positions())
-        return ObservationStateValues.FALSE
+        return ObservationStateValue.FALSE
 
     def _current_positions(self) -> np.ndarray:
         """

@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from cramph.composites import Parallel, Sequence, StoppedWhenTrue, TryInOrder
 from cramph.context import StatechartContext
-from cramph.data_types import LifeCycleValues
+from cramph.data_types import LifeCycleValue
 from cramph.executor import StatechartExecutor
 from cramph.monitors import CountTicks
 from cramph.node import StatechartNode
@@ -131,7 +131,7 @@ def test_closeness_monitor_stops_the_motion_before_the_forbidden_position(
     _compile(prismatic_bot, goal).tick_until_end(timeout=500)
 
     (connection,) = prismatic_bot.connections
-    assert motion.life_cycle_state == LifeCycleValues.INTERRUPTED
+    assert motion.life_cycle_state == LifeCycleValue.INTERRUPTED
     assert connection.position < 0.5
 
 
@@ -152,7 +152,7 @@ def test_retract_returns_to_the_last_safe_position(prismatic_bot: World):
     _compile(prismatic_bot, goal).tick_until_end(timeout=500)
 
     (connection,) = prismatic_bot.connections
-    assert goal.life_cycle_state == LifeCycleValues.SUCCEEDED
+    assert goal.life_cycle_state == LifeCycleValue.SUCCEEDED
     assert connection.position == pytest.approx(
         monitor.last_safe_positions[0], abs=retract.threshold
     )
@@ -213,10 +213,10 @@ def test_retrace_follows_the_recent_joint_states_back(prismatic_bot2: World):
     )
     executor = _compile(prismatic_bot2, goal)
     for _ in range(trip.ticks + 2):
-        if retrace.life_cycle_state != LifeCycleValues.NOT_STARTED:
+        if retrace.life_cycle_state != LifeCycleValue.NOT_STARTED:
             break
         executor.tick()
-    assert retrace.life_cycle_state == LifeCycleValues.RUNNING
+    assert retrace.life_cycle_state == LifeCycleValue.RUNNING
     recorded = np.array(retrace.plan_waypoints())
     retraced = np.array(_positions_per_control_cycle(executor, path))
 
@@ -247,7 +247,7 @@ def test_waypoint_path_passes_every_waypoint(prismatic_bot2: World):
         np.min(np.max(np.abs(np.array(visited) - waypoint), axis=1))
         for waypoint in waypoints
     ]
-    assert path.life_cycle_state == LifeCycleValues.SUCCEEDED
+    assert path.life_cycle_state == LifeCycleValue.SUCCEEDED
     assert all(
         distance <= path.waypoint_threshold for distance in closest_approach[:-1]
     )

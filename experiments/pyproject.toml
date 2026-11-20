@@ -12,6 +12,7 @@ dependencies = [
     "line_profiler",
     "coraplex>=26.10.0",
     "cramph>=26.10.0",
+    "daqp",
     "giskardpy>=26.10.0",
     "h5py",
     "krrood>=26.10.0",

@@ -1,3 +1,9 @@
+"""
+Inverse kinematics of a kinematic chain by iterated quadratic programs, which the
+replanning samples goal configurations with; moved here from semantic_digital_twin,
+which no longer uses it.
+"""
+
 from __future__ import annotations
 
 from ctypes import c_int
