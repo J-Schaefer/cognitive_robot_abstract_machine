@@ -80,7 +80,10 @@ from giskardpy.motion_statechart.monitors.feature_monitors import (
     HeightMonitor,
     PerpendicularMonitor,
 )
-from giskardpy.motion_statechart.monitors.joint_monitors import JointPositionReached
+from giskardpy.motion_statechart.monitors.joint_monitors import (
+    JointPositionReached,
+    RecentJointStates,
+)
 from giskardpy.motion_statechart.monitors.monitors import LocalMinimumReached
 from giskardpy.motion_statechart.monitors.overwrite_state_monitors import (
     SetOdometry,
@@ -108,6 +111,7 @@ from giskardpy.motion_statechart.tasks.grasp_bar import GraspBar
 from giskardpy.motion_statechart.tasks.joint_tasks import (
     JointPositionList,
     JointVelocityLimit,
+    RetraceRecentJointStates,
 )
 from giskardpy.motion_statechart.tasks.pointing import (
     Pointing,
@@ -199,6 +203,14 @@ def _transformation(world: World) -> HomogeneousTransformationMatrix:
 
 def _orientation(world: World) -> RotationMatrix:
     return RotationMatrix.from_rpy(yaw=0.2, reference_frame=_root(world))
+
+
+def _recorder_and_retrace(world: World) -> list[StatechartNode]:
+    """
+    :return: A recorder of the first connection and the retrace of what it recorded.
+    """
+    recorder = RecentJointStates(connections=[_connection(world)])
+    return [recorder, RetraceRecentJointStates(monitor=recorder)]
 
 
 def _joint_goal(world: World) -> JointPositionList:
@@ -695,6 +707,11 @@ def _monitor_cases() -> list[NodeRoundTripCase]:
             WorldFixture.PR2_WORLD,
         ),
         NodeRoundTripCase(
+            RecentJointStates,
+            lambda world: [RecentJointStates(connections=[_connection(world)])],
+            WorldFixture.PR2_WORLD,
+        ),
+        NodeRoundTripCase(
             LocalMinimumReached,
             lambda world: [LocalMinimumReached()],
             WorldFixture.PR2_WORLD,
@@ -766,6 +783,11 @@ def _joint_and_base_cases() -> list[NodeRoundTripCase]:
         NodeRoundTripCase(
             JointPositionList,
             lambda world: [_joint_goal(world)],
+            WorldFixture.PR2_WORLD,
+        ),
+        NodeRoundTripCase(
+            RetraceRecentJointStates,
+            _recorder_and_retrace,
             WorldFixture.PR2_WORLD,
         ),
         NodeRoundTripCase(
