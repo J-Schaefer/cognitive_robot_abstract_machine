@@ -778,10 +778,11 @@ class MonitoredCompositeNode(EndedByOwner, CompositeNode, ABC):
 
     def expand(self) -> None:
         """
-        Add the monitor and the monitored node, and wire the monitor.
+        Add the monitored node, then the monitor, which may read it while it expands,
+        and wire the monitor.
         """
-        self._add_child_to_statechart(node=self.monitor)
         self._add_child_to_statechart(node=self.monitored_node)
+        self._add_child_to_statechart(node=self.monitor)
         self.wire_monitor()
 
     @property

@@ -8,13 +8,15 @@ rather than by ticking an executor. How the templates end and pause their monito
 is tested by ticking an executor.
 """
 
+from dataclasses import dataclass
+
 import pytest
 
 from cramph.executor import StatechartExecutor
 from cramph.context import StatechartContext
 from cramph.data_types import LifeCycleValue, ObservationStateValue
 from cramph.node import DerivedConditionVariable
-from cramph.node import StatechartNode
+from cramph.node import CompositeNode, EndedByOwner, NodeArtifacts, StatechartNode
 from cramph.composites import (
     MonitoredCompositeNode,
     PausedUntilTrue,
@@ -298,6 +300,50 @@ def test_a_template_whose_monitored_node_failed_observing_true_fails_its_sequenc
 
     assert goal.life_cycle_state == LifeCycleValue.FAILED
     assert sequence.life_cycle_state == LifeCycleValue.FAILED
+
+
+# %% a monitor reading its monitored node
+
+
+@dataclass(eq=False, repr=False, kw_only=True)
+class MonitorReadingItsMonitoredNode(EndedByOwner, CompositeNode):
+    """
+    A composite monitor that reads the node it watches while it expands, as a stall
+    monitor does.
+    """
+
+    watched_node: StatechartNode
+    """
+    The node read while expanding.
+    """
+
+    @property
+    def prerequisite_nodes(self) -> list[StatechartNode]:
+        return [self.watched_node]
+
+    def build_artifacts(self) -> NodeArtifacts:
+        return NodeArtifacts(observation=Scalar.const_false())
+
+
+@pytest.mark.parametrize(
+    "goal_type", [PausedWhileTrue, PausedUntilTrue, StartedWhenTrue, StoppedWhenTrue]
+)
+def test_a_monitor_may_read_the_composite_node_it_monitors(
+    goal_type: type[MonitoredCompositeNode],
+) -> None:
+    """
+    A monitor that reads its monitored node while it expands finds it in the statechart.
+    """
+    monitored_node = Sequence(nodes=[ConstTrueNode(name="step")])
+    goal = goal_type(
+        monitor=MonitorReadingItsMonitoredNode(watched_node=monitored_node),
+        monitored_node=monitored_node,
+    )
+    statechart = Statechart(context=StatechartContext(world=World()))
+
+    statechart.add_node(node=goal)
+
+    assert monitored_node.parent_node is goal
 
 
 # %% pausing from the start
