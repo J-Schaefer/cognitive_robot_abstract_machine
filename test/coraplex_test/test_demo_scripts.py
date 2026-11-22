@@ -17,6 +17,7 @@ WRAPPER_PATHS = [
     DEMOS_ROOT / "coraplex_hsr_mujoco_demo" / "test_demo.py",
     DEMOS_ROOT / "coraplex_real_tracy" / "test_demo.py",
     DEMOS_ROOT / "coraplex_unitree_g1_warehouse_demo" / "test_demo.py",
+    DEMOS_ROOT / "daisy_retrace_demo" / "test_demo.py",
 ]
 
 # %% wrapper failure reporting

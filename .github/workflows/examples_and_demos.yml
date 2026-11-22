@@ -106,6 +106,7 @@ jobs:
             coraplex/demos/coraplex_garmi_clean_up_demo/test_demo.py
             coraplex/demos/coraplex_hsr_mujoco_demo/test_demo.py
             coraplex/demos/coraplex_real_tracy/test_demo.py
+            coraplex/demos/daisy_retrace_demo/test_demo.py
             experiments/src/experiments/real_stretch_apartment_demo/test_demo.py
             experiments/src/experiments/daisy_gripper_demo/test_demo.py
           )
