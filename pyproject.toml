@@ -48,6 +48,10 @@ dev = [
     "krrood-development-tools",
 ]
 
+superdex = [
+    "semantic_digital_twin[superdex]",
+]
+
 doc = [
     "jupyter-book<2.0.0",
     "jupyter",

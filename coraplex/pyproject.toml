@@ -27,7 +27,7 @@ dependencies = [
     "SQLAlchemy",
     "sqlacodegen==3.0.0",
     "tqdm==4.66.3",
-    "psutil~=5.9.0",
+    "psutil>=5.9,<8",
     "typing_extensions>=4.10.0",
     "probabilistic_model>=26.10.0",
     "random_events>=26.10.0",

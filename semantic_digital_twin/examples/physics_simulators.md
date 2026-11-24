@@ -408,6 +408,8 @@ optional extra:
 
 ```bash
 pip install "semantic_digital_twin[superdex]"
+# or, from the root of the workspace
+uv sync --active --inexact --extra superdex
 ```
 
 {py:class}`~semantic_digital_twin.adapters.superdex.mujoco_cable_simulation.MujocoSuperdexSim`

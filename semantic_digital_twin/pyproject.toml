@@ -59,7 +59,7 @@ dependencies = [
     "rerun-sdk[datafusion]",
     "imageio",
     "imageio-ffmpeg",
-    "psutil~=5.9.0",
+    "psutil>=5.9,<8",
     "giskardpy_bullet_bindings==1.0.1",
     "krrood-core>=26.10.0",
     "krrood-eql>=26.10.0",
@@ -120,7 +120,7 @@ vision = [
 ]
 superdex = [
     # Cosserat rod simulation of cables, co-simulated with MuJoCo; ships for CPython 3.12 only
-    "superdex-physics==1.0.*",
+    "superdex-physics>=1.0.1,<1.1",
 ]
 datasets = [
     "py7zr",

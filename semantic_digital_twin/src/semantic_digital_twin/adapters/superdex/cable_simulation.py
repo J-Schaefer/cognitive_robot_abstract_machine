@@ -205,7 +205,7 @@ class SimulatedCable:
         parameters.point_cloud_collider.radius = cable.radius
         parameters.point_cloud_collider.self_contact = False
         # Contact is sampled on the tubular skin, so the cable rests on its surface.
-        parameters.use_visual_mesh_contact = True
+        parameters.use_contact_skin = True
         parameters.contact = superdex_physics.ContactParams(
             penalty_coefficient=contact_settings.penalty,
             coulomb_friction_coefficient=cable.material.friction_coefficient,
