@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 
 import mujoco
@@ -694,3 +695,28 @@ class TestOffscreenRenderingAvailability:
         monkeypatch.setenv(MujocoEnvironmentVariable.DISPLAY, ":1")
 
         assert MujocoSimulator.offscreen_rendering_available()
+
+
+# %% stopping the viewer
+
+
+@pytest.mark.skipif(
+    headless or MujocoEnvironmentVariable.DISPLAY not in os.environ,
+    reason="The viewer needs a display.",
+)
+def test_stopping_a_simulator_ends_the_thread_of_its_viewer():
+    """
+    Stopping the simulator waits for the viewer's own thread to end, so an interpreter
+    exiting right after does not tear down while the viewer still draws.
+    """
+    threads_before_start = set(threading.enumerate())
+    simulator = MujocoSimulator(
+        _headless=False,
+        file_path=os.path.join(resources_path, "mjx_single_cube_no_mesh.xml"),
+    )
+    simulator.start(simulate_in_thread=False)
+    simulator.step()
+
+    simulator.stop()
+
+    assert set(threading.enumerate()) - threads_before_start == set()

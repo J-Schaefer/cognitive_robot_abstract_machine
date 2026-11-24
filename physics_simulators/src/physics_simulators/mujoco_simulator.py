@@ -4,7 +4,7 @@ import os
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field, InitVar
 from enum import StrEnum
-from threading import RLock
+from threading import RLock, Thread, enumerate as running_threads
 from typing_extensions import Any
 
 import mujoco
@@ -106,6 +106,13 @@ class MujocoSimulator(BaseSimulator):
     this lock provides the actual mutual exclusion.
     """
 
+    _viewer_threads: list[Thread] = field(
+        init=False, repr=False, compare=False, default_factory=list
+    )
+    """
+    The threads the viewer was launched in, which :meth:`stop` waits for.
+    """
+
     def __post_init__(self, file_path: str = ""):
         super().__post_init__()
         self._file_path = file_path
@@ -153,10 +160,29 @@ class MujocoSimulator(BaseSimulator):
         mujoco.mj_resetDataKeyframe(self._mj_model, self._mj_data, 0)
 
     def start_callback(self):
-        if not self.headless:
-            self._renderer = mujoco.viewer.launch_passive(self._mj_model, self._mj_data)
-        else:
+        if self.headless:
             self._renderer = SimulatorRenderer()
+            return
+        threads_before_launch = set(running_threads())
+        self._renderer = mujoco.viewer.launch_passive(self._mj_model, self._mj_data)
+        # shortcut: MuJoCo does not expose the viewer's thread, so every thread started
+        # during the launch is taken for it; use MuJoCo's own once it exposes it.
+        self._viewer_threads = [
+            thread
+            for thread in running_threads()
+            if thread not in threads_before_launch
+        ]
+
+    def stop(self):
+        """
+        Stop the simulator as :meth:`BaseSimulator.stop` does, and wait for the viewer
+        to close, so an interpreter exiting right after does not tear the viewer's
+        window down while it still draws.
+        """
+        super().stop()
+        for thread in self._viewer_threads:
+            thread.join()
+        self._viewer_threads = []
 
     def step_callback(self):
         def _do_step():
