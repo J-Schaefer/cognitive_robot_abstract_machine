@@ -23,12 +23,16 @@ from coraplex.plans.executors import (
     PhysicallySimulatedPlanExecutor,
     PlanExecutor,
 )
+from coraplex.robot_plans.actions.core.robot_body import (
+    MoveManipulatorAction,
+    SetGripperAction,
+)
 from cramph.composites import Sequence
 from cramph.context import StatechartContext
 from cramph.node import StatechartNode
 from cramph.statechart import Statechart
 from giskardpy.motion_statechart.tasks.joint_tasks import JointPositionList
-from krrood_spatial_math.spatial_types import Pose
+from krrood_spatial_math.spatial_types import Point3, Pose
 from numpy.typing import NDArray
 from scipy.spatial.transform import Rotation
 from semantic_digital_twin.adapters.superdex.mujoco_cable_simulation import (
@@ -36,8 +40,12 @@ from semantic_digital_twin.adapters.superdex.mujoco_cable_simulation import (
     MujocoSuperdexSim,
 )
 from semantic_digital_twin.adapters.urdf import URDFParser
+from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.datastructures.joint_state import JointState
+from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.daisy import DAiSy, DAiSyGripper
+from semantic_digital_twin.robots.robot_parts import Arm
+from semantic_digital_twin.semantic_annotations.deformable_cable import DeformableCable
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.geometry import Color
 from typing_extensions import Any
@@ -279,6 +287,46 @@ class DAiSyCableDemonstration:
     The colour the cable is drawn in.
     """
 
+    cable_end: tuple[float, float] = (0.66, 0.45)
+    """
+    Where the end of the cable lies, 6 cm past the table's far edge, in the frame of
+    the world root, in metres; the cable lies from there along the world's negative x
+    axis.
+    """
+
+    pick_arc_length: float = 0.025
+    """
+    How far from its end a gripper grips the cable lying on the table, in metres: far
+    enough past the table's edge that the fingertips pass it.
+    """
+
+    approach_distance: float = 0.1
+    """
+    How far from the cable a gripper stops before it closes in on it, and how far it
+    backs off once it let go, in metres.
+    """
+
+    approach_position_threshold: float = 1.0e-3
+    """
+    How close, in metres, a tool frame has to come to where it grips the cable.
+    """
+
+    pointing: NDArray[numpy.float64] = field(
+        default_factory=lambda: numpy.array([0.0, 0.0, -1.0])
+    )
+    """
+    The direction a gripper points along when it grips the cable from above: straight
+    down.
+    """
+
+    closing: NDArray[numpy.float64] = field(
+        default_factory=lambda: numpy.array([0.0, 1.0, 0.0])
+    )
+    """
+    The direction the fingers of a gripper gripping from above close along: across the
+    cable lying on the table.
+    """
+
     @staticmethod
     def create_world() -> tuple[World, DAiSy]:
         """
@@ -373,6 +421,89 @@ class DAiSyCableDemonstration:
         executor.compile(statechart=statechart)
         executor.execute()
         executor.close()
+
+    def lay_cable_on_the_table(self, world: World) -> DeformableCable:
+        """
+        Add a straight cable to the world, lying on the table along the world's x axis
+        with its end at :attr:`cable_end`, past the table's far edge.
+
+        :param world: The world to add the cable to.
+        :return: The cable.
+        """
+        end = numpy.array([*self.cable_end, self.table_top(world) + self.cable_radius])
+        start = end - numpy.array([self.cable_length, 0.0, 0.0])
+        cable = DeformableCable.along_polyline(
+            name=PrefixedName("cable"),
+            polyline=[
+                Point3(*start, reference_frame=world.root),
+                Point3(*end, reference_frame=world.root),
+            ],
+            number_of_segments=self.number_of_cable_segments,
+            radius=self.cable_radius,
+            color=self.cable_color,
+        )
+        with world.modify_world():
+            world.add_semantic_annotation(cable)
+        return cable
+
+    def pick_point(self, cable: DeformableCable) -> NDArray[numpy.float64]:
+        """
+        :param cable: The cable.
+        :return: Where a gripper grips the cable from above, as the cable lies now.
+        """
+        return cable.point_at_arc_length(
+            cable.centreline.length - self.pick_arc_length
+        ).to_np()[:3]
+
+    def pick_up(
+        self, arm: Arm, pick_point: NDArray[numpy.float64]
+    ) -> list[StatechartNode]:
+        """
+        :param arm: The arm to pick the cable up with.
+        :param pick_point: Where its gripper grips the cable.
+        :return: The steps opening the gripper, bringing it down onto the pick point
+            from :attr:`approach_distance` above and closing it on the cable.
+        """
+        return [
+            self.open_gripper(arm),
+            self.move_from_above(
+                arm, pick_point - self.approach_distance * self.pointing
+            ),
+            self.move_from_above(arm, pick_point, self.approach_position_threshold),
+            self.close_on_cable(arm.end_effector),
+        ]
+
+    def move_from_above(
+        self,
+        arm: Arm,
+        grip_point: NDArray[numpy.float64],
+        position_threshold: float = MoveManipulatorAction.position_threshold,
+    ) -> MoveManipulatorAction:
+        """
+        :param arm: The arm to move.
+        :param grip_point: Where its gripper is to grip.
+        :param position_threshold: How close, in metres, the tool frame has to come.
+        :return: The step moving the gripper there, pointing along :attr:`pointing`.
+        """
+        return MoveManipulatorAction(
+            arm=arm,
+            goal_pose=self.tool_pose(
+                arm._world, grip_point, self.pointing, self.closing
+            ),
+            position_threshold=position_threshold,
+        )
+
+    @staticmethod
+    def open_gripper(arm: Arm) -> SetGripperAction:
+        """
+        :param arm: The arm whose gripper to open.
+        :return: The step opening it.
+        """
+        return SetGripperAction(
+            gripper_configuration=arm.end_effector.default_configuration(
+                GripperState.OPEN
+            )
+        )
 
     def grip_point(
         self, world_T_tool: NDArray[numpy.float64]

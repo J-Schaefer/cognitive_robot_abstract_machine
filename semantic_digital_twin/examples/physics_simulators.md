@@ -449,8 +449,8 @@ print(cable.point_at_arc_length(0.1))
 
 Only the stepped simulation advances the cables, which is what
 {py:class}`~coraplex.plans.executors.PhysicallySimulatedPlanExecutor` uses. In the
-`experiments.minimal_cable_demo` package DAiSy hands a cable from one gripper to the
-other (`demo`) and picks a cable up from its table and lays it down elsewhere
-(`pick_and_place`); either records a video of the run with `--headless --video
+`experiments.minimal_cable_demo` package DAiSy picks a cable up from its table with one
+gripper, hands it to the other and drops it back onto the table (`demo`), and picks a
+cable up from its table and lays it down elsewhere (`pick_and_place`); either records a video of the run with `--headless --video
 <file>.mp4`, drawing the cables into the frames with
 {py:meth}`~semantic_digital_twin.adapters.superdex.mujoco_cable_simulation.MujocoSuperdexSim.draw_cables`.

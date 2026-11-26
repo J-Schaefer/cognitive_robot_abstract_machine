@@ -2,15 +2,16 @@
 DAiSy hands a cable from one gripper to the other, with the cable simulated by SuperDex
 and the robot by MuJoCo.
 
-The right gripper holds the top end of a cable hanging above the table. The left gripper
-takes the cable from the side further down, lifts it, and the right gripper lets go, so
-the cable ends up hanging from the left gripper. Both grippers hold the cable by friction
-alone.
+A straight cable lies on the table, its end reaching past the table's far edge. The
+right gripper grips that end from above and holds the cable up above the table. The
+left gripper takes the hanging cable from the side further down, the right gripper lets
+go, and the left gripper lowers the cable and drops it back onto the table. Both
+grippers hold the cable by friction alone.
 
 Run it as a script; ``--headless`` runs it without the MuJoCo viewer and ``--video``
 records it::
 
-    python3 -m experiments.minimal_cable_demo.demo
+    python3 -m experiments.minimal_cable_demo.demo --headless --video cable.mp4
 
 It needs the ``superdex`` extra of ``semantic_digital_twin`` and the DAiSy description.
 """
@@ -26,7 +27,6 @@ import numpy
 from coraplex.robot_plans.actions.core.robot_body import (
     MoveManipulatorAction,
     ParkArmsAction,
-    SetGripperAction,
 )
 from cramph.node import StatechartNode
 from experiments.minimal_cable_demo.daisy_cable_scene import (
@@ -34,16 +34,13 @@ from experiments.minimal_cable_demo.daisy_cable_scene import (
     CommandLineFlag,
     DAiSyCableDemonstration,
 )
-from krrood_spatial_math.spatial_types import Point3
 from numpy.typing import NDArray
 from semantic_digital_twin.adapters.superdex.mujoco_cable_simulation import (
     MujocoSuperdexSim,
 )
-from semantic_digital_twin.datastructures.definitions import GripperState
-from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.robots.daisy import DAiSy
+from semantic_digital_twin.robots.robot_parts import Arm
 from semantic_digital_twin.semantic_annotations.deformable_cable import DeformableCable
-from semantic_digital_twin.world import World
 
 # %% outcome
 
@@ -51,18 +48,21 @@ from semantic_digital_twin.world import World
 @dataclass
 class HandoverOutcome:
     """
-    Where the cable ended up after the handover.
+    Where the cable was while the left gripper alone held it, and where it ended up.
     """
 
-    lowest_node_height_above_table: float
+    lowest_node_height_above_table_after_handover: float
     """
-    How far the lowest node of the cable is above the table, in metres; a cable that
-    was dropped lies on the table, its lowest node one radius above it.
+    How far the lowest node of the cable was above the table once the right gripper had
+    let go, in metres; a cable the left gripper failed to take lies on the table, its
+    lowest node one radius above it.
     """
 
-    distance_from_left_grip_point: float
+    highest_node_height_above_table_after_drop: float
     """
-    How far the cable passes from the point the left gripper grips at, in metres.
+    How far the highest node of the cable is above the table once the left gripper
+    dropped it, in metres; a cable lying flat on the table has every node one radius
+    above it.
     """
 
 
@@ -72,166 +72,117 @@ class HandoverOutcome:
 @dataclass
 class MinimalCableDemonstration(DAiSyCableDemonstration):
     """
-    DAiSy hands a hanging cable from its right gripper to its left one.
+    DAiSy picks a cable up from its table with its right gripper, hands it to its left
+    one and drops it back onto the table.
     """
 
-    hold_point: tuple[float, float, float] = (0.35, 0.6, 1.0577)
+    hold_point: tuple[float, float, float] = (0.35, 0.55, 0.45)
     """
-    Where the right gripper holds the cable, in the frame of the world root, in metres.
-    """
-
-    take_arc_length: float = 0.25
-    """
-    How far down the cable from its top the left gripper takes it, in metres.
+    Where the right gripper holds the cable up, in the frame of the world root but with
+    its height measured from the table's top, in metres.
     """
 
-    approach_distance: float = 0.1
+    take_arc_length: float = 0.15
     """
-    How far from the cable the left gripper stops before it closes in, in metres.
+    How far down the cable from the right gripper's grip the left gripper takes it, in
+    metres.
     """
 
-    lift: tuple[float, float, float] = (0.0, 0.045, 0.15)
+    drop_height: float = 0.15
     """
-    How far the left gripper moves the cable after taking it, in the frame of the world
-    root, in metres.
+    How far above the table's top the left gripper lowers the cable before it lets go of
+    it, in metres.
     """
 
     left_pointing: NDArray[numpy.float64] = field(
         default_factory=lambda: numpy.array([0.0, -1.0, 0.0])
     )
     """
-    The direction the left gripper points along while it takes the cable.
+    The direction the left gripper points along while it holds the cable.
     """
 
     left_closing: NDArray[numpy.float64] = field(
         default_factory=lambda: numpy.array([-1.0, 0.0, 0.0])
     )
     """
-    The direction the left gripper's fingers close along while it takes the cable.
-    """
-
-    cable_overhang: float = 0.012
-    """
-    How far the top end of the cable reaches past the grip point of the right gripper,
-    in metres: half the width of a finger tip, so the cable crosses the whole tip.
-    """
-
-    approach_position_threshold: float = 1.0e-3
-    """
-    How close, in metres, the left tool frame has to come to the point it grips the
-    cable from.
+    The direction the left gripper's fingers close along while it holds the cable.
     """
 
     settle_duration: timedelta = timedelta(seconds=1)
     """
-    How long the cable hangs pinned to the right gripper before the gripper's friction
-    alone holds it.
+    How long the cable is left to come to rest on the table, after the right gripper
+    lifted it and after it was dropped.
     """
 
     def run(self) -> HandoverOutcome:
         """
-        Set the scene up, hand the cable over and measure where it ended up.
+        Set the scene up, pick the cable up, hand it over, drop it and measure where it
+        was.
 
-        :return: Where the cable ended up.
+        :return: Where the cable was.
         """
         world, daisy = self.create_world()
-        self.hold_cable_with_the_right_gripper(daisy)
-        cable = self.hang_cable_from_the_right_gripper(world, daisy)
+        self.perform_kinematically(daisy, [ParkArmsAction(arms=daisy.all_arms)])
+        cable = self.lay_cable_on_the_table(world)
         simulation = self.create_simulation(world)
         try:
-            self.settle(simulation, cable, daisy)
+            self.let_the_cable_settle(simulation, self.settle_duration)
+            self.perform_physically(
+                daisy, simulation, self.hold_up(daisy, self.pick_point(cable))
+            )
+            self.let_the_cable_settle(simulation, self.settle_duration)
             self.perform_physically(
                 daisy, simulation, [self.approach(daisy, self.take_point(cable))]
             )
             # The approach may have brushed the cable aside.
             self.perform_physically(
-                daisy, simulation, self.take_over(daisy, self.take_point(cable))
+                daisy,
+                simulation,
+                self.take_over(daisy, simulation, self.take_point(cable)),
             )
-            return self.outcome(simulation, cable, daisy, world)
+            height_after_handover = float(
+                cable.centreline.corners[:, 2].min() - self.table_top(world)
+            )
+            self.perform_physically(daisy, simulation, self.drop(daisy, simulation))
+            self.let_the_cable_settle(simulation, self.settle_duration)
+            return HandoverOutcome(
+                lowest_node_height_above_table_after_handover=height_after_handover,
+                highest_node_height_above_table_after_drop=float(
+                    cable.centreline.corners[:, 2].max() - self.table_top(world)
+                ),
+            )
         finally:
             simulation.stop_simulation()
             if self.video is not None:
                 self.video.write()
 
-    def hold_cable_with_the_right_gripper(self, daisy: DAiSy) -> None:
+    def hold_up(
+        self, daisy: DAiSy, pick_point: NDArray[numpy.float64]
+    ) -> list[StatechartNode]:
         """
-        Move the right gripper, kinematically, to where it holds the cable: pointing
-        along the world's y axis and closed to the cable's width.
-
         :param daisy: The robot.
+        :param pick_point: Where the right gripper grips the cable.
+        :return: The steps in which the right gripper picks the cable up, lifts it
+            straight up and carries it to :attr:`hold_point`.
         """
-        right_arm = daisy.right_arm
-        self.perform_kinematically(
-            daisy,
-            [
-                ParkArmsAction(arms=daisy.all_arms),
-                MoveManipulatorAction(
-                    arm=right_arm,
-                    goal_pose=self.tool_pose(
-                        daisy._world,
-                        numpy.array(self.hold_point),
-                        pointing=numpy.array([0.0, 1.0, 0.0]),
-                        closing=numpy.array([1.0, 0.0, 0.0]),
-                    ),
-                ),
-                self.close_on_cable(right_arm.end_effector),
-            ],
+        arm = daisy.right_arm
+        hold_point = numpy.array(self.hold_point) + numpy.array(
+            [0.0, 0.0, self.table_top(daisy._world)]
         )
-
-    def hang_cable_from_the_right_gripper(
-        self, world: World, daisy: DAiSy
-    ) -> DeformableCable:
-        """
-        Add a straight cable to the world, hanging down from between the right
-        gripper's fingers.
-
-        :param world: The world to add the cable to.
-        :param daisy: The robot.
-        :return: The cable.
-        """
-        top = self.grip_point(
-            world.compute_forward_kinematics_np(
-                world.root, daisy.right_arm.end_effector.tool_frame
-            )
-        ) + numpy.array([0.0, 0.0, self.cable_overhang])
-        bottom = top - numpy.array([0.0, 0.0, self.cable_length])
-        cable = DeformableCable.along_polyline(
-            name=PrefixedName("cable"),
-            polyline=[
-                Point3(*top, reference_frame=world.root),
-                Point3(*bottom, reference_frame=world.root),
-            ],
-            number_of_segments=self.number_of_cable_segments,
-            radius=self.cable_radius,
-            color=self.cable_color,
-        )
-        with world.modify_world():
-            world.add_semantic_annotation(cable)
-        return cable
-
-    def settle(
-        self, simulation: MujocoSuperdexSim, cable: DeformableCable, daisy: DAiSy
-    ) -> None:
-        """
-        Hold the top of the cable pinned to the right gripper while the simulated
-        fingers close on it, then leave it to their friction.
-
-        :param simulation: The running simulation.
-        :param cable: The cable.
-        :param daisy: The robot.
-        """
-        pin = simulation.cable_simulation.pin(
-            cable, 0, daisy.right_arm.end_effector.tool_frame
-        )
-        self.let_the_cable_settle(simulation, self.settle_duration)
-        simulation.cable_simulation.release(pin)
+        return [
+            *self.pick_up(arm, pick_point),
+            self.move_from_above(arm, numpy.array([*pick_point[:2], hold_point[2]])),
+            self.move_from_above(arm, hold_point),
+        ]
 
     def take_point(self, cable: DeformableCable) -> NDArray[numpy.float64]:
         """
-        :param cable: The cable.
+        :param cable: The cable, hanging from the right gripper.
         :return: Where on the cable the left gripper takes it, as the cable lies now.
         """
-        return cable.point_at_arc_length(self.take_arc_length).to_np()[:3]
+        return cable.point_at_arc_length(
+            cable.centreline.length - self.pick_arc_length - self.take_arc_length
+        ).to_np()[:3]
 
     def approach(
         self, daisy: DAiSy, take_point: NDArray[numpy.float64]
@@ -242,83 +193,73 @@ class MinimalCableDemonstration(DAiSyCableDemonstration):
         :return: The step bringing the left gripper :attr:`approach_distance` before
             the take point.
         """
-        return MoveManipulatorAction(
-            arm=daisy.left_arm,
-            goal_pose=self.tool_pose(
-                daisy._world,
-                take_point - self.approach_distance * self.left_pointing,
-                self.left_pointing,
-                self.left_closing,
-            ),
+        return self.move_from_the_side(
+            daisy.left_arm, take_point - self.approach_distance * self.left_pointing
         )
 
     def take_over(
-        self, daisy: DAiSy, take_point: NDArray[numpy.float64]
+        self,
+        daisy: DAiSy,
+        simulation: MujocoSuperdexSim,
+        take_point: NDArray[numpy.float64],
     ) -> list[StatechartNode]:
         """
         :param daisy: The robot, its left gripper before the take point.
+        :param simulation: The running simulation.
         :param take_point: Where on the cable the left gripper takes it.
-        :return: The steps in which the left gripper takes the cable and lifts it, and
-            the right gripper lets go of it.
+        :return: The steps in which the left gripper takes the cable, and the right
+            gripper lets go of it and backs off upwards.
         """
-        left_arm = daisy.left_arm
-        world = daisy._world
+        right_arm = daisy.right_arm
+        right_grip_point = self.measured_grip_point(simulation, right_arm.end_effector)
         return [
-            MoveManipulatorAction(
-                arm=left_arm,
-                goal_pose=self.tool_pose(
-                    world, take_point, self.left_pointing, self.left_closing
-                ),
-                position_threshold=self.approach_position_threshold,
+            self.move_from_the_side(
+                daisy.left_arm, take_point, self.approach_position_threshold
             ),
-            self.close_on_cable(left_arm.end_effector),
-            MoveManipulatorAction(
-                arm=left_arm,
-                goal_pose=self.tool_pose(
-                    world,
-                    take_point + numpy.array(self.lift),
-                    self.left_pointing,
-                    self.left_closing,
-                ),
-            ),
-            SetGripperAction(
-                gripper_configuration=daisy.right_arm.end_effector.default_configuration(
-                    GripperState.OPEN
-                )
+            self.close_on_cable(daisy.left_arm.end_effector),
+            self.open_gripper(right_arm),
+            self.move_from_above(
+                right_arm, right_grip_point - self.approach_distance * self.pointing
             ),
         ]
 
-    def outcome(
+    def drop(self, daisy: DAiSy, simulation: MujocoSuperdexSim) -> list[StatechartNode]:
+        """
+        :param daisy: The robot, its left gripper holding the cable.
+        :param simulation: The running simulation.
+        :return: The steps in which the left gripper lowers the cable straight down
+            to :attr:`drop_height`, lets go of it and backs off.
+        """
+        arm = daisy.left_arm
+        drop_point = self.measured_grip_point(simulation, arm.end_effector)
+        drop_point[2] = self.table_top(daisy._world) + self.drop_height
+        return [
+            self.move_from_the_side(arm, drop_point),
+            self.open_gripper(arm),
+            self.move_from_the_side(
+                arm, drop_point - self.approach_distance * self.left_pointing
+            ),
+        ]
+
+    def move_from_the_side(
         self,
-        simulation: MujocoSuperdexSim,
-        cable: DeformableCable,
-        daisy: DAiSy,
-        world: World,
-    ) -> HandoverOutcome:
+        arm: Arm,
+        grip_point: NDArray[numpy.float64],
+        position_threshold: float = MoveManipulatorAction.position_threshold,
+    ) -> MoveManipulatorAction:
         """
-        :param simulation: The simulation the handover ran in.
-        :param cable: The cable.
-        :param daisy: The robot.
-        :param world: The world.
-        :return: Where the cable ended up.
+        :param arm: The arm to move.
+        :param grip_point: Where its gripper is to grip.
+        :param position_threshold: How close, in metres, the tool frame has to come.
+        :return: The step moving the gripper there, pointing along
+            :attr:`left_pointing`.
         """
-        left_grip_point = self.measured_grip_point(
-            simulation, daisy.left_arm.end_effector
-        )
-        centreline = cable.centreline
-        points_along = numpy.array(
-            [
-                centreline.point_at(arc_length)
-                for arc_length in numpy.linspace(0.0, centreline.length, 1000)
-            ]
-        )
-        return HandoverOutcome(
-            lowest_node_height_above_table=float(
-                centreline.corners[:, 2].min() - self.table_top(world)
+        return MoveManipulatorAction(
+            arm=arm,
+            goal_pose=self.tool_pose(
+                arm._world, grip_point, self.left_pointing, self.left_closing
             ),
-            distance_from_left_grip_point=float(
-                numpy.linalg.norm(points_along - left_grip_point, axis=1).min()
-            ),
+            position_threshold=position_threshold,
         )
 
 
@@ -326,7 +267,9 @@ def run_from_command_line() -> None:
     """
     Parse the command line and run the demonstration.
     """
-    parser = argparse.ArgumentParser(description="DAiSy hands a cable over.")
+    parser = argparse.ArgumentParser(
+        description="DAiSy hands a cable from one gripper to the other."
+    )
     parser.add_argument(
         CommandLineFlag.HEADLESS,
         action="store_true",
