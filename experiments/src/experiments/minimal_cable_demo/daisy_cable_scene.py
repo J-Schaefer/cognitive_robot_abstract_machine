@@ -3,12 +3,17 @@ What the cable demonstrations with DAiSy share: the robot's world, the bodies a 
 touches, the poses and finger positions that grip a cable, and running a plan
 kinematically or against the physics.
 
-The cable is simulated by SuperDex and the robot by MuJoCo.
+The cable is simulated by SuperDex and the robot by MuJoCo. The robot's motions are
+controlled by a Giskard in this process, or by a Giskard node already running, such as
+the one ``ros2 launch giskardpy_ros giskardpy_daisy_standalone.launch.py`` starts.
 """
 
 from __future__ import annotations
 
+import argparse
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import StrEnum
@@ -17,11 +22,16 @@ from pathlib import Path
 import imageio.v2 as imageio
 import mujoco
 import numpy
+from coraplex.demonstrations import (
+    WORLD_FETCH_TIMEOUT_SECONDS,
+    RobotDemonstrationRosSession,
+)
 from coraplex.plans.context_extensions import RobotAccess
 from coraplex.plans.executors import (
     KinematicallySimulatedPlanExecutor,
     PhysicallySimulatedPlanExecutor,
     PlanExecutor,
+    RealRobotPlanExecutor,
 )
 from coraplex.robot_plans.actions.core.robot_body import (
     MoveManipulatorAction,
@@ -29,12 +39,14 @@ from coraplex.robot_plans.actions.core.robot_body import (
 )
 from cramph.composites import Sequence
 from cramph.context import StatechartContext
+from cramph.executor import SteppedSimulationPacer
 from cramph.node import StatechartNode
 from cramph.statechart import Statechart
 from giskardpy.motion_statechart.tasks.joint_tasks import JointPositionList
 from krrood_spatial_math.spatial_types import Point3, Pose
 from numpy.typing import NDArray
 from scipy.spatial.transform import Rotation
+from semantic_digital_twin.adapters.ros.world_fetcher import join_shared_world
 from semantic_digital_twin.adapters.superdex.mujoco_cable_simulation import (
     MujocoBodyPoses,
     MujocoSuperdexSim,
@@ -48,7 +60,7 @@ from semantic_digital_twin.robots.robot_parts import Arm
 from semantic_digital_twin.semantic_annotations.deformable_cable import DeformableCable
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.geometry import Color
-from typing_extensions import Any
+from typing_extensions import Any, Self
 
 # %% names in the DAiSy description
 
@@ -78,6 +90,11 @@ class CommandLineFlag(StrEnum):
     VIDEO = "--video"
     """
     Record a video of the run into the file that follows.
+    """
+
+    RUNNING_GISKARD = "--running-giskard"
+    """
+    Send the robot's motions to a Giskard node already running.
     """
 
 
@@ -217,6 +234,38 @@ class RecordedMujocoSuperdexSim(MujocoSuperdexSim):
         self.video.advance(self, duration)
 
 
+# %% following a running Giskard
+
+
+@dataclass(kw_only=True)
+class CommandedJointPositions:
+    """
+    The joint positions a running Giskard commanded at one moment.
+    """
+
+    time: float
+    """
+    How long after the start of the step it was commanded in, in seconds.
+    """
+
+    positions: dict[PrefixedName, float]
+    """
+    The commanded positions, by the name of their degree of freedom.
+    """
+
+    @classmethod
+    def from_world(cls, world: World, *, start: float) -> Self:
+        """
+        :param world: The world the running Giskard serves.
+        :param start: The moment the step started at, on the monotonic clock, in
+            seconds.
+        :return: The positions the world holds now.
+        """
+        return cls(
+            time=time.monotonic() - start, positions=world.state.to_position_dict()
+        )
+
+
 # %% demonstration
 
 
@@ -234,6 +283,29 @@ class DAiSyCableDemonstration:
     video: CableVideo | None = None
     """
     The video to record the run into, if any.
+    """
+
+    uses_running_giskard: bool = False
+    """
+    Whether the robot's motions are sent to a Giskard node already running, whose world
+    the demonstration joins, instead of being controlled by a Giskard in this process.
+    """
+
+    ros_node_name: str = "daisy_cable_demonstration"
+    """
+    The name of the node that talks to the running Giskard.
+    """
+
+    ros_session: RobotDemonstrationRosSession | None = field(init=False, default=None)
+    """
+    The ROS session the running Giskard is talked to through, ``None`` until
+    :meth:`create_world` joins its world.
+    """
+
+    giskard_world: World | None = field(init=False, default=None)
+    """
+    The world the running Giskard serves, kept in step with it, ``None`` until
+    :meth:`create_world` joins it.
     """
 
     cable_length: float = 0.4
@@ -279,7 +351,8 @@ class DAiSyCableDemonstration:
 
     control_period: timedelta = timedelta(milliseconds=20)
     """
-    The period the physics is stepped by while the cable settles.
+    The period the physics is stepped by while the cable settles, and while a running
+    Giskard moves the robot.
     """
 
     cable_color: Color = field(default_factory=Color.ORANGE)
@@ -327,13 +400,49 @@ class DAiSyCableDemonstration:
     cable lying on the table.
     """
 
-    @staticmethod
-    def create_world() -> tuple[World, DAiSy]:
+    @classmethod
+    def from_command_line(cls, *, description: str) -> Self:
         """
-        :return: A new world holding DAiSy, and DAiSy.
+        :param description: What the demonstration does, for the command line's help.
+        :return: The demonstration the command line's switches ask for.
+        """
+        parser = argparse.ArgumentParser(description=description)
+        parser.add_argument(
+            CommandLineFlag.HEADLESS,
+            action="store_true",
+            help="Run without the MuJoCo viewer.",
+        )
+        parser.add_argument(
+            CommandLineFlag.VIDEO, type=Path, help="Record a video into this file."
+        )
+        parser.add_argument(
+            CommandLineFlag.RUNNING_GISKARD,
+            action="store_true",
+            help="Send the robot's motions to a Giskard node already running.",
+        )
+        arguments = parser.parse_args()
+        return cls(
+            headless=arguments.headless,
+            video=None if arguments.video is None else CableVideo(path=arguments.video),
+            uses_running_giskard=arguments.running_giskard,
+        )
+
+    def create_world(self) -> tuple[World, DAiSy]:
+        """
+        :return: A new world holding DAiSy, to add the cable to and simulate, and the
+            DAiSy that performs the plans: the one in that world, or the one in
+            :attr:`giskard_world` if :attr:`uses_running_giskard`.
         """
         world = URDFParser.from_file(file_path=DAiSy.get_ros_file_path()).create_world()
-        return world, DAiSy.from_world(world)
+        simulated_daisy = DAiSy.from_world(world)
+        if not self.uses_running_giskard:
+            return world, simulated_daisy
+        self.ros_session = RobotDemonstrationRosSession.start(self.ros_node_name)
+        self.giskard_world = join_shared_world(
+            self.ros_session.node, timeout_seconds=WORLD_FETCH_TIMEOUT_SECONDS
+        )
+        [giskard_daisy] = self.giskard_world.get_semantic_annotations_by_type(DAiSy)
+        return world, giskard_daisy
 
     def create_simulation(self, world: World) -> MujocoSuperdexSim:
         """
@@ -341,6 +450,10 @@ class DAiSyCableDemonstration:
         :return: A new, started simulation of the world in which the cable touches the
             table and the fingertips, recording :attr:`video` if there is one.
         """
+        if self.uses_running_giskard:
+            self._command_joint_positions(
+                world, self.giskard_world.state.to_position_dict()
+            )
         colliding_bodies = [world.get_body_by_name(name) for name in DAiSyCableBody]
         if self.video is None:
             simulation = MujocoSuperdexSim(
@@ -354,7 +467,26 @@ class DAiSyCableDemonstration:
                 headless=self.headless,
             )
         simulation.start_stepped_simulation()
+        if self.uses_running_giskard:
+            # The world holds the commands the servos follow, which the physics must
+            # not overwrite.
+            simulation.synchronizer.sync_rate_hz = 0
         return simulation
+
+    def tear_down(self, simulation: MujocoSuperdexSim) -> None:
+        """
+        Stop the simulation, write :attr:`video` if there is one and leave the ROS
+        session if one was started.
+
+        :param simulation: The running simulation.
+        """
+        simulation.stop_simulation()
+        if self.video is not None:
+            self.video.write()
+        if self.ros_session is None:
+            return
+        self.ros_session.stop()
+        self.ros_session = None
 
     def let_the_cable_settle(
         self, simulation: MujocoSuperdexSim, duration: timedelta
@@ -366,38 +498,116 @@ class DAiSyCableDemonstration:
         for _ in range(round(duration / self.control_period)):
             simulation.step_simulation(self.control_period)
 
-    @staticmethod
-    def perform_kinematically(daisy: DAiSy, steps: list[StatechartNode]) -> None:
+    def perform_kinematically(self, daisy: DAiSy, steps: list[StatechartNode]) -> None:
         """
-        Perform steps one after the other, with the world following every command
-        exactly.
+        Perform steps one after the other without the physics, with the world following
+        every command exactly, or as the running Giskard moves the robot.
 
         :param daisy: The robot performing them.
         :param steps: The steps.
         """
-        DAiSyCableDemonstration._perform(
-            KinematicallySimulatedPlanExecutor(
-                context=DAiSyCableDemonstration._context(daisy)
-            ),
-            steps,
+        if self.uses_running_giskard:
+            self._perform(self._running_giskard_executor(daisy), steps)
+            return
+        self._perform(
+            KinematicallySimulatedPlanExecutor(context=self._context(daisy)), steps
         )
 
-    @staticmethod
     def perform_physically(
-        daisy: DAiSy, simulation: MujocoSuperdexSim, steps: list[StatechartNode]
+        self,
+        daisy: DAiSy,
+        simulation: MujocoSuperdexSim,
+        steps: list[StatechartNode],
     ) -> None:
         """
         Perform steps one after the other, against the physics.
+
+        A running Giskard does not wait for the physics, so every step is sent to it on
+        its own, see :meth:`_replay_running_giskard`, and the next one only once the
+        simulated robot has come to a standstill.
 
         :param daisy: The robot performing them.
         :param simulation: The running simulation.
         :param steps: The steps.
         """
-        DAiSyCableDemonstration._perform(
-            PhysicallySimulatedPlanExecutor(
-                context=DAiSyCableDemonstration._context(daisy), simulation=simulation
-            ),
-            steps,
+        if not self.uses_running_giskard:
+            self._perform(
+                PhysicallySimulatedPlanExecutor(
+                    context=self._context(daisy), simulation=simulation
+                ),
+                steps,
+            )
+            return
+        pacer = SteppedSimulationPacer(simulation=simulation)
+        pacer.target_frequency = 1 / self.control_period.total_seconds()
+        for step in steps:
+            self._replay_running_giskard(daisy, simulation, step)
+            pacer.wait_for_standstill()
+
+    def _replay_running_giskard(
+        self, daisy: DAiSy, simulation: MujocoSuperdexSim, step: StatechartNode
+    ) -> None:
+        """
+        Send a step to the running Giskard and let the simulated robot follow the joint
+        positions it commands, replayed at the pace they were commanded at: Giskard
+        moves the robot in real time, which the physics may be too slow to keep.
+
+        :param daisy: The robot performing the step, in :attr:`giskard_world`.
+        :param simulation: The running simulation.
+        :param step: The step.
+        """
+        executor = self._running_giskard_executor(daisy)
+        self._compile(executor, [step])
+        start = time.monotonic()
+        commands = [CommandedJointPositions.from_world(self.giskard_world, start=start)]
+        simulated_time = 0.0
+        end: float | None = None
+        # The viewer and the video render on this thread, so the plan runs on another.
+        with ThreadPoolExecutor(max_workers=1) as plan_thread:
+            execution = plan_thread.submit(executor.execute)
+            while end is None or simulated_time < end:
+                if end is None:
+                    finished = execution.done()
+                    commands.append(
+                        CommandedJointPositions.from_world(
+                            self.giskard_world, start=start
+                        )
+                    )
+                    if finished:
+                        end = commands[-1].time
+                simulated_time += self.control_period.total_seconds()
+                command = next(
+                    command
+                    for command in reversed(commands)
+                    if command.time <= simulated_time
+                )
+                self._command_joint_positions(simulation.world, command.positions)
+                simulation.step_simulation(self.control_period)
+            execution.result()
+        executor.close()
+
+    @staticmethod
+    def _command_joint_positions(
+        world: World, positions: dict[PrefixedName, float]
+    ) -> None:
+        """
+        :param world: The world whose joints to command.
+        :param positions: The positions to command them to, by the name of their degree
+            of freedom.
+        """
+        for name, position in positions.items():
+            world.state[
+                world.get_degree_of_freedom_by_name(name).id
+            ].position = position
+        world.notify_state_change()
+
+    def _running_giskard_executor(self, daisy: DAiSy) -> RealRobotPlanExecutor:
+        """
+        :param daisy: The robot.
+        :return: A new executor sending a plan DAiSy performs to the running Giskard.
+        """
+        return RealRobotPlanExecutor(
+            context=self._context(daisy), ros_node=self.ros_session.node
         )
 
     @staticmethod
@@ -416,11 +626,19 @@ class DAiSyCableDemonstration:
         :param executor: The executor to perform the steps with.
         :param steps: The steps, performed one after the other.
         """
+        DAiSyCableDemonstration._compile(executor, steps)
+        executor.execute()
+        executor.close()
+
+    @staticmethod
+    def _compile(executor: PlanExecutor, steps: list[StatechartNode]) -> None:
+        """
+        :param executor: The executor to perform the steps with.
+        :param steps: The steps, to be performed one after the other.
+        """
         statechart = Statechart(context=executor.context)
         statechart.add_node(node=Sequence(nodes=steps))
         executor.compile(statechart=statechart)
-        executor.execute()
-        executor.close()
 
     def lay_cable_on_the_table(self, world: World) -> DeformableCable:
         """

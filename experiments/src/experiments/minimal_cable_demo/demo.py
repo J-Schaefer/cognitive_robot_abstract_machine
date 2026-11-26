@@ -13,15 +13,17 @@ records it::
 
     python3 -m experiments.minimal_cable_demo.demo --headless --video cable.mp4
 
+``--running-giskard`` sends the robot's motions to a Giskard node already running, such
+as the one ``ros2 launch giskardpy_ros giskardpy_daisy_standalone.launch.py`` starts,
+instead of a Giskard in this process.
+
 It needs the ``superdex`` extra of ``semantic_digital_twin`` and the DAiSy description.
 """
 
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass, field
 from datetime import timedelta
-from pathlib import Path
 
 import numpy
 from coraplex.robot_plans.actions.core.robot_body import (
@@ -30,8 +32,6 @@ from coraplex.robot_plans.actions.core.robot_body import (
 )
 from cramph.node import StatechartNode
 from experiments.minimal_cable_demo.daisy_cable_scene import (
-    CableVideo,
-    CommandLineFlag,
     DAiSyCableDemonstration,
 )
 from numpy.typing import NDArray
@@ -152,9 +152,7 @@ class MinimalCableDemonstration(DAiSyCableDemonstration):
                 ),
             )
         finally:
-            simulation.stop_simulation()
-            if self.video is not None:
-                self.video.write()
+            self.tear_down(simulation)
 
     def hold_up(
         self, daisy: DAiSy, pick_point: NDArray[numpy.float64]
@@ -267,23 +265,11 @@ def run_from_command_line() -> None:
     """
     Parse the command line and run the demonstration.
     """
-    parser = argparse.ArgumentParser(
-        description="DAiSy hands a cable from one gripper to the other."
+    print(
+        MinimalCableDemonstration.from_command_line(
+            description="DAiSy hands a cable from one gripper to the other."
+        ).run()
     )
-    parser.add_argument(
-        CommandLineFlag.HEADLESS,
-        action="store_true",
-        help="Run without the MuJoCo viewer.",
-    )
-    parser.add_argument(
-        CommandLineFlag.VIDEO, type=Path, help="Record a video into this file."
-    )
-    arguments = parser.parse_args()
-    outcome = MinimalCableDemonstration(
-        headless=arguments.headless,
-        video=None if arguments.video is None else CableVideo(path=arguments.video),
-    ).run()
-    print(outcome)
 
 
 if __name__ == "__main__":
