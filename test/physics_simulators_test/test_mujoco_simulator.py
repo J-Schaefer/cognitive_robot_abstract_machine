@@ -1,3 +1,9 @@
+"""
+The MuJoCo simulator: loading scenes, stepping, its callbacks and its viewer.
+"""
+
+from __future__ import annotations
+
 import os
 import threading
 import time
@@ -5,16 +11,15 @@ import time
 import mujoco
 import numpy
 import pytest
-
+from physics_simulators.base_simulator import (
+    SimulatorCallbackResult,
+    SimulatorConstraints,
+    SimulatorState,
+)
 from physics_simulators.mujoco_simulator import (
     HeadlessGraphicsBackend,
     MujocoEnvironmentVariable,
     MujocoSimulator,
-)
-from physics_simulators.base_simulator import (
-    SimulatorConstraints,
-    SimulatorState,
-    SimulatorCallbackResult,
 )
 
 resources_path = os.path.join(

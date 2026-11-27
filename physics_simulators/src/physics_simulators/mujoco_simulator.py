@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
+"""
+The MuJoCo backend of the physics simulators, with its viewer.
+"""
 
 import os
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, field, InitVar
+from dataclasses import InitVar, dataclass, field
 from enum import StrEnum
-from threading import RLock, Thread, enumerate as running_threads
-from typing_extensions import Any
+from threading import RLock, Thread
+from threading import enumerate as running_threads
 
 import mujoco
 import mujoco.viewer
 import numpy
+from typing_extensions import Any
 
 from physics_simulators.base_simulator import (
     BaseSimulator,
-    SimulatorRenderer,
     SimulatorCallbackResult,
+    SimulatorRenderer,
     SimulatorState,
 )
 
@@ -159,7 +163,11 @@ class MujocoSimulator(BaseSimulator):
 
         mujoco.mj_resetDataKeyframe(self._mj_model, self._mj_data, 0)
 
-    def start_callback(self):
+    def start_callback(self) -> None:
+        """
+        Unlike :meth:`BaseSimulator.start_callback`, open MuJoCo's passive viewer unless
+        the simulator is headless.
+        """
         if self.headless:
             self._renderer = SimulatorRenderer()
             return
@@ -173,11 +181,10 @@ class MujocoSimulator(BaseSimulator):
             if thread not in threads_before_launch
         ]
 
-    def stop(self):
+    def stop(self) -> None:
         """
-        Stop the simulator as :meth:`BaseSimulator.stop` does, and wait for the viewer
-        to close, so an interpreter exiting right after does not tear the viewer's
-        window down while it still draws.
+        Stop the simulator as :meth:`BaseSimulator.stop` does, and wait until the
+        viewer's window has closed.
         """
         super().stop()
         for thread in self._viewer_threads:
@@ -1227,7 +1234,7 @@ class MujocoSimulator(BaseSimulator):
         :param including_children: whether to include children or not
         :param contact_style: contact style. Only
             `SimulatorCallbackResult.OutputType.PYBULLET` is currently supported, which
-            returns contact points in a PyBullet\-compatible format.
+            returns contact points in a PyBullet-compatible format.
         :return: A SimulatorCallbackResult indicating the success or failure of the
             operation. On success, the result contains a list of contact points in the
             specified format.
@@ -1339,14 +1346,14 @@ class MujocoSimulator(BaseSimulator):
         ) = SimulatorCallbackResult.OutputType.PYBULLET,
     ) -> SimulatorCallbackResult:
         """
-        Cast a ray in the scene and return intersections in a PyBullet\-style format.
+        Cast a ray in the scene and return intersections in a PyBullet-style format.
 
-        :param ray_from_position: Start position of the ray as a list \[x, y, z\].
-        :param ray_to_position: End position of the ray as a list \[x, y, z\].
+        :param ray_from_position: Start position of the ray as a list [x, y, z].
+        :param ray_to_position: End position of the ray as a list [x, y, z].
         :param ray_style: Output style. Only
             `SimulatorCallbackResult.OutputType.PYBULLET` is currently supported.
         :return: A `SimulatorCallbackResult` indicating success or failure. On success,
-            the result contains a list of hit records in PyBullet\-compatible format.
+            the result contains a list of hit records in PyBullet-compatible format.
         """
         if isinstance(ray_style, str):
             ray_style = SimulatorCallbackResult.OutputType(ray_style)
@@ -1416,16 +1423,16 @@ class MujocoSimulator(BaseSimulator):
         """
         Cast a batch of rays from a single origin to multiple end positions.
 
-        :param ray_from_position: A list \[x, y, z\] representing the ray origin in
+        :param ray_from_position: A list [x, y, z] representing the ray origin in
             world coordinates.
-        :param ray_to_positions: A list of \[x, y, z\] lists representing ray end points
+        :param ray_to_positions: A list of [x, y, z] lists representing ray end points
             in world coordinates.
         :param parent_link_name: Optional name of a link the rays are conceptually
             attached to (for compatibility).
         :param ray_style: Output style, must be
             `SimulatorCallbackResult.OutputType.PYBULLET`.
         :return: A SimulatorCallbackResult whose `result` is a list of hit results in
-            PyBullet\-style dicts.
+            PyBullet-style dicts.
         """
         if isinstance(ray_style, str):
             ray_style = SimulatorCallbackResult.OutputType(ray_style)
