@@ -5,43 +5,49 @@ properties.
 
 from __future__ import annotations
 
-import logging
-import inspect
 import hashlib
+import inspect
+import logging
 import os
 import tempfile
-from pathlib import Path
-from typing_extensions import Generic, Any, ClassVar, Iterator, TypeVar
-
 import time
-from datetime import timedelta
-from functools import lru_cache
-import trimesh
-import PIL.ImageFile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import timedelta
 from enum import IntEnum, IntFlag, StrEnum
+from functools import lru_cache
+from pathlib import Path
 from types import NoneType
 from uuid import UUID
 
-import numpy
 import mujoco
-from numpy.typing import NDArray
-from physics_simulators.mujoco_simulator import MujocoSimulator
-from physics_simulators.base_simulator import (
-    BaseSimulator,
-    SimulatorState,
-    SimulatorCallbackResult,
-    SimulatorConstraints,
-)
+import numpy
+import PIL.ImageFile
+import trimesh
 from krrood.adapters.json_field import JSONField
 from krrood.adapters.json_serializer import ExternalClassJSONSerializer
 from krrood.exceptions import UnboundGenericParameter
 from krrood.patterns.classproperty import classproperty
 from krrood.patterns.subclass_safe_generic import SubClassSafeGeneric
 from krrood.utils import get_full_class_name, recursive_subclasses
+from krrood_spatial_math.spatial_types import (
+    HomogeneousTransformationMatrix,
+    Point3,
+    Quaternion,
+    RotationMatrix,
+    Vector3,
+)
+from numpy.typing import NDArray
+from physics_simulators.base_simulator import (
+    BaseSimulator,
+    SimulatorCallbackResult,
+    SimulatorConstraints,
+    SimulatorState,
+)
+from physics_simulators.mujoco_simulator import MujocoSimulator
 from scipy.spatial.transform import Rotation
 from trimesh.visual import TextureVisuals
+from typing_extensions import Any, ClassVar, Generic, Iterator, TypeVar
 
 from semantic_digital_twin.callbacks.callback import (
     ModelChangeCallback,
@@ -50,67 +56,60 @@ from semantic_digital_twin.callbacks.callback import (
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.datastructures.unique_entity_names import UniqueEntityNames
 from semantic_digital_twin.exceptions import (
-    QuaternionConversionError,
     MujocoEntityNotFoundError,
+    QuaternionConversionError,
     SimulationAlreadyRunningError,
     SimulationNotStartedError,
     SnapshotDoesNotFitSimulationError,
 )
-from krrood_spatial_math.spatial_types import (
-    HomogeneousTransformationMatrix,
-    Point3,
-    Quaternion,
-    RotationMatrix,
-    Vector3,
+from semantic_digital_twin.mixin import (
+    SimulatorAdditionalProperty,
+    SimulatorAttributeName,
+    UniqueSimulatorProperty,
 )
 from semantic_digital_twin.semantic_annotations.semantic_annotations import Floor
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.connections import (
-    RevoluteConnection,
-    PrismaticConnection,
     ActiveConnection1DOF,
-    FixedConnection,
     Connection6DoF,
-    OmniDrive,
     DifferentialDrive,
+    FixedConnection,
+    OmniDrive,
+    PrismaticConnection,
+    RevoluteConnection,
     WheeledDrive,
-)
-from semantic_digital_twin.world_description.degree_of_freedom import DegreeOfFreedom
-from semantic_digital_twin.world_description.derivatives import Derivatives
-from semantic_digital_twin.world_description.geometry import (
-    Box,
-    Cylinder,
-    Sphere,
-    Shape,
-    Mesh,
-    MeshFileFormat,
-    Color,
 )
 from semantic_digital_twin.world_description.contact import (
     ContactFriction,
     ContactParameters,
 )
+from semantic_digital_twin.world_description.degree_of_freedom import DegreeOfFreedom
+from semantic_digital_twin.world_description.derivatives import Derivatives
+from semantic_digital_twin.world_description.geometry import (
+    Box,
+    Color,
+    Cylinder,
+    Mesh,
+    MeshFileFormat,
+    Shape,
+    Sphere,
+)
 from semantic_digital_twin.world_description.world_entity import (
-    Region,
+    Actuator,
     Body,
+    Connection,
     GravityCompensation,
     KinematicStructureEntity,
-    Connection,
+    PositionServo,
+    Region,
+    VelocityServo,
     WorldEntity,
     WorldEntityWithID,
-    Actuator,
-    PositionServo,
-    VelocityServo,
-)
-from semantic_digital_twin.mixin import (
-    SimulatorAttributeName,
-    SimulatorAdditionalProperty,
-    UniqueSimulatorProperty,
 )
 from semantic_digital_twin.world_description.world_modification import (
-    AddKinematicStructureEntityModification,
     AddActuatorModification,
     AddConnectionModification,
+    AddKinematicStructureEntityModification,
 )
 
 logger = logging.getLogger(__name__)

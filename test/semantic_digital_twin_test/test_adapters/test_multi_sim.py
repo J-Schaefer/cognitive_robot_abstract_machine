@@ -1,70 +1,75 @@
+"""
+Simulating a world in MuJoCo: building its scene and keeping world and simulator in
+step.
+"""
+
+from __future__ import annotations
+
 import logging
 import os
-from datetime import timedelta
 import threading
 import time
 from dataclasses import dataclass
+from datetime import timedelta
 
 import mujoco
-import pytest
 import numpy
+import pytest
 import trimesh
+from krrood_spatial_math.spatial_types import (
+    HomogeneousTransformationMatrix,
+    Pose,
+    Vector3,
+)
+from physics_simulators.base_simulator import SimulatorState
+from physics_simulators.mujoco_simulator import MujocoSimulator
 from PIL import Image
-from trimesh.visual.material import SimpleMaterial
-
 from semantic_digital_twin.adapters.mesh import STLParser
+from semantic_digital_twin.adapters.mjcf import MJCFParser
+from semantic_digital_twin.adapters.multi_sim import (
+    ContactCategories,
+    MujocoActuator,
+    MujocoBuilder,
+    MujocoContactDimensionality,
+    MujocoGeom,
+    MujocoLight,
+    MujocoSim,
+    MujocoSynchronizer,
+)
 from semantic_digital_twin.adapters.urdf import URDFParser
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
 from semantic_digital_twin.exceptions import ParsingError, SimulationNotStartedError
 from semantic_digital_twin.robots.hsrb import HSRB
 from semantic_digital_twin.robots.tracy import Tracy
-from krrood_spatial_math.spatial_types import (
-    HomogeneousTransformationMatrix,
-    Vector3,
-    Pose,
-)
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.connections import (
     Connection6DoF,
     FixedConnection,
     RevoluteConnection,
 )
+from semantic_digital_twin.world_description.contact import ContactParameters
 from semantic_digital_twin.world_description.degree_of_freedom import (
     DegreeOfFreedom,
     DegreeOfFreedomLimits,
 )
-from semantic_digital_twin.world_description.contact import ContactParameters
 from semantic_digital_twin.world_description.geometry import (
     Box,
-    Scale,
     Color,
     Cylinder,
     Mesh,
     MeshFileFormat,
+    Scale,
     Texture,
 )
 from semantic_digital_twin.world_description.inertial_properties import Inertial
 from semantic_digital_twin.world_description.shape_collection import ShapeCollection
 from semantic_digital_twin.world_description.world_entity import (
-    Body,
-    Region,
     Actuator,
+    Body,
     GravityCompensation,
+    Region,
 )
-
-from physics_simulators.mujoco_simulator import MujocoSimulator
-from physics_simulators.base_simulator import SimulatorState
-from semantic_digital_twin.adapters.mjcf import MJCFParser
-from semantic_digital_twin.adapters.multi_sim import (
-    ContactCategories,
-    MujocoSim,
-    MujocoActuator,
-    MujocoBuilder,
-    MujocoContactDimensionality,
-    MujocoGeom,
-    MujocoLight,
-    MujocoSynchronizer,
-)
+from trimesh.visual.material import SimpleMaterial
 
 urdf_dir = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
