@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from semantic_digital_twin.datastructures.definitions import GripperState
 from semantic_digital_twin.robots.daisy import DAiSy
 from semantic_digital_twin.robots.griplink_gripper import (

@@ -13,11 +13,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
-from typing_extensions import Self
-
-from typing_extensions import Generic
 
 from krrood.patterns.classproperty import classproperty
+from krrood_spatial_math.spatial_types import HomogeneousTransformationMatrix, Vector3
+from typing_extensions import Self
 
 from semantic_digital_twin.collision_checking.collision_rules import (
     AvoidCollisionBetweenGroups,
@@ -25,12 +24,12 @@ from semantic_digital_twin.collision_checking.collision_rules import (
     AvoidSelfCollisions,
     SelfCollisionMatrixRule,
 )
+from semantic_digital_twin.datastructures.camera_model import FieldOfViewCameraModel
 from semantic_digital_twin.datastructures.definitions import (
-    JointName,
     GripperState,
+    JointName,
     StaticJointState,
 )
-from semantic_digital_twin.datastructures.camera_model import FieldOfViewCameraModel
 from semantic_digital_twin.datastructures.field_of_view import FieldOfView
 from semantic_digital_twin.datastructures.joint_state import JointState
 from semantic_digital_twin.datastructures.prefixed_name import PrefixedName
@@ -52,7 +51,6 @@ from semantic_digital_twin.robots.robot_parts import (
     RobotCamera,
     ServoedRobotPart,
 )
-from krrood_spatial_math.spatial_types import HomogeneousTransformationMatrix, Vector3
 from semantic_digital_twin.world_description.connection_properties import (
     JointDrive,
     ServoGains,
@@ -198,14 +196,11 @@ class DAiSyRightGripperRightFinger(Finger):
 # %% what drives DAiSy's joints in a physical simulation
 
 
-@dataclass(eq=False)
+@dataclass(eq=False, kw_only=True)
 class DAiSyGripper(GriplinkGripper, ServoedRobotPart, ABC):
     """
     A WEISS WPG 300-120 gripper of DAiSy, whose fingers are driven by a position servo
     in a physical simulation.
-
-    No tuned reference model of this gripper exists; the gains are those of the parallel
-    jaw in robosimstudio's DAiSy cable demo.
     """
 
     @property
@@ -221,6 +216,8 @@ class DAiSyGripper(GriplinkGripper, ServoedRobotPart, ABC):
         """
         Every finger joint, driven alike.
         """
+        # No tuned reference model of this gripper exists; these are the gains of the
+        # parallel jaw in robosimstudio's DAiSy cable demo.
         finger_drive = JointDrive(
             gains=ServoGains(stiffness=2000.0, damping=40.0, torque_limit=100.0),
             armature=0.01,
@@ -232,13 +229,15 @@ class DAiSyGripper(GriplinkGripper, ServoedRobotPart, ABC):
 
     @classproperty
     def holds_its_own_weight(cls) -> bool:
+        """
+        Unlike :attr:`ServoedRobotPart.holds_its_own_weight`, a physical simulation
+        carries the weight of the gripper's bodies.
+        """
         return True
 
 
-@dataclass(eq=False)
-class DAiSyArm(
-    Arm[TGenericEndEffector], ServoedRobotPart, Generic[TGenericEndEffector], ABC
-):
+@dataclass(eq=False, kw_only=True)
+class DAiSyArm(Arm[TGenericEndEffector], ServoedRobotPart, ABC):
     """
     A UR5 arm of DAiSy, servoed in a physical simulation like MuJoCo Menagerie's
     ``universal_robots_ur5e``, whose link lengths match the UR5's.
@@ -275,6 +274,10 @@ class DAiSyArm(
 
     @classproperty
     def holds_its_own_weight(cls) -> bool:
+        """
+        Unlike :attr:`ServoedRobotPart.holds_its_own_weight`, a physical simulation
+        carries the weight of the arm's bodies.
+        """
         return True
 
 
@@ -286,6 +289,10 @@ class DAiSyLeftGripper(
     DAiSyGripper,
     HasTwoFingers[DAiSyLeftGripperLeftFinger, DAiSyLeftGripperRightFinger],
 ):
+    """
+    The gripper at the end of DAiSy's left arm.
+    """
+
     @classproperty
     def griplink_endpoints(cls) -> Mapping[GripperState, GriplinkEndpoint]:
         """
@@ -353,6 +360,10 @@ class DAiSyRightGripper(
     DAiSyGripper,
     HasTwoFingers[DAiSyRightGripperLeftFinger, DAiSyRightGripperRightFinger],
 ):
+    """
+    The gripper at the end of DAiSy's right arm.
+    """
+
     @classproperty
     def griplink_endpoints(cls) -> Mapping[GripperState, GriplinkEndpoint]:
         """
@@ -418,6 +429,10 @@ class DAiSyRightGripper(
 
 @dataclass(eq=False)
 class DAiSyLeftArm(DAiSyArm[DAiSyLeftGripper]):
+    """
+    DAiSy's left UR5 arm.
+    """
+
     def setup_hardware_interfaces(self) -> None:
         self._setup_hardware_interfaces_for_active_connections()
 
@@ -458,6 +473,10 @@ class DAiSyLeftArm(DAiSyArm[DAiSyLeftGripper]):
 
 @dataclass(eq=False)
 class DAiSyRightArm(DAiSyArm[DAiSyRightGripper]):
+    """
+    DAiSy's right UR5 arm.
+    """
+
     def setup_hardware_interfaces(self) -> None:
         self._setup_hardware_interfaces_for_active_connections()
 
