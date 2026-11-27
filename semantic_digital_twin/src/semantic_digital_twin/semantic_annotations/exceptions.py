@@ -1,19 +1,23 @@
+"""
+The errors raised by semantic annotations.
+"""
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from krrood.exceptions import DataclassException
 
 # %% deformable cables
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TooFewCableSegmentsError(DataclassException):
     """
     Raised when a cable is to be made of fewer than one segment.
     """
 
-    number_of_segments: int = field(kw_only=True)
+    number_of_segments: int
     """
     The number of segments that was asked for.
     """
@@ -25,18 +29,18 @@ class TooFewCableSegmentsError(DataclassException):
         return "Ask for one segment or more."
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ArcLengthOutsideCableError(DataclassException):
     """
     Raised when a point is asked for further along a cable than the cable reaches.
     """
 
-    arc_length: float = field(kw_only=True)
+    arc_length: float
     """
     The distance along the cable that was asked for, in metres.
     """
 
-    cable_length: float = field(kw_only=True)
+    cable_length: float
     """
     The length of the cable, in metres.
     """

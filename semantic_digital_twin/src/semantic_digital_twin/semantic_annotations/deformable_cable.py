@@ -1,3 +1,8 @@
+"""
+Cables that bend, twist and stretch, described by their centreline and the material they
+are made of.
+"""
+
 from __future__ import annotations
 
 import math
@@ -20,7 +25,7 @@ from semantic_digital_twin.world_description.world_entity import SemanticAnnotat
 # %% polyline geometry
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Polyline:
     """
     A chain of straight segments through a sequence of corners.
@@ -46,7 +51,7 @@ class Polyline:
         """
         return float(self.arc_lengths[-1])
 
-    def point_at(self, arc_length: float) -> NDArray[numpy.float64]:
+    def point_at(self, *, arc_length: float) -> NDArray[numpy.float64]:
         """
         :param arc_length: The distance along the polyline from its first corner.
         :return: The point at that distance.
@@ -58,15 +63,15 @@ class Polyline:
             ]
         )
 
-    def resampled(self, number_of_segments: int) -> Polyline:
+    def resampled(self, *, number_of_segments: int) -> Polyline:
         """
         :param number_of_segments: How many segments the result has.
         :return: A polyline along this one whose corners are spaced evenly.
         """
         return Polyline(
-            numpy.array(
+            corners=numpy.array(
                 [
-                    self.point_at(arc_length)
+                    self.point_at(arc_length=arc_length)
                     for arc_length in numpy.linspace(
                         0.0, self.length, number_of_segments + 1
                     )
@@ -78,7 +83,7 @@ class Polyline:
 # %% material
 
 
-@dataclass
+@dataclass(kw_only=True)
 class RodMaterial:
     """
     The isotropic, linear elastic material a cable is made of.
@@ -127,7 +132,7 @@ class RodMaterial:
 # %% cable
 
 
-@dataclass(eq=False)
+@dataclass(eq=False, kw_only=True)
 class DeformableCable(SemanticAnnotation):
     """
     A cable with a circular cross section that bends, twists and stretches, described by
@@ -137,23 +142,23 @@ class DeformableCable(SemanticAnnotation):
     deformable body simulation keeps up to date.
     """
 
-    radius: float = field(kw_only=True)
+    radius: float
     """
     Radius of the cross section, in metres.
     """
 
-    material: RodMaterial = field(default_factory=RodMaterial, kw_only=True)
+    material: RodMaterial = field(default_factory=RodMaterial)
     """
     What the cable is made of.
     """
 
-    nodes: list[Point3] = field(default_factory=list, kw_only=True)
+    nodes: list[Point3] = field(default_factory=list)
     """
     The centreline from one end of the cable to the other, in the frame of the world
     root.
     """
 
-    color: Color = field(default_factory=Color.WHITE, kw_only=True)
+    color: Color = field(default_factory=Color.WHITE)
     """
     The colour the cable is drawn in.
     """
@@ -161,6 +166,7 @@ class DeformableCable(SemanticAnnotation):
     @classmethod
     def along_polyline(
         cls,
+        *,
         name: PrefixedName,
         polyline: list[Point3],
         number_of_segments: int,
@@ -183,7 +189,9 @@ class DeformableCable(SemanticAnnotation):
         """
         if number_of_segments < 1:
             raise TooFewCableSegmentsError(number_of_segments=number_of_segments)
-        corners = Polyline(numpy.array([point.to_np()[:3] for point in polyline]))
+        corners = Polyline(
+            corners=numpy.array([point.to_np()[:3] for point in polyline])
+        )
         reference_frame = polyline[0].reference_frame
         return cls(
             name=name,
@@ -192,7 +200,9 @@ class DeformableCable(SemanticAnnotation):
             color=color if color is not None else Color.WHITE(),
             nodes=[
                 Point3.from_iterable(corner, reference_frame=reference_frame)
-                for corner in corners.resampled(number_of_segments).corners
+                for corner in corners.resampled(
+                    number_of_segments=number_of_segments
+                ).corners
             ],
         )
 
@@ -201,7 +211,7 @@ class DeformableCable(SemanticAnnotation):
         """
         The polyline through the nodes.
         """
-        return Polyline(numpy.array([node.to_np()[:3] for node in self.nodes]))
+        return Polyline(corners=numpy.array([node.to_np()[:3] for node in self.nodes]))
 
     @property
     def length(self) -> float:
@@ -261,7 +271,7 @@ class DeformableCable(SemanticAnnotation):
         """
         return self.material.density * 2.0 * self.second_moment_of_area
 
-    def point_at_arc_length(self, arc_length: float) -> Point3:
+    def point_at_arc_length(self, *, arc_length: float) -> Point3:
         """
         The point on the centreline a given distance from its first node.
 
@@ -276,6 +286,6 @@ class DeformableCable(SemanticAnnotation):
                 arc_length=arc_length, cable_length=centreline.length
             )
         return Point3.from_iterable(
-            centreline.point_at(arc_length),
+            centreline.point_at(arc_length=arc_length),
             reference_frame=self.nodes[0].reference_frame,
         )
