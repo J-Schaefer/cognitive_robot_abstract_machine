@@ -42,7 +42,7 @@ from semantic_digital_twin.world_description.world_entity import Body
 # %% contact
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ContactSettings:
     """
     How the cables' contacts with the colliders resolve.
@@ -69,21 +69,21 @@ class ContactSettings:
 # %% moving bodies
 
 
-@dataclass
+@dataclass(kw_only=True)
 class BodyPoses(ABC):
     """
     Where the bodies of a world are, as the cables see them.
     """
 
     @abstractmethod
-    def world_T_body(self, body: Body) -> NDArray[numpy.float64]:
+    def world_T_body(self, *, body: Body) -> NDArray[numpy.float64]:
         """
         :param body: A body of the world.
         :return: Its pose now, a homogeneous transformation from the world root.
         """
 
 
-@dataclass
+@dataclass(kw_only=True)
 class KinematicBodyPoses(BodyPoses):
     """
     The poses the state of a world puts its bodies in.
@@ -94,11 +94,11 @@ class KinematicBodyPoses(BodyPoses):
     The world.
     """
 
-    def world_T_body(self, body: Body) -> NDArray[numpy.float64]:
+    def world_T_body(self, *, body: Body) -> NDArray[numpy.float64]:
         return self.world.compute_forward_kinematics_np(self.world.root, body)
 
 
-@dataclass
+@dataclass(kw_only=True)
 class BodyMotion:
     """
     How a body moved during one step of the simulation.
@@ -115,7 +115,7 @@ class BodyMotion:
     Its pose at the end of the step.
     """
 
-    def pose_at(self, fraction: float) -> NDArray[numpy.float64]:
+    def pose_at(self, *, fraction: float) -> NDArray[numpy.float64]:
         """
         :param fraction: How far through the step, from zero to one.
         :return: The pose of the body at that moment, moving at a constant linear and
@@ -133,7 +133,7 @@ class BodyMotion:
 # %% cables
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SimulatedCable:
     """
     A cable of the world and the SuperDex rod simulating it.
@@ -163,7 +163,7 @@ class SimulatedCable:
 
     @classmethod
     def build(
-        cls, scene: Any, cable: DeformableCable, contact_settings: ContactSettings
+        cls, *, scene: Any, cable: DeformableCable, contact_settings: ContactSettings
     ) -> Self:
         """
         Build the rod of a cable in a scene, straight when unloaded and laid along the
@@ -175,13 +175,13 @@ class SimulatedCable:
         :return: The simulated cable.
         """
         start_nodes = cable.centreline.corners
-        straight_nodes = cls._straightened(start_nodes)
+        straight_nodes = cls._straightened(nodes=start_nodes)
         shape = superdex_physics.create_model_shape(
             superdex_physics.experimental.generate_tubular_rod_model_data(
                 nodes=straight_nodes.astype(numpy.float32),
-                element_frame_axes=cls._material_frame_axes(straight_nodes).astype(
-                    numpy.float32
-                ),
+                element_frame_axes=cls._material_frame_axes(
+                    nodes=straight_nodes
+                ).astype(numpy.float32),
                 radius=cable.radius,
                 num_cross_section_segments=contact_settings.skin_sides,
                 is_closed_loop=False,
@@ -224,7 +224,7 @@ class SimulatedCable:
         )
 
     @staticmethod
-    def _straightened(nodes: NDArray[numpy.float64]) -> NDArray[numpy.float64]:
+    def _straightened(*, nodes: NDArray[numpy.float64]) -> NDArray[numpy.float64]:
         """
         :param nodes: The nodes of a centreline.
         :return: The nodes of a straight centreline with the same segment lengths, from
@@ -232,11 +232,13 @@ class SimulatedCable:
         """
         direction = nodes[1] - nodes[0]
         direction /= numpy.linalg.norm(direction)
-        arc_lengths = Polyline(nodes).arc_lengths
+        arc_lengths = Polyline(corners=nodes).arc_lengths
         return nodes[0] + arc_lengths[:, None] * direction[None, :]
 
     @staticmethod
-    def _material_frame_axes(nodes: NDArray[numpy.float64]) -> NDArray[numpy.float64]:
+    def _material_frame_axes(
+        *, nodes: NDArray[numpy.float64]
+    ) -> NDArray[numpy.float64]:
         """
         One axis perpendicular to each segment, carried from segment to segment by the
         rotation between their directions, so the rod starts without twist.
@@ -275,7 +277,7 @@ class SimulatedCable:
         )
         return self.reference_nodes + displacements[:, :3]
 
-    def hold_at(self, positions: NDArray[numpy.float64]) -> None:
+    def hold_at(self, *, positions: NDArray[numpy.float64]) -> None:
         """
         Hold every node of the rod at a position until :meth:`let_go`.
 
@@ -315,7 +317,7 @@ class SimulatedCable:
 # %% colliders
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SimulatedCollider:
     """
     A collision shape of a body, as a static SuperDex collider that moves with the
@@ -340,6 +342,7 @@ class SimulatedCollider:
     @classmethod
     def build(
         cls,
+        *,
         scene: Any,
         body: Body,
         shape: Shape,
@@ -393,10 +396,10 @@ class SimulatedCollider:
                 ),
             ),
         )
-        collider.move_to(world_T_body)
+        collider.move_to(world_T_body=world_T_body)
         return collider
 
-    def move_to(self, world_T_body: NDArray[numpy.float64]) -> None:
+    def move_to(self, *, world_T_body: NDArray[numpy.float64]) -> None:
         """
         Move the collider to where its shape is when its body is at a pose.
 
@@ -415,7 +418,7 @@ class SimulatedCollider:
 # %% pins
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CablePin:
     """
     A node of a cable held at a point fixed to a body, by a stiff spring.
@@ -446,7 +449,7 @@ class CablePin:
     The SuperDex constraint holding the node.
     """
 
-    def aim(self, world_T_body: NDArray[numpy.float64]) -> None:
+    def aim(self, *, world_T_body: NDArray[numpy.float64]) -> None:
         """
         Hold the node where its point is when the body is at a pose.
 
@@ -459,7 +462,7 @@ class CablePin:
 # %% simulation
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SuperdexCableSimulation:
     """
     Simulates every :class:`~semantic_digital_twin.semantic_annotations.deformable_cable.DeformableCable`
@@ -553,24 +556,30 @@ class SuperdexCableSimulation:
         """
         return timedelta(microseconds=1)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        """
+        Start the SuperDex engine unless it runs already, and build the scene with the
+        world's cables and the colliders of :attr:`colliding_bodies`.
+        """
         if not superdex_physics.is_initialized():
             superdex_physics.initialize(num_worker_threads=self.worker_threads)
         self.scene = superdex_physics.create_scene(str(self.world.name))
         self.scene.set_gravity([0.0, 0.0, -self.gravitational_acceleration])
         for cable in self.world.get_semantic_annotations_by_type(DeformableCable):
-            self._add_cable(cable)
+            self._add_cable(cable=cable)
         for body in self.colliding_bodies:
-            self._add_colliders_of(body)
+            self._add_colliders_of(body=body)
 
-    def _add_cable(self, cable: DeformableCable) -> None:
+    def _add_cable(self, *, cable: DeformableCable) -> None:
         """
         Simulate a cable, carrying its rod from its straight rest shape onto the cable's
         nodes and holding every cable built before it in place meanwhile.
 
         :param cable: The cable to simulate.
         """
-        simulated_cable = SimulatedCable.build(self.scene, cable, self.contact_settings)
+        simulated_cable = SimulatedCable.build(
+            scene=self.scene, cable=cable, contact_settings=self.contact_settings
+        )
         held = [(other, other.node_positions) for other in self.cables] + [
             (simulated_cable, cable.centreline.corners)
         ]
@@ -580,14 +589,14 @@ class SuperdexCableSimulation:
         # the speed the first gave them away again.
         for _ in range(2):
             for held_cable, positions in held:
-                held_cable.hold_at(positions)
+                held_cable.hold_at(positions=positions)
             self.scene.step(self.placement_step_duration.total_seconds())
         self.scene.set_gravity(gravity)
         for held_cable, _ in held:
             held_cable.let_go()
         self.cables.append(simulated_cable)
 
-    def _add_colliders_of(self, body: Body) -> None:
+    def _add_colliders_of(self, *, body: Body) -> None:
         """
         Build a collider for every collision shape of a body.
 
@@ -596,23 +605,27 @@ class SuperdexCableSimulation:
         """
         if len(body.collision) == 0:
             raise BodyWithoutCollisionShapesError(body=body)
-        world_T_body = self.body_poses.world_T_body(body)
+        world_T_body = self.body_poses.world_T_body(body=body)
         self._previous_world_T_bodies[body] = world_T_body
         for shape in body.collision:
             self.colliders.append(
                 SimulatedCollider.build(
-                    self.scene, body, shape, world_T_body, self.contact_settings
+                    scene=self.scene,
+                    body=body,
+                    shape=shape,
+                    world_T_body=world_T_body,
+                    contact_settings=self.contact_settings,
                 )
             )
 
-    def simulated_cable_of(self, cable: DeformableCable) -> SimulatedCable:
+    def simulated_cable_of(self, *, cable: DeformableCable) -> SimulatedCable:
         """
         :param cable: A cable of the world.
         :return: Its simulation.
         """
         return next(simulated for simulated in self.cables if simulated.cable is cable)
 
-    def step(self, duration: timedelta) -> None:
+    def step(self, *, duration: timedelta) -> None:
         """
         Advance the cables by a period, sweeping the colliders and pins from where
         their bodies were at the previous step to where they are now, and write the
@@ -622,21 +635,24 @@ class SuperdexCableSimulation:
         :raises CableSimulationDivergedError: If the solver diverged.
         """
         motions = {
-            body: BodyMotion(start=start, end=self.body_poses.world_T_body(body))
+            body: BodyMotion(start=start, end=self.body_poses.world_T_body(body=body))
             for body, start in self._previous_world_T_bodies.items()
         }
         substeps = math.ceil(duration / self.maximum_substep_duration)
         substep_seconds = duration.total_seconds() / substeps
         for substep in range(substeps):
             fraction = (substep + 1) / substeps
-            poses = {body: motion.pose_at(fraction) for body, motion in motions.items()}
+            poses = {
+                body: motion.pose_at(fraction=fraction)
+                for body, motion in motions.items()
+            }
             for collider in self.colliders:
-                collider.move_to(poses[collider.body])
+                collider.move_to(world_T_body=poses[collider.body])
             for pin in self.pins:
-                pin.aim(poses[pin.body])
+                pin.aim(world_T_body=poses[pin.body])
             self.scene.step(substep_seconds)
         statistics = self.scene.get_solver_stats()
-        if "DIVERGED" in str(statistics.convergence_status):
+        if statistics.convergence_status == superdex_physics.ConvergenceStatus.DIVERGED:
             raise CableSimulationDivergedError(residual=float(statistics.residual_norm))
         self._previous_world_T_bodies = {
             body: motion.end for body, motion in motions.items()
@@ -644,7 +660,7 @@ class SuperdexCableSimulation:
         for cable in self.cables:
             cable.publish()
 
-    def pin(self, cable: DeformableCable, node_index: int, body: Body) -> CablePin:
+    def pin(self, *, cable: DeformableCable, node_index: int, body: Body) -> CablePin:
         """
         Hold a node of a cable where it is now, relative to a body, until
         :meth:`release`.
@@ -655,13 +671,13 @@ class SuperdexCableSimulation:
         :return: The pin holding the node.
         :raises CableNodeOutOfRangeError: If the cable has no such node.
         """
-        simulated_cable = self.simulated_cable_of(cable)
+        simulated_cable = self.simulated_cable_of(cable=cable)
         positions = simulated_cable.node_positions
         if not 0 <= node_index < len(positions):
             raise CableNodeOutOfRangeError(
                 node_index=node_index, number_of_nodes=len(positions)
             )
-        world_T_body = self.body_poses.world_T_body(body)
+        world_T_body = self.body_poses.world_T_body(body=body)
         self._previous_world_T_bodies.setdefault(body, world_T_body)
         node_position = positions[node_index]
         pin = CablePin(
@@ -681,7 +697,7 @@ class SuperdexCableSimulation:
         self.pins.append(pin)
         return pin
 
-    def release(self, pin: CablePin) -> None:
+    def release(self, *, pin: CablePin) -> None:
         """
         Let go of a node :meth:`pin` held.
 

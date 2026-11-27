@@ -1,3 +1,9 @@
+"""
+A MuJoCo simulation of a world's rigid bodies with its cables simulated by SuperDex.
+"""
+
+from __future__ import annotations
+
 from datetime import timedelta
 
 import numpy
@@ -65,10 +71,14 @@ def table_and_cable_simulation():
 
 
 def test_mujoco_puts_a_fixed_body_where_the_world_has_it(table_and_cable_simulation):
+    """
+    The cables see a body where MuJoCo simulates it, which for a fixed body is where the
+    world has it.
+    """
     world, table, simulation = table_and_cable_simulation
 
     numpy.testing.assert_allclose(
-        MujocoBodyPoses(simulator=simulation.simulator).world_T_body(table),
+        MujocoBodyPoses(simulator=simulation.simulator).world_T_body(body=table),
         world.compute_forward_kinematics_np(world.root, table),
         atol=1e-6,
     )
@@ -77,6 +87,9 @@ def test_mujoco_puts_a_fixed_body_where_the_world_has_it(table_and_cable_simulat
 def test_stepping_the_simulation_drops_the_cable_onto_the_table(
     table_and_cable_simulation,
 ):
+    """
+    Stepping MuJoCo steps the cable along, which falls onto the table's turned top.
+    """
     world, table, simulation = table_and_cable_simulation
     [cable] = world.get_semantic_annotations_by_type(DeformableCable)
 

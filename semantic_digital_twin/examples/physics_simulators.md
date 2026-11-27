@@ -440,11 +440,11 @@ with world.modify_world():
 
 simulation = MujocoSuperdexSim(world=world, colliding_bodies=[table, *finger_tips])
 simulation.start_stepped_simulation()
-pin = simulation.cable_simulation.pin(cable, 0, gripper_tool_frame)
+pin = simulation.cable_simulation.pin(cable=cable, node_index=0, body=gripper_tool_frame)
 for _ in range(50):
     simulation.step_simulation(timedelta(milliseconds=20))
-simulation.cable_simulation.release(pin)
-print(cable.point_at_arc_length(0.1))
+simulation.cable_simulation.release(pin=pin)
+print(cable.point_at_arc_length(arc_length=0.1))
 ```
 
 Only the stepped simulation advances the cables, which is what

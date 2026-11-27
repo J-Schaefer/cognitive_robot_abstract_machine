@@ -1,6 +1,10 @@
+"""
+The errors raised while simulating cables with SuperDex.
+"""
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from krrood.exceptions import DataclassException
 
@@ -9,14 +13,14 @@ from semantic_digital_twin.world_description.world_entity import Body
 # %% cable simulation
 
 
-@dataclass
+@dataclass(kw_only=True)
 class BodyWithoutCollisionShapesError(DataclassException):
     """
     Raised when a body a cable should collide with has no collision shapes to collide
     with.
     """
 
-    body: Body = field(kw_only=True)
+    body: Body
     """
     The body without collision shapes.
     """
@@ -28,14 +32,14 @@ class BodyWithoutCollisionShapesError(DataclassException):
         return "Give the body collision shapes or leave it out of the colliding bodies."
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CableSimulationDivergedError(DataclassException):
     """
     Raised when the cable simulation's solver diverged, leaving the cables in a state
     that is no longer physical.
     """
 
-    residual: float = field(kw_only=True)
+    residual: float
     """
     The residual the solver ended with.
     """
@@ -50,18 +54,18 @@ class CableSimulationDivergedError(DataclassException):
         )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CableNodeOutOfRangeError(DataclassException):
     """
     Raised when a node is addressed that a cable does not have.
     """
 
-    node_index: int = field(kw_only=True)
+    node_index: int
     """
     The index of the node that was addressed.
     """
 
-    number_of_nodes: int = field(kw_only=True)
+    number_of_nodes: int
     """
     How many nodes the cable has.
     """

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import mujoco
 import numpy
+from krrood.patterns.called_positionally import called_positionally
 from numpy.typing import NDArray
 from physics_simulators.mujoco_simulator import MujocoSimulator
 from typing_extensions import Any
@@ -24,8 +25,10 @@ from semantic_digital_twin.adapters.superdex.cable_simulation import (
 from semantic_digital_twin.world import World
 from semantic_digital_twin.world_description.world_entity import Body
 
+# %% body poses
 
-@dataclass
+
+@dataclass(kw_only=True)
 class MujocoBodyPoses(BodyPoses):
     """
     The poses MuJoCo simulates the bodies of a world in; unlike the world's state, they
@@ -37,7 +40,7 @@ class MujocoBodyPoses(BodyPoses):
     The simulator the bodies are simulated in.
     """
 
-    def world_T_body(self, body: Body) -> NDArray[numpy.float64]:
+    def world_T_body(self, *, body: Body) -> NDArray[numpy.float64]:
         body_data = self.simulator._mj_data.body(body.name.name)
         rotation = numpy.zeros(9)
         mujoco.mju_quat2Mat(rotation, body_data.xquat)
@@ -45,6 +48,9 @@ class MujocoBodyPoses(BodyPoses):
         pose[:3, :3] = rotation.reshape(3, 3)
         pose[:3, 3] = body_data.xpos
         return pose
+
+
+# %% simulation
 
 
 class MujocoSuperdexSim(MujocoSim):
@@ -70,7 +76,7 @@ class MujocoSuperdexSim(MujocoSim):
         step_size: float = 1e-3,
         file_path: Path | None = None,
         **kwargs: Any,
-    ):
+    ) -> None:
         """
         :param world: The world to simulate.
         :param colliding_bodies: The bodies whose collision shapes the cables touch.
@@ -101,6 +107,7 @@ class MujocoSuperdexSim(MujocoSim):
         super().start_stepped_simulation()
         mujoco.mj_forward(self.simulator._mj_model, self.simulator._mj_data)
 
+    @called_positionally
     def step_simulation(self, duration: timedelta) -> None:
         """
         Advance the rigid bodies as :meth:`MujocoSim.step_simulation` does, then the
@@ -110,11 +117,11 @@ class MujocoSuperdexSim(MujocoSim):
         if not self.simulator.headless:
             scene = self.simulator.renderer.user_scn
             scene.ngeom = 0
-            self.draw_cables(scene)
+            self.draw_cables(scene=scene)
         super().step_simulation(duration)
-        self.cable_simulation.step(duration)
+        self.cable_simulation.step(duration=duration)
 
-    def draw_cables(self, scene: mujoco.MjvScene) -> None:
+    def draw_cables(self, *, scene: mujoco.MjvScene) -> None:
         """
         Draw every cable as a chain of capsules into a scene, after what is drawn there
         already.
