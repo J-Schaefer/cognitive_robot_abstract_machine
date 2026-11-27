@@ -1,27 +1,10 @@
 """
-DAiSy picks a cable up from its table, carries it around and lays it down elsewhere,
-with the cable simulated by SuperDex and the robot by MuJoCo.
-
-A straight cable lies on the table, its end reaching a few centimetres past the table's
-far edge. The right gripper grips that end from above, lifts the cable off the table,
-carries it across the table and lays it down again further along the edge. The gripper
-holds the cable by friction alone.
-
-The gripper grips the cable past the table's edge because its fingertips reach 11 mm
-beyond the groove between their ridges that holds a cable: gripping a cable lying flat
-on the table, the fingertips would hit the table first, and the cable would sit beyond
-the ridges, from where its weight pulls it out between the fingers.
-
-Run it as a script; ``--headless`` runs it without the MuJoCo viewer and ``--video``
-records it::
+DAiSy picks a cable up from its table with its right gripper, carries it across the
+table and lays it down elsewhere, holding it by friction alone. The cable is simulated by
+SuperDex and the robot by MuJoCo; the switches of
+:class:`~experiments.minimal_cable_demo.daisy_cable_scene.CommandLineFlag` steer a run::
 
     python3 -m experiments.minimal_cable_demo.pick_and_place --headless --video cable.mp4
-
-``--running-giskard`` sends the robot's motions to a Giskard node already running, such
-as the one ``ros2 launch giskardpy_ros giskardpy_daisy_standalone.launch.py`` starts,
-instead of a Giskard in this process.
-
-It needs the ``superdex`` extra of ``semantic_digital_twin`` and the DAiSy description.
 """
 
 from __future__ import annotations
@@ -45,7 +28,7 @@ from semantic_digital_twin.world import World
 # %% outcome
 
 
-@dataclass
+@dataclass(kw_only=True)
 class PickAndPlaceOutcome:
     """
     Where the cable ended up after it was put down.
@@ -67,7 +50,7 @@ class PickAndPlaceOutcome:
 # %% demonstration
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CablePickAndPlaceDemonstration(DAiSyCableDemonstration):
     """
     DAiSy picks a cable up from its table and lays it down elsewhere.
@@ -109,21 +92,31 @@ class CablePickAndPlaceDemonstration(DAiSyCableDemonstration):
         :return: Where the cable ended up.
         """
         world, daisy = self.create_world()
-        self.perform_kinematically(daisy, [ParkArmsAction(arms=daisy.all_arms)])
-        cable = self.lay_cable_on_the_table(world)
-        simulation = self.create_simulation(world)
+        self.perform_kinematically(
+            daisy=daisy, steps=[ParkArmsAction(arms=daisy.all_arms)]
+        )
+        cable = self.lay_cable_on_the_table(world=world)
+        simulation = self.create_simulation(world=world)
         try:
-            self.let_the_cable_settle(simulation, self.settle_duration)
-            self.perform_physically(
-                daisy, simulation, self.pick_and_place(daisy, self.pick_point(cable))
+            self.let_the_cable_settle(
+                simulation=simulation, duration=self.settle_duration
             )
-            self.let_the_cable_settle(simulation, self.settle_duration)
-            return self.outcome(cable, world)
+            self.perform_physically(
+                daisy=daisy,
+                simulation=simulation,
+                steps=self.pick_and_place(
+                    daisy=daisy, pick_point=self.pick_point(cable=cable)
+                ),
+            )
+            self.let_the_cable_settle(
+                simulation=simulation, duration=self.settle_duration
+            )
+            return self.outcome(cable=cable, world=world)
         finally:
-            self.tear_down(simulation)
+            self.tear_down(simulation=simulation)
 
     def pick_and_place(
-        self, daisy: DAiSy, pick_point: NDArray[numpy.float64]
+        self, *, daisy: DAiSy, pick_point: NDArray[numpy.float64]
     ) -> list[StatechartNode]:
         """
         :param daisy: The robot.
@@ -132,7 +125,7 @@ class CablePickAndPlaceDemonstration(DAiSyCableDemonstration):
             the table and laying it down with the pick point at :attr:`place_point`.
         """
         arm = daisy.right_arm
-        table_top = self.table_top(daisy._world)
+        table_top = self.table_top(world=daisy._world)
         place_point = numpy.array([*self.place_point, pick_point[2]])
         grip_points = [
             numpy.array([*pick_point[:2], table_top + self.lift_height]),
@@ -141,30 +134,34 @@ class CablePickAndPlaceDemonstration(DAiSyCableDemonstration):
             place_point,
         ]
         return [
-            *self.pick_up(arm, pick_point),
-            *[self.move_from_above(arm, point) for point in grip_points],
-            self.open_gripper(arm),
+            *self.pick_up(arm=arm, pick_point=pick_point),
+            *[self.move_from_above(arm=arm, grip_point=point) for point in grip_points],
+            self.open_gripper(arm=arm),
             self.move_from_above(
-                arm, place_point - self.approach_distance * self.pointing
+                arm=arm,
+                grip_point=place_point - self.approach_distance * self.pointing,
             ),
         ]
 
-    def outcome(self, cable: DeformableCable, world: World) -> PickAndPlaceOutcome:
+    def outcome(self, *, cable: DeformableCable, world: World) -> PickAndPlaceOutcome:
         """
         :param cable: The cable.
         :param world: The world.
         :return: Where the cable ended up.
         """
         nodes = cable.centreline.corners
-        picked = self.pick_point(cable)
+        picked = self.pick_point(cable=cable)
         return PickAndPlaceOutcome(
             highest_node_height_above_table=float(
-                nodes[:, 2].max() - self.table_top(world)
+                nodes[:, 2].max() - self.table_top(world=world)
             ),
             distance_from_place_point=float(
                 numpy.linalg.norm(picked[:2] - numpy.array(self.place_point))
             ),
         )
+
+
+# %% command line
 
 
 def run_from_command_line() -> None:

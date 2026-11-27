@@ -82,22 +82,26 @@ def test_the_simulated_robot_is_commanded_where_the_running_giskard_moved_the_ro
         headless=True, uses_running_giskard=True, settle_duration=timedelta()
     )
     world, _ = MinimalCableDemonstration(headless=True).create_world()
-    demonstration.giskard_world, daisy = MinimalCableDemonstration(
+    demonstration.giskard_world, giskard_daisy = MinimalCableDemonstration(
         headless=True
     ).create_world()
-    [finger] = daisy.right_arm.end_effector.finger_connections
+    [finger] = giskard_daisy.right_arm.end_effector.finger_connections
     target_position = 0.02
-    demonstration._running_giskard_executor = lambda robot: JointMovingGiskard(
+    demonstration._running_giskard_executor = lambda *, daisy: JointMovingGiskard(
         context=StatechartContext(world=demonstration.giskard_world),
         joint=finger.raw_dof,
         target_position=target_position,
     )
-    simulation = demonstration.create_simulation(world)
+    simulation = demonstration.create_simulation(world=world)
     try:
         demonstration.perform_physically(
-            daisy,
-            simulation,
-            [demonstration.close_on_cable(daisy.left_arm.end_effector)],
+            daisy=giskard_daisy,
+            simulation=simulation,
+            steps=[
+                demonstration.close_on_cable(
+                    gripper=giskard_daisy.left_arm.end_effector
+                )
+            ],
         )
     finally:
         simulation.stop_simulation()

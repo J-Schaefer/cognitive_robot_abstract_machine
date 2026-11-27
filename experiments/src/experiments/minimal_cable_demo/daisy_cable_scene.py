@@ -1,11 +1,8 @@
 """
-What the cable demonstrations with DAiSy share: the robot's world, the bodies a cable
-touches, the poses and finger positions that grip a cable, and running a plan
-kinematically or against the physics.
-
-The cable is simulated by SuperDex and the robot by MuJoCo. The robot's motions are
-controlled by a Giskard in this process, or by a Giskard node already running, such as
-the one ``ros2 launch giskardpy_ros giskardpy_daisy_standalone.launch.py`` starts.
+What the cable demonstrations with DAiSy share: the robot's world, the poses and finger
+positions that grip a cable, and running a plan kinematically or against the physics,
+with the cable simulated by SuperDex, the robot by MuJoCo and its motions controlled by
+a Giskard in this process or by a Giskard node already running.
 """
 
 from __future__ import annotations
@@ -43,8 +40,13 @@ from cramph.executor import SteppedSimulationPacer
 from cramph.node import StatechartNode
 from cramph.statechart import Statechart
 from giskardpy.motion_statechart.tasks.joint_tasks import JointPositionList
+from krrood.patterns.called_positionally import called_positionally
 from krrood_spatial_math.spatial_types import Point3, Pose
 from numpy.typing import NDArray
+from physics_simulators.mujoco_simulator import (
+    HeadlessGraphicsBackend,
+    MujocoEnvironmentVariable,
+)
 from scipy.spatial.transform import Rotation
 from semantic_digital_twin.adapters.ros.world_fetcher import join_shared_world
 from semantic_digital_twin.adapters.superdex.mujoco_cable_simulation import (
@@ -101,7 +103,7 @@ class CommandLineFlag(StrEnum):
 # %% video
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CableVideo:
     """
     Frames of a simulation with its cables, rendered offscreen from a fixed camera.
@@ -164,11 +166,16 @@ class CableVideo:
     How much simulated time passed since the last frame was captured.
     """
 
-    def __post_init__(self):
-        # Offscreen rendering needs a headless OpenGL backend.
-        os.environ.setdefault("MUJOCO_GL", "egl")
+    def __post_init__(self) -> None:
+        """
+        Select a headless OpenGL backend for the offscreen rendering, unless one is
+        selected already.
+        """
+        os.environ.setdefault(
+            MujocoEnvironmentVariable.GRAPHICS_BACKEND, HeadlessGraphicsBackend.EGL
+        )
 
-    def advance(self, simulation: MujocoSuperdexSim, duration: timedelta) -> None:
+    def advance(self, *, simulation: MujocoSuperdexSim, duration: timedelta) -> None:
         """
         Note that the simulation advanced, capturing a frame whenever a frame period
         has passed.
@@ -181,9 +188,9 @@ class CableVideo:
         if self._simulated_time_since_frame < frame_period:
             return
         self._simulated_time_since_frame -= frame_period
-        self.frames.append(self._render(simulation))
+        self.frames.append(self._render(simulation=simulation))
 
-    def _render(self, simulation: MujocoSuperdexSim) -> NDArray[numpy.uint8]:
+    def _render(self, *, simulation: MujocoSuperdexSim) -> NDArray[numpy.uint8]:
         """
         :param simulation: The simulation to render.
         :return: The frame showing it as it stands, with its cables.
@@ -200,7 +207,7 @@ class CableVideo:
         camera.azimuth = self.azimuth
         camera.elevation = self.elevation
         self._renderer.update_scene(data, camera=camera)
-        simulation.draw_cables(self._renderer.scene)
+        simulation.draw_cables(scene=self._renderer.scene)
         return self._renderer.render()
 
     def write(self) -> None:
@@ -221,7 +228,7 @@ class RecordedMujocoSuperdexSim(MujocoSuperdexSim):
     The video the steps are captured into.
     """
 
-    def __init__(self, video: CableVideo, **kwargs: Any):
+    def __init__(self, *, video: CableVideo, **kwargs: Any) -> None:
         """
         :param video: The video to capture the steps into.
         :param kwargs: See :class:`MujocoSuperdexSim`.
@@ -229,9 +236,14 @@ class RecordedMujocoSuperdexSim(MujocoSuperdexSim):
         super().__init__(**kwargs)
         self.video = video
 
+    @called_positionally
     def step_simulation(self, duration: timedelta) -> None:
+        """
+        Advance the simulation as :meth:`MujocoSuperdexSim.step_simulation` does, and
+        capture it into :attr:`video`.
+        """
         super().step_simulation(duration)
-        self.video.advance(self, duration)
+        self.video.advance(simulation=self, duration=duration)
 
 
 # %% following a running Giskard
@@ -254,7 +266,7 @@ class CommandedJointPositions:
     """
 
     @classmethod
-    def from_world(cls, world: World, *, start: float) -> Self:
+    def from_world(cls, *, world: World, start: float) -> Self:
         """
         :param world: The world the running Giskard serves.
         :param start: The moment the step started at, on the monotonic clock, in
@@ -269,7 +281,7 @@ class CommandedJointPositions:
 # %% demonstration
 
 
-@dataclass
+@dataclass(kw_only=True)
 class DAiSyCableDemonstration:
     """
     A demonstration in which DAiSy handles a cable.
@@ -360,6 +372,8 @@ class DAiSyCableDemonstration:
     The colour the cable is drawn in.
     """
 
+    # Past the edge, since the fingertips reach 11 mm beyond the groove that holds the
+    # cable and would hit the table before gripping a cable lying flat on it.
     cable_end: tuple[float, float] = (0.66, 0.45)
     """
     Where the end of the cable lies, 6 cm past the table's far edge, in the frame of
@@ -444,7 +458,7 @@ class DAiSyCableDemonstration:
         [giskard_daisy] = self.giskard_world.get_semantic_annotations_by_type(DAiSy)
         return world, giskard_daisy
 
-    def create_simulation(self, world: World) -> MujocoSuperdexSim:
+    def create_simulation(self, *, world: World) -> MujocoSuperdexSim:
         """
         :param world: The world holding DAiSy and the cable.
         :return: A new, started simulation of the world in which the cable touches the
@@ -452,7 +466,7 @@ class DAiSyCableDemonstration:
         """
         if self.uses_running_giskard:
             self._command_joint_positions(
-                world, self.giskard_world.state.to_position_dict()
+                world=world, positions=self.giskard_world.state.to_position_dict()
             )
         colliding_bodies = [world.get_body_by_name(name) for name in DAiSyCableBody]
         if self.video is None:
@@ -473,7 +487,7 @@ class DAiSyCableDemonstration:
             simulation.synchronizer.sync_rate_hz = 0
         return simulation
 
-    def tear_down(self, simulation: MujocoSuperdexSim) -> None:
+    def tear_down(self, *, simulation: MujocoSuperdexSim) -> None:
         """
         Stop the simulation, write :attr:`video` if there is one and leave the ROS
         session if one was started.
@@ -489,7 +503,7 @@ class DAiSyCableDemonstration:
         self.ros_session = None
 
     def let_the_cable_settle(
-        self, simulation: MujocoSuperdexSim, duration: timedelta
+        self, *, simulation: MujocoSuperdexSim, duration: timedelta
     ) -> None:
         """
         :param simulation: The running simulation.
@@ -498,7 +512,9 @@ class DAiSyCableDemonstration:
         for _ in range(round(duration / self.control_period)):
             simulation.step_simulation(self.control_period)
 
-    def perform_kinematically(self, daisy: DAiSy, steps: list[StatechartNode]) -> None:
+    def perform_kinematically(
+        self, *, daisy: DAiSy, steps: list[StatechartNode]
+    ) -> None:
         """
         Perform steps one after the other without the physics, with the world following
         every command exactly, or as the running Giskard moves the robot.
@@ -507,14 +523,20 @@ class DAiSyCableDemonstration:
         :param steps: The steps.
         """
         if self.uses_running_giskard:
-            self._perform(self._running_giskard_executor(daisy), steps)
+            self._perform(
+                executor=self._running_giskard_executor(daisy=daisy), steps=steps
+            )
             return
         self._perform(
-            KinematicallySimulatedPlanExecutor(context=self._context(daisy)), steps
+            executor=KinematicallySimulatedPlanExecutor(
+                context=self._context(daisy=daisy)
+            ),
+            steps=steps,
         )
 
     def perform_physically(
         self,
+        *,
         daisy: DAiSy,
         simulation: MujocoSuperdexSim,
         steps: list[StatechartNode],
@@ -532,20 +554,20 @@ class DAiSyCableDemonstration:
         """
         if not self.uses_running_giskard:
             self._perform(
-                PhysicallySimulatedPlanExecutor(
-                    context=self._context(daisy), simulation=simulation
+                executor=PhysicallySimulatedPlanExecutor(
+                    context=self._context(daisy=daisy), simulation=simulation
                 ),
-                steps,
+                steps=steps,
             )
             return
         pacer = SteppedSimulationPacer(simulation=simulation)
         pacer.target_frequency = 1 / self.control_period.total_seconds()
         for step in steps:
-            self._replay_running_giskard(daisy, simulation, step)
+            self._replay_running_giskard(daisy=daisy, simulation=simulation, step=step)
             pacer.wait_for_standstill()
 
     def _replay_running_giskard(
-        self, daisy: DAiSy, simulation: MujocoSuperdexSim, step: StatechartNode
+        self, *, daisy: DAiSy, simulation: MujocoSuperdexSim, step: StatechartNode
     ) -> None:
         """
         Send a step to the running Giskard and let the simulated robot follow the joint
@@ -556,10 +578,12 @@ class DAiSyCableDemonstration:
         :param simulation: The running simulation.
         :param step: The step.
         """
-        executor = self._running_giskard_executor(daisy)
-        self._compile(executor, [step])
+        executor = self._running_giskard_executor(daisy=daisy)
+        self._compile(executor=executor, steps=[step])
         start = time.monotonic()
-        commands = [CommandedJointPositions.from_world(self.giskard_world, start=start)]
+        commands = [
+            CommandedJointPositions.from_world(world=self.giskard_world, start=start)
+        ]
         simulated_time = 0.0
         end: float | None = None
         # The viewer and the video render on this thread, so the plan runs on another.
@@ -570,7 +594,7 @@ class DAiSyCableDemonstration:
                     finished = execution.done()
                     commands.append(
                         CommandedJointPositions.from_world(
-                            self.giskard_world, start=start
+                            world=self.giskard_world, start=start
                         )
                     )
                     if finished:
@@ -581,14 +605,16 @@ class DAiSyCableDemonstration:
                     for command in reversed(commands)
                     if command.time <= simulated_time
                 )
-                self._command_joint_positions(simulation.world, command.positions)
+                self._command_joint_positions(
+                    world=simulation.world, positions=command.positions
+                )
                 simulation.step_simulation(self.control_period)
             execution.result()
         executor.close()
 
     @staticmethod
     def _command_joint_positions(
-        world: World, positions: dict[PrefixedName, float]
+        *, world: World, positions: dict[PrefixedName, float]
     ) -> None:
         """
         :param world: The world whose joints to command.
@@ -601,17 +627,17 @@ class DAiSyCableDemonstration:
             ].position = position
         world.notify_state_change()
 
-    def _running_giskard_executor(self, daisy: DAiSy) -> RealRobotPlanExecutor:
+    def _running_giskard_executor(self, *, daisy: DAiSy) -> RealRobotPlanExecutor:
         """
         :param daisy: The robot.
         :return: A new executor sending a plan DAiSy performs to the running Giskard.
         """
         return RealRobotPlanExecutor(
-            context=self._context(daisy), ros_node=self.ros_session.node
+            context=self._context(daisy=daisy), ros_node=self.ros_session.node
         )
 
     @staticmethod
-    def _context(daisy: DAiSy) -> StatechartContext:
+    def _context(*, daisy: DAiSy) -> StatechartContext:
         """
         :param daisy: The robot.
         :return: A new context of a plan DAiSy performs.
@@ -621,17 +647,17 @@ class DAiSyCableDemonstration:
         )
 
     @staticmethod
-    def _perform(executor: PlanExecutor, steps: list[StatechartNode]) -> None:
+    def _perform(*, executor: PlanExecutor, steps: list[StatechartNode]) -> None:
         """
         :param executor: The executor to perform the steps with.
         :param steps: The steps, performed one after the other.
         """
-        DAiSyCableDemonstration._compile(executor, steps)
+        DAiSyCableDemonstration._compile(executor=executor, steps=steps)
         executor.execute()
         executor.close()
 
     @staticmethod
-    def _compile(executor: PlanExecutor, steps: list[StatechartNode]) -> None:
+    def _compile(*, executor: PlanExecutor, steps: list[StatechartNode]) -> None:
         """
         :param executor: The executor to perform the steps with.
         :param steps: The steps, to be performed one after the other.
@@ -640,7 +666,7 @@ class DAiSyCableDemonstration:
         statechart.add_node(node=Sequence(nodes=steps))
         executor.compile(statechart=statechart)
 
-    def lay_cable_on_the_table(self, world: World) -> DeformableCable:
+    def lay_cable_on_the_table(self, *, world: World) -> DeformableCable:
         """
         Add a straight cable to the world, lying on the table along the world's x axis
         with its end at :attr:`cable_end`, past the table's far edge.
@@ -648,7 +674,9 @@ class DAiSyCableDemonstration:
         :param world: The world to add the cable to.
         :return: The cable.
         """
-        end = numpy.array([*self.cable_end, self.table_top(world) + self.cable_radius])
+        end = numpy.array(
+            [*self.cable_end, self.table_top(world=world) + self.cable_radius]
+        )
         start = end - numpy.array([self.cable_length, 0.0, 0.0])
         cable = DeformableCable.along_polyline(
             name=PrefixedName("cable"),
@@ -664,17 +692,17 @@ class DAiSyCableDemonstration:
             world.add_semantic_annotation(cable)
         return cable
 
-    def pick_point(self, cable: DeformableCable) -> NDArray[numpy.float64]:
+    def pick_point(self, *, cable: DeformableCable) -> NDArray[numpy.float64]:
         """
         :param cable: The cable.
         :return: Where a gripper grips the cable from above, as the cable lies now.
         """
         return cable.point_at_arc_length(
-            cable.centreline.length - self.pick_arc_length
+            arc_length=cable.centreline.length - self.pick_arc_length
         ).to_np()[:3]
 
     def pick_up(
-        self, arm: Arm, pick_point: NDArray[numpy.float64]
+        self, *, arm: Arm, pick_point: NDArray[numpy.float64]
     ) -> list[StatechartNode]:
         """
         :param arm: The arm to pick the cable up with.
@@ -683,16 +711,21 @@ class DAiSyCableDemonstration:
             from :attr:`approach_distance` above and closing it on the cable.
         """
         return [
-            self.open_gripper(arm),
+            self.open_gripper(arm=arm),
             self.move_from_above(
-                arm, pick_point - self.approach_distance * self.pointing
+                arm=arm, grip_point=pick_point - self.approach_distance * self.pointing
             ),
-            self.move_from_above(arm, pick_point, self.approach_position_threshold),
-            self.close_on_cable(arm.end_effector),
+            self.move_from_above(
+                arm=arm,
+                grip_point=pick_point,
+                position_threshold=self.approach_position_threshold,
+            ),
+            self.close_on_cable(gripper=arm.end_effector),
         ]
 
     def move_from_above(
         self,
+        *,
         arm: Arm,
         grip_point: NDArray[numpy.float64],
         position_threshold: float = MoveManipulatorAction.position_threshold,
@@ -706,13 +739,16 @@ class DAiSyCableDemonstration:
         return MoveManipulatorAction(
             arm=arm,
             goal_pose=self.tool_pose(
-                arm._world, grip_point, self.pointing, self.closing
+                world=arm._world,
+                grip_point=grip_point,
+                pointing=self.pointing,
+                closing=self.closing,
             ),
             position_threshold=position_threshold,
         )
 
     @staticmethod
-    def open_gripper(arm: Arm) -> SetGripperAction:
+    def open_gripper(*, arm: Arm) -> SetGripperAction:
         """
         :param arm: The arm whose gripper to open.
         :return: The step opening it.
@@ -724,7 +760,7 @@ class DAiSyCableDemonstration:
         )
 
     def grip_point(
-        self, world_T_tool: NDArray[numpy.float64]
+        self, *, world_T_tool: NDArray[numpy.float64]
     ) -> NDArray[numpy.float64]:
         """
         :param world_T_tool: The pose of a gripper's tool frame.
@@ -734,6 +770,7 @@ class DAiSyCableDemonstration:
 
     def tool_pose(
         self,
+        *,
         world: World,
         grip_point: NDArray[numpy.float64],
         pointing: NDArray[numpy.float64],
@@ -753,7 +790,7 @@ class DAiSyCableDemonstration:
             *position, x, y, z, w, reference_frame=world.root
         )
 
-    def close_on_cable(self, gripper: DAiSyGripper) -> JointPositionList:
+    def close_on_cable(self, *, gripper: DAiSyGripper) -> JointPositionList:
         """
         :param gripper: A gripper of the robot.
         :return: The task closing its fingers on the cable.
@@ -769,7 +806,7 @@ class DAiSyCableDemonstration:
         )
 
     def measured_grip_point(
-        self, simulation: MujocoSuperdexSim, gripper: DAiSyGripper
+        self, *, simulation: MujocoSuperdexSim, gripper: DAiSyGripper
     ) -> NDArray[numpy.float64]:
         """
         :param simulation: The simulation the gripper moves in.
@@ -777,13 +814,13 @@ class DAiSyCableDemonstration:
         :return: Where the gripper grips a cable as the physics has it now.
         """
         return self.grip_point(
-            MujocoBodyPoses(simulator=simulation.simulator).world_T_body(
-                gripper.tool_frame
+            world_T_tool=MujocoBodyPoses(simulator=simulation.simulator).world_T_body(
+                body=gripper.tool_frame
             )
         )
 
     @staticmethod
-    def table_top(world: World) -> float:
+    def table_top(*, world: World) -> float:
         """
         :param world: The world holding DAiSy.
         :return: The height of the top of DAiSy's table, in metres.

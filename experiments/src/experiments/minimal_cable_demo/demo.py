@@ -1,23 +1,10 @@
 """
-DAiSy hands a cable from one gripper to the other, with the cable simulated by SuperDex
-and the robot by MuJoCo.
-
-A straight cable lies on the table, its end reaching past the table's far edge. The
-right gripper grips that end from above and holds the cable up above the table. The
-left gripper takes the hanging cable from the side further down, the right gripper lets
-go, and the left gripper lowers the cable and drops it back onto the table. Both
-grippers hold the cable by friction alone.
-
-Run it as a script; ``--headless`` runs it without the MuJoCo viewer and ``--video``
-records it::
+DAiSy picks a cable up from its table with its right gripper, hands it to its left
+gripper and drops it back onto the table; both hold it by friction alone. The cable is
+simulated by SuperDex and the robot by MuJoCo; the switches of
+:class:`~experiments.minimal_cable_demo.daisy_cable_scene.CommandLineFlag` steer a run::
 
     python3 -m experiments.minimal_cable_demo.demo --headless --video cable.mp4
-
-``--running-giskard`` sends the robot's motions to a Giskard node already running, such
-as the one ``ros2 launch giskardpy_ros giskardpy_daisy_standalone.launch.py`` starts,
-instead of a Giskard in this process.
-
-It needs the ``superdex`` extra of ``semantic_digital_twin`` and the DAiSy description.
 """
 
 from __future__ import annotations
@@ -45,7 +32,7 @@ from semantic_digital_twin.semantic_annotations.deformable_cable import Deformab
 # %% outcome
 
 
-@dataclass
+@dataclass(kw_only=True)
 class HandoverOutcome:
     """
     Where the cable was while the left gripper alone held it, and where it ended up.
@@ -69,7 +56,7 @@ class HandoverOutcome:
 # %% demonstration
 
 
-@dataclass
+@dataclass(kw_only=True)
 class MinimalCableDemonstration(DAiSyCableDemonstration):
     """
     DAiSy picks a cable up from its table with its right gripper, hands it to its left
@@ -122,40 +109,64 @@ class MinimalCableDemonstration(DAiSyCableDemonstration):
         :return: Where the cable was.
         """
         world, daisy = self.create_world()
-        self.perform_kinematically(daisy, [ParkArmsAction(arms=daisy.all_arms)])
-        cable = self.lay_cable_on_the_table(world)
-        simulation = self.create_simulation(world)
+        self.perform_kinematically(
+            daisy=daisy, steps=[ParkArmsAction(arms=daisy.all_arms)]
+        )
+        cable = self.lay_cable_on_the_table(world=world)
+        simulation = self.create_simulation(world=world)
         try:
-            self.let_the_cable_settle(simulation, self.settle_duration)
-            self.perform_physically(
-                daisy, simulation, self.hold_up(daisy, self.pick_point(cable))
+            self.let_the_cable_settle(
+                simulation=simulation, duration=self.settle_duration
             )
-            self.let_the_cable_settle(simulation, self.settle_duration)
             self.perform_physically(
-                daisy, simulation, [self.approach(daisy, self.take_point(cable))]
+                daisy=daisy,
+                simulation=simulation,
+                steps=self.hold_up(
+                    daisy=daisy, pick_point=self.pick_point(cable=cable)
+                ),
+            )
+            self.let_the_cable_settle(
+                simulation=simulation, duration=self.settle_duration
+            )
+            self.perform_physically(
+                daisy=daisy,
+                simulation=simulation,
+                steps=[
+                    self.approach(daisy=daisy, take_point=self.take_point(cable=cable))
+                ],
             )
             # The approach may have brushed the cable aside.
             self.perform_physically(
-                daisy,
-                simulation,
-                self.take_over(daisy, simulation, self.take_point(cable)),
+                daisy=daisy,
+                simulation=simulation,
+                steps=self.take_over(
+                    daisy=daisy,
+                    simulation=simulation,
+                    take_point=self.take_point(cable=cable),
+                ),
             )
             height_after_handover = float(
-                cable.centreline.corners[:, 2].min() - self.table_top(world)
+                cable.centreline.corners[:, 2].min() - self.table_top(world=world)
             )
-            self.perform_physically(daisy, simulation, self.drop(daisy, simulation))
-            self.let_the_cable_settle(simulation, self.settle_duration)
+            self.perform_physically(
+                daisy=daisy,
+                simulation=simulation,
+                steps=self.drop(daisy=daisy, simulation=simulation),
+            )
+            self.let_the_cable_settle(
+                simulation=simulation, duration=self.settle_duration
+            )
             return HandoverOutcome(
                 lowest_node_height_above_table_after_handover=height_after_handover,
                 highest_node_height_above_table_after_drop=float(
-                    cable.centreline.corners[:, 2].max() - self.table_top(world)
+                    cable.centreline.corners[:, 2].max() - self.table_top(world=world)
                 ),
             )
         finally:
-            self.tear_down(simulation)
+            self.tear_down(simulation=simulation)
 
     def hold_up(
-        self, daisy: DAiSy, pick_point: NDArray[numpy.float64]
+        self, *, daisy: DAiSy, pick_point: NDArray[numpy.float64]
     ) -> list[StatechartNode]:
         """
         :param daisy: The robot.
@@ -165,25 +176,29 @@ class MinimalCableDemonstration(DAiSyCableDemonstration):
         """
         arm = daisy.right_arm
         hold_point = numpy.array(self.hold_point) + numpy.array(
-            [0.0, 0.0, self.table_top(daisy._world)]
+            [0.0, 0.0, self.table_top(world=daisy._world)]
         )
         return [
-            *self.pick_up(arm, pick_point),
-            self.move_from_above(arm, numpy.array([*pick_point[:2], hold_point[2]])),
-            self.move_from_above(arm, hold_point),
+            *self.pick_up(arm=arm, pick_point=pick_point),
+            self.move_from_above(
+                arm=arm, grip_point=numpy.array([*pick_point[:2], hold_point[2]])
+            ),
+            self.move_from_above(arm=arm, grip_point=hold_point),
         ]
 
-    def take_point(self, cable: DeformableCable) -> NDArray[numpy.float64]:
+    def take_point(self, *, cable: DeformableCable) -> NDArray[numpy.float64]:
         """
         :param cable: The cable, hanging from the right gripper.
         :return: Where on the cable the left gripper takes it, as the cable lies now.
         """
         return cable.point_at_arc_length(
-            cable.centreline.length - self.pick_arc_length - self.take_arc_length
+            arc_length=cable.centreline.length
+            - self.pick_arc_length
+            - self.take_arc_length
         ).to_np()[:3]
 
     def approach(
-        self, daisy: DAiSy, take_point: NDArray[numpy.float64]
+        self, *, daisy: DAiSy, take_point: NDArray[numpy.float64]
     ) -> MoveManipulatorAction:
         """
         :param daisy: The robot.
@@ -192,11 +207,13 @@ class MinimalCableDemonstration(DAiSyCableDemonstration):
             the take point.
         """
         return self.move_from_the_side(
-            daisy.left_arm, take_point - self.approach_distance * self.left_pointing
+            arm=daisy.left_arm,
+            grip_point=take_point - self.approach_distance * self.left_pointing,
         )
 
     def take_over(
         self,
+        *,
         daisy: DAiSy,
         simulation: MujocoSuperdexSim,
         take_point: NDArray[numpy.float64],
@@ -209,19 +226,26 @@ class MinimalCableDemonstration(DAiSyCableDemonstration):
             gripper lets go of it and backs off upwards.
         """
         right_arm = daisy.right_arm
-        right_grip_point = self.measured_grip_point(simulation, right_arm.end_effector)
+        right_grip_point = self.measured_grip_point(
+            simulation=simulation, gripper=right_arm.end_effector
+        )
         return [
             self.move_from_the_side(
-                daisy.left_arm, take_point, self.approach_position_threshold
+                arm=daisy.left_arm,
+                grip_point=take_point,
+                position_threshold=self.approach_position_threshold,
             ),
-            self.close_on_cable(daisy.left_arm.end_effector),
-            self.open_gripper(right_arm),
+            self.close_on_cable(gripper=daisy.left_arm.end_effector),
+            self.open_gripper(arm=right_arm),
             self.move_from_above(
-                right_arm, right_grip_point - self.approach_distance * self.pointing
+                arm=right_arm,
+                grip_point=right_grip_point - self.approach_distance * self.pointing,
             ),
         ]
 
-    def drop(self, daisy: DAiSy, simulation: MujocoSuperdexSim) -> list[StatechartNode]:
+    def drop(
+        self, *, daisy: DAiSy, simulation: MujocoSuperdexSim
+    ) -> list[StatechartNode]:
         """
         :param daisy: The robot, its left gripper holding the cable.
         :param simulation: The running simulation.
@@ -229,18 +253,22 @@ class MinimalCableDemonstration(DAiSyCableDemonstration):
             to :attr:`drop_height`, lets go of it and backs off.
         """
         arm = daisy.left_arm
-        drop_point = self.measured_grip_point(simulation, arm.end_effector)
-        drop_point[2] = self.table_top(daisy._world) + self.drop_height
+        drop_point = self.measured_grip_point(
+            simulation=simulation, gripper=arm.end_effector
+        )
+        drop_point[2] = self.table_top(world=daisy._world) + self.drop_height
         return [
-            self.move_from_the_side(arm, drop_point),
-            self.open_gripper(arm),
+            self.move_from_the_side(arm=arm, grip_point=drop_point),
+            self.open_gripper(arm=arm),
             self.move_from_the_side(
-                arm, drop_point - self.approach_distance * self.left_pointing
+                arm=arm,
+                grip_point=drop_point - self.approach_distance * self.left_pointing,
             ),
         ]
 
     def move_from_the_side(
         self,
+        *,
         arm: Arm,
         grip_point: NDArray[numpy.float64],
         position_threshold: float = MoveManipulatorAction.position_threshold,
@@ -255,10 +283,16 @@ class MinimalCableDemonstration(DAiSyCableDemonstration):
         return MoveManipulatorAction(
             arm=arm,
             goal_pose=self.tool_pose(
-                arm._world, grip_point, self.left_pointing, self.left_closing
+                world=arm._world,
+                grip_point=grip_point,
+                pointing=self.left_pointing,
+                closing=self.left_closing,
             ),
             position_threshold=position_threshold,
         )
+
+
+# %% command line
 
 
 def run_from_command_line() -> None:

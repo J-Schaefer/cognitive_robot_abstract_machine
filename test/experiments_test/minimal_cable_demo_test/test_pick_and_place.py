@@ -28,6 +28,7 @@ def test_the_cable_lies_flat_on_the_table_near_the_place_point_after_it_was_laid
     """
     Once the gripper has let go, the cable lies on the table again, every node within a
     few radii of it, with the point the gripper held close to where it was to be laid.
+
     A cable the gripper dropped on the way would lie where it fell.
     """
     demonstration = CablePickAndPlaceDemonstration(headless=True)
@@ -49,12 +50,13 @@ def test_a_video_holds_one_frame_per_frame_period_of_simulated_time(tmp_path):
     video = CableVideo(path=tmp_path / "cable.mp4", width=160, height=120)
     demonstration = CablePickAndPlaceDemonstration(headless=True, video=video)
     world, _ = demonstration.create_world()
-    demonstration.lay_cable_on_the_table(world)
-    simulation = demonstration.create_simulation(world)
+    demonstration.lay_cable_on_the_table(world=world)
+    simulation = demonstration.create_simulation(world=world)
     frames = 6
     try:
         demonstration.let_the_cable_settle(
-            simulation, frames * timedelta(seconds=1 / video.frames_per_second)
+            simulation=simulation,
+            duration=frames * timedelta(seconds=1 / video.frames_per_second),
         )
     finally:
         simulation.stop_simulation()
